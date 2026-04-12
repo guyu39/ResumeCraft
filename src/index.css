@@ -1,0 +1,243 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Microsoft YaHei', 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f7f8fa;
+}
+
+/* 简历内部统一使用微软雅黑 */
+#resume-paper,
+#resume-paper *,
+#resume-paper-export,
+#resume-paper-export * {
+  font-family: var(--resume-font-family, 'Microsoft YaHei'), 'PingFang SC', 'Noto Sans SC', sans-serif;
+}
+
+.resume-preview-content p {
+  margin: var(--paragraph-spacing, 1px) 0;
+}
+
+.resume-preview-content h3,
+.resume-preview-content h4,
+.resume-preview-content ul,
+.resume-preview-content ol,
+.resume-preview-content li {
+  margin-top: var(--paragraph-spacing, 1px);
+  margin-bottom: var(--paragraph-spacing, 1px);
+}
+
+.resume-preview-content p,
+.resume-preview-content li,
+.resume-preview-content span,
+.resume-preview-content h3,
+.resume-preview-content h4 {
+  color: var(--resume-text-color, inherit);
+}
+
+.resume-preview-content {
+  --resume-font-scale: 1;
+}
+
+.resume-preview-content .text-\[8pt\] {
+  font-size: calc(8pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[8\.5pt\] {
+  font-size: calc(8.5pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[9pt\] {
+  font-size: calc(9pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[9\.5pt\] {
+  font-size: calc(9.5pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[9\.8pt\] {
+  font-size: calc(9.8pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[10pt\] {
+  font-size: calc(10pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[10\.5pt\] {
+  font-size: calc(10.5pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[11pt\] {
+  font-size: calc(11pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[18pt\] {
+  font-size: calc(18pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[22pt\] {
+  font-size: calc(22pt * var(--resume-font-scale)) !important;
+}
+
+.resume-preview-content .text-\[26pt\] {
+  font-size: calc(26pt * var(--resume-font-scale)) !important;
+}
+
+/* 打印样式优化 */
+@media print {
+  body {
+    background: white !important;
+  }
+
+  aside,
+  header,
+  footer,
+  nav {
+    display: none !important;
+  }
+}
+
+/* 自动保存提示动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInUp 0.2s ease-out;
+}
+
+/* 隐藏原生滚动条，但保留滚动能力 */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 富文本链接统一样式（编辑态 + 预览态） */
+.rich-editor-content a,
+.rich-preview-content a,
+.resume-preview-content a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1.5px;
+  cursor: pointer;
+}
+
+.rich-editor-content a:hover,
+.rich-preview-content a:hover,
+.resume-preview-content a:hover {
+  color: #1d4ed8;
+}
+
+/* 富文本列表样式（Tailwind preflight 会移除默认 list-style） */
+.rich-editor-content ul,
+.rich-preview-content ul,
+.resume-preview-content ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+}
+
+.rich-editor-content ol,
+.rich-preview-content ol,
+.resume-preview-content ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+}
+
+.rich-editor-content li,
+.rich-preview-content li,
+.resume-preview-content li {
+  margin: 0.2rem 0;
+}
+
+/* react-datepicker 样式微调 */
+.resume-datepicker {
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12) !important;
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif !important;
+}
+
+.react-datepicker__month-container {
+  width: 240px;
+}
+
+.react-datepicker__header {
+  background-color: #f8fafc !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+.react-datepicker__month-text {
+  width: 3.6rem !important;
+  line-height: 2rem !important;
+  border-radius: 8px !important;
+  margin: 0.25rem !important;
+}
+
+.react-datepicker__month-text:hover {
+  background-color: #eef2ff !important;
+}
+
+.react-datepicker__month-text--keyboard-selected,
+.react-datepicker__month-text--selected {
+  background-color: #2563eb !important;
+  color: #fff !important;
+}
+
+.react-datepicker-wrapper,
+.react-datepicker__input-container {
+  width: 100%;
+  display: block;
+}
+
+.react-datepicker-popper,
+.resume-datepicker-popper {
+  position: absolute !important;
+  z-index: 80 !important;
+}
+
+/* 右侧编辑区统一样式层 */
+.editor-form-shell {
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.4) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.editor-form-root {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.editor-form-root .editor-block-card {
+  border-color: #e5e7eb;
+  background: #fafafa;
+  border-radius: 14px;
+}
+
+.editor-form-root h4 {
+  letter-spacing: 0.04em;
+}
+
+.editor-form-root .grid {
+  row-gap: 14px;
+}
