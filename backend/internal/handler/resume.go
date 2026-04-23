@@ -70,6 +70,10 @@ func (h *Handler) CreateResume(c *gin.Context) {
 	log.Printf("[resume] CreateResume userID: %s, title: %s", userID, req.Title)
 	item, err := h.resumeService.Create(c.Request.Context(), userID.(string), req)
 	if err != nil {
+		if errors.Is(err, resume.ErrDuplicateTitle) {
+			response.JSONError(c, http.StatusConflict, "DUPLICATE_TITLE", "简历名称已存在")
+			return
+		}
 		log.Printf("[resume] CreateResume error: %v", err)
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "创建简历失败")
 		return

@@ -123,8 +123,8 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
           <img
             src={personalData.avatar}
             alt="头像"
-            className={`absolute right-0 top-0 w-[108px] h-auto aspect-square object-cover border-2 ${personalData.avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
-            style={{ borderColor: `${themeColor}40` }}
+            className={`absolute right-0 top-0 object-cover border-2 ${personalData.avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
+            style={personalData.avatarShape === 'square' ? { width: '75px', height: '103.54px', borderColor: `${themeColor}40` } : { width: '75px', aspectRatio: '1/1', borderColor: `${themeColor}40` }}
           />
         )}
       </div>

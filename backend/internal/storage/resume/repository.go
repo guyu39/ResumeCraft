@@ -16,10 +16,12 @@ import (
 
 var (
 	ErrResumeNotFound = errors.New("resume not found")
+	ErrDuplicateTitle = errors.New("resume title already exists")
 )
 
 type Repository interface {
 	List(ctx context.Context, userID string, page, pageSize int, keyword string) ([]model.ResumeListItem, int, error)
+	FindByTitle(ctx context.Context, userID, title string) (bool, error)
 	Create(ctx context.Context, userID string, req model.CreateResumeRequest) (*model.ResumeListItem, error)
 	GetByID(ctx context.Context, userID, resumeID string) (*model.ResumeDetail, error)
 	Update(ctx context.Context, userID, resumeID string, req model.UpdateResumeRequest) (*model.ResumeUpdateResponse, error)
@@ -91,6 +93,17 @@ func (r *repository) List(ctx context.Context, userID string, page, pageSize int
 	}
 
 	return items, total, nil
+}
+
+func (r *repository) FindByTitle(ctx context.Context, userID, title string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM resumes WHERE user_id = $1 AND title = $2 AND deleted_at IS NULL)
+	`, userID, title).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("find by title: %w", err)
+	}
+	return exists, nil
 }
 
 func (r *repository) Create(ctx context.Context, userID string, req model.CreateResumeRequest) (*model.ResumeListItem, error) {
@@ -360,9 +373,9 @@ func getOrDefaultStyleSettings(s *model.ResumeStyleSettings) model.ResumeStyleSe
 	if s == nil {
 		return model.ResumeStyleSettings{
 			FontFamily:            "Microsoft YaHei",
-			FontSize:             12,
-			TextColor:            "#363636",
-			LineHeight:           1.3,
+			FontSize:              12,
+			TextColor:             "#363636",
+			LineHeight:            1.3,
 			PagePaddingHorizontal: 20,
 			PagePaddingVertical:   20,
 			ModuleSpacing:         7,

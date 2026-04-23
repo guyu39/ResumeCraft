@@ -414,6 +414,9 @@ interface ResumeStoreActions {
 
   // 从 localStorage 加载
   loadFromStorage: () => void
+
+  // 更新简历标题（同时更新内存状态和本地存储）
+  setResumeTitle: (title: string) => void
 }
 
 type ResumeStore = ResumeStoreState & ResumeStoreActions
@@ -688,6 +691,17 @@ export const useResumeStore = create<ResumeStore>((set) => ({
       })
     }
   },
+
+  // ---------- setResumeTitle ----------
+  setResumeTitle: (title: string) => {
+    const normalizedTitle = title.trim()
+    if (!normalizedTitle) return
+    set((state) => {
+      const updated = { ...state.resume, title: normalizedTitle, updatedAt: Date.now() }
+      saveToStorage(updated)
+      return { resume: updated }
+    })
+  },
 }))
 
 // ---------- 导出工具函数（供外部使用） ----------
@@ -762,4 +776,5 @@ export {
   renameResumeInStorage,
   selectResumeForEditingInStorage,
   removeResumeFromStorageCollection,
+  setCurrentResumeIdToStorage,
 }

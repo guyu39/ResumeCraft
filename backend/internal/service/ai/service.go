@@ -28,7 +28,7 @@ type Service interface {
 	SaveConfig(ctx context.Context, userID string, req model.AIConfigRequest) error
 
 	// 对话管理
-	ListConversations(ctx context.Context, userID string, conversationType string, page, pageSize int) (*model.ConversationListResponse, error)
+	ListConversations(ctx context.Context, userID string, conversationType, resumeID string, page, pageSize int) (*model.ConversationListResponse, error)
 	GetConversation(ctx context.Context, userID, conversationID string) (*model.AIConversation, error)
 	DeleteConversation(ctx context.Context, userID, conversationID string) error
 
@@ -127,7 +127,7 @@ func (s *service) SaveConfig(ctx context.Context, userID string, req model.AICon
 }
 
 // ListConversations 获取对话列表
-func (s *service) ListConversations(ctx context.Context, userID string, conversationType string, page, pageSize int) (*model.ConversationListResponse, error) {
+func (s *service) ListConversations(ctx context.Context, userID string, conversationType, resumeID string, page, pageSize int) (*model.ConversationListResponse, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -138,7 +138,7 @@ func (s *service) ListConversations(ctx context.Context, userID string, conversa
 		pageSize = 100
 	}
 
-	items, total, err := s.repo.List(ctx, userID, conversationType, page, pageSize)
+	items, total, err := s.repo.List(ctx, userID, conversationType, resumeID, page, pageSize)
 	if err != nil {
 		return nil, err
 	}

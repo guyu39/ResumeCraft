@@ -8,7 +8,7 @@ interface IndustryPresetPickerProps {
 const IndustryPresetPicker: React.FC<IndustryPresetPickerProps> = ({ onApply }) => {
     return (
         <div className="space-y-2">
-            <label className="block text-[13px] font-medium text-gray-700">行业模板</label>
+            {/* <label className="block text-[13px] font-medium text-gray-700">行业模板</label> */}
             <div className="grid grid-cols-1 gap-2">
                 {INDUSTRY_TEMPLATE_PRESETS.map((preset) => (
                     <button

@@ -69,7 +69,7 @@ type ConfigRepository interface {
 // Repository AI 对话仓库接口
 type Repository interface {
 	// 对话
-	List(ctx context.Context, userID, conversationType string, page, pageSize int) ([]model.AIConversation, int, error)
+	List(ctx context.Context, userID, conversationType, resumeID string, page, pageSize int) ([]model.AIConversation, int, error)
 	GetByID(ctx context.Context, userID, conversationID string) (*model.AIConversation, error)
 	Create(ctx context.Context, conv *ConversationRecord) error
 	Delete(ctx context.Context, userID, conversationID string) error
@@ -148,16 +148,23 @@ func (r *configRepository) Upsert(ctx context.Context, cfg *AIConfigRecord) erro
 
 // ============ Conversation Repository ============
 
-func (r *repository) List(ctx context.Context, userID, conversationType string, page, pageSize int) ([]model.AIConversation, int, error) {
+func (r *repository) List(ctx context.Context, userID, conversationType, resumeID string, page, pageSize int) ([]model.AIConversation, int, error) {
 	offset := (page - 1) * pageSize
 
 	// 查询总数
 	var total int
 	countQuery := `SELECT COUNT(*) FROM ai_conversations WHERE user_id = $1`
 	args := []interface{}{userID}
+	argIdx := 2
 	if conversationType != "" {
-		countQuery += ` AND type = $2`
+		countQuery += fmt.Sprintf(` AND type = $%d`, argIdx)
 		args = append(args, conversationType)
+		argIdx++
+	}
+	if resumeID != "" {
+		countQuery += fmt.Sprintf(` AND resume_id = $%d`, argIdx)
+		args = append(args, resumeID)
+		argIdx++
 	}
 	err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
@@ -170,9 +177,16 @@ func (r *repository) List(ctx context.Context, userID, conversationType string, 
 		FROM ai_conversations
 		WHERE user_id = $1`
 	listArgs := []interface{}{userID}
+	argIdx = 2
 	if conversationType != "" {
-		query += ` AND type = $2`
+		query += fmt.Sprintf(` AND type = $%d`, argIdx)
 		listArgs = append(listArgs, conversationType)
+		argIdx++
+	}
+	if resumeID != "" {
+		query += fmt.Sprintf(` AND resume_id = $%d`, argIdx)
+		listArgs = append(listArgs, resumeID)
+		argIdx++
 	}
 	query += ` ORDER BY updated_at DESC LIMIT $` + fmt.Sprintf("%d", len(listArgs)+1) + ` OFFSET $` + fmt.Sprintf("%d", len(listArgs)+2)
 	listArgs = append(listArgs, pageSize, offset)

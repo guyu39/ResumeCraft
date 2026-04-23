@@ -16,6 +16,14 @@
 10. **AI 辅助**：简历评估、内容润色建议。
 11. **PDF 导出**：前端生成 HTML + 后端渲染 PDF。
 
+## 页面展示
+![alt text](image.png)
+![alt text](image-1.png)
+![alt text](image-4.png)
+![alt text](image-6.png)
+![alt text](image-7.png)
+
+
 ## 技术栈
 
 | 层级 | 技术 |

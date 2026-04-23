@@ -9,7 +9,8 @@ import (
 )
 
 var (
-	ErrResumeNotFound = errors.New("resume not found")
+	ErrResumeNotFound  = errors.New("resume not found")
+	ErrDuplicateTitle = errors.New("resume title already exists")
 )
 
 type Service interface {
@@ -62,6 +63,13 @@ func (s *service) List(ctx context.Context, userID string, page, pageSize int, k
 }
 
 func (s *service) Create(ctx context.Context, userID string, req model.CreateResumeRequest) (*model.ResumeListItem, error) {
+	exists, err := s.repo.FindByTitle(ctx, userID, req.Title)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, ErrDuplicateTitle
+	}
 	return s.repo.Create(ctx, userID, req)
 }
 

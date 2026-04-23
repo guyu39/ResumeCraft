@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [authChecked, setAuthChecked] = useState(false)
   const [cloudResumes, setCloudResumes] = useState<any[]>([])
   const [showLogin, setShowLogin] = useState(false)
+  const [hasCloudLoaded, setHasCloudLoaded] = useState(false)
 
   const pathname = window.location.pathname
   const isPreviewPage = pathname === '/preview'
@@ -66,6 +67,7 @@ const App: React.FC = () => {
         if (skipAutoLoad) {
           sessionStorage.removeItem('skip_auto_load')
           console.log('[App] 跳过自动加载，等待本地简历')
+          setHasCloudLoaded(true)
           return
         }
 
@@ -113,6 +115,7 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('[App] 加载云端简历失败:', err)
       }
+      setHasCloudLoaded(true)
     }
 
     loadCloudResumes()
@@ -152,9 +155,11 @@ const App: React.FC = () => {
     <ResumeListPage
       cloudResumes={cloudResumes}
       isAuthenticated={isAuthenticated}
+      hasCloudLoaded={hasCloudLoaded}
       onLogin={() => setShowLogin(true)}
       onLogout={async () => {
         await logout()
+        setCloudResumes([])
         localStorage.removeItem('resumecraft_current_resume_id')
         window.location.reload()
       }}

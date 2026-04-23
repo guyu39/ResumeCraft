@@ -18,7 +18,9 @@ interface ResumeScoreDrawerProps {
     lastEvaluatedAt: number | null
     modeLabel?: string
     isAuthenticated?: boolean
+    resumeId?: string
     // onClose: () => void
+    onNewEvaluation?: (conversationId: string) => void
     onReevaluate: () => void
     onRetry: () => void
     onJumpToModule: (moduleType: ModuleType) => void
@@ -324,12 +326,14 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     lastEvaluatedAt,
     modeLabel,
     isAuthenticated,
+    resumeId,
     // onClose,
     onReevaluate,
     onRetry,
     onJumpToModule,
     onConversationSelect,
     restoredResult,
+    onNewEvaluation,
 }) => {
     if (!open) return null
 
@@ -347,7 +351,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
         setHistoryLoading(true)
         // 用 authAtOpen 捕获此刻的登录状态，避免 Promise 异步回调中 state 已变化
         const authAtOpen = isAuthenticated
-        aiApi.getConversations({ type: 'evaluate', pageSize: 5 }).then((res) => {
+        aiApi.getConversations({ type: 'evaluate', resumeId, pageSize: 5 }).then((res) => {
             const items = res.items || []
             setConversationHistory(items)
             // 有历史记录：自动选中最新一条并渲染
@@ -362,13 +366,29 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
             }
         }).catch(() => {
             setConversationHistory([])
-            if (authAtOpen) {
-                onReevaluate()
-            }
         }).finally(() => {
             setHistoryLoading(false)
         })
     }, [open])
+
+    // 新评估完成时：将新会话 ID 通知父组件（用于云端同步），并拼接到本地历史列表
+    useEffect(() => {
+        if (!result?.conversationId || !resumeId) return
+        const newConv: ConversationItem = {
+            id: result.conversationId,
+            resumeId,
+            type: 'evaluate',
+            title: '简历评估',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            context: {
+                overallScore: result.overallScore,
+                level: result.level,
+            },
+        }
+        setConversationHistory((prev) => [newConv, ...prev.filter((c) => c.id !== newConv.id)])
+        onNewEvaluation?.(result.conversationId)
+    }, [result?.conversationId])
 
     const [elapsedSeconds, setElapsedSeconds] = useState(0)
     const [conversationHistory, setConversationHistory] = useState<ConversationItem[]>([])
@@ -461,7 +481,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                         setShowHistory((prev) => !prev)
                                         if (!showHistory && conversationHistory.length === 0) {
                                             setHistoryLoading(true)
-                                            aiApi.getConversations({ type: 'evaluate' }).then((res) => {
+                                            aiApi.getConversations({ type: 'evaluate', resumeId }).then((res) => {
                                                 setConversationHistory(res.items)
                                                 // Auto-select first (latest) item and load its detail
                                                 if (res.items.length > 0) {

@@ -61,6 +61,7 @@ export interface ResumeEvaluateOutput {
     reasoningSteps?: string[]
     model?: string
     rawText?: string
+    conversationId?: string
 }
 
 export interface AIProvider {

@@ -166,6 +166,7 @@ const LeftPanel: React.FC = () => {
     removeModule,
     reorderModules,
     toggleModuleVisible,
+    setResumeTitle,
   } = useResumeStore()
   const [pendingDeleteModuleId, setPendingDeleteModuleId] = useState<string | null>(null)
 
@@ -228,8 +229,8 @@ const LeftPanel: React.FC = () => {
           <input
             type="text"
             value={resume.title}
-            readOnly
-            className="flex-1 text-sm font-semibold text-gray-800 bg-transparent border-none outline-none"
+            onChange={(e) => setResumeTitle(e.target.value)}
+            className="flex-1 text-sm font-semibold text-gray-800 bg-transparent border border-transparent rounded px-1 py-0.5 outline-none focus:border-primary/40 focus:bg-white transition-colors"
             placeholder="简历标题"
           />
         </div>

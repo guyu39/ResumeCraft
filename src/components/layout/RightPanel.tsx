@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Eye, Download, Settings, Sparkles, X } from 'lucide-react'
+import { Download, Settings, Sparkles, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType } from '@/types/resume'
@@ -176,6 +176,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
 
     const [aiForm, setAiForm] = useState<AIConfigForm>(getInitialAIForm)
     const [aiStatus, setAiStatus] = useState<string | null>(null)
+    const [industryPresetCollapsed, setIndustryPresetCollapsed] = useState(false)
     const [aiError, setAiError] = useState<string | null>(null)
 
     // initialAIConfig 变化时更新表单
@@ -274,7 +275,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
             />
 
             <div className="border-t border-gray-100 pt-4">
-                <IndustryPresetPicker onApply={applyIndustryPreset} />
+                <button
+                    type="button"
+                    className="flex items-center justify-between w-full text-xs font-medium text-gray-700 mb-2"
+                    onClick={() => setIndustryPresetCollapsed((v) => !v)}
+                >
+                    <span>行业模版</span>
+                    {industryPresetCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                </button>
+                {!industryPresetCollapsed && <IndustryPresetPicker onApply={applyIndustryPreset} />}
             </div>
 
             <div className="border-t border-gray-100 pt-4">
@@ -487,6 +496,7 @@ const RightPanel: React.FC = () => {
         defaultModel: string
     } | null>(null)
     const [restoredEvaluation, setRestoredEvaluation] = useState<ResumeEvaluateOutput | null>(null)
+    const [initialEvaluation, setInitialEvaluation] = useState<ResumeEvaluateOutput | null>(null)
     const { exportPDF, exporting, error: exportError } = useSyncExport()
     const {
         loading: evaluating,
@@ -517,6 +527,56 @@ const RightPanel: React.FC = () => {
             setAiConfigFromServer(null)
         })
     }, [showSettings, isAuthenticated])
+
+    // 进入评估面板时：加载最新评估历史，无历史且未登录才触发评估
+    useEffect(() => {
+        if (!showAIEvaluation) {
+            setInitialEvaluation(null)
+            return
+        }
+        if (!isAuthenticated) {
+            return
+        }
+        const loadLatest = async () => {
+            try {
+                const res = await aiApi.getConversations({ type: 'evaluate', resumeId: resume.id, pageSize: 1 })
+                const items = res.items || []
+                if (items.length > 0) {
+                    const detail = await aiApi.getConversation(items[0].id)
+                    if (detail.context) {
+                        const ctx = detail.context as {
+                            overallScore?: number; level?: string; summary?: string
+                            dimensions?: unknown[]; issues?: unknown[]; actionItems?: string[]; model?: string
+                        }
+                        if (ctx.overallScore !== undefined) {
+                            setInitialEvaluation({
+                                overallScore: ctx.overallScore,
+                                level: ctx.level ?? 'C',
+                                summary: ctx.summary ?? '',
+                                dimensions: (ctx.dimensions ?? []) as ResumeEvaluateOutput['dimensions'],
+                                issues: (ctx.issues ?? []) as ResumeEvaluateOutput['issues'],
+                                actionItems: ctx.actionItems ?? [],
+                                model: ctx.model,
+                            })
+                            return
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load initial evaluation:', err)
+            }
+            // 无历史记录，触发新评估
+            await runEvaluate(resume)
+        }
+        loadLatest()
+    }, [showAIEvaluation, isAuthenticated, resume.id])
+
+    // initialEvaluation 就绪后同步到 restoredEvaluation 供 Drawer 显示
+    useEffect(() => {
+        if (initialEvaluation) {
+            setRestoredEvaluation(initialEvaluation)
+        }
+    }, [initialEvaluation])
 
     // 打开 AI 评估时也从后端加载 AI 配置（用于模型名称显示）
     useEffect(() => {
@@ -583,11 +643,6 @@ const RightPanel: React.FC = () => {
         } catch {
             // 错误已由 hook 内部处理
         }
-    }
-
-    // ---------- 预览（全屏打印视图） ----------
-    const handlePreview = () => {
-        window.open('/preview', '_blank', 'noopener,noreferrer')
     }
 
     // ---------- AI 综合评估 ----------
@@ -672,59 +727,18 @@ const RightPanel: React.FC = () => {
                 </button>
 
                 <button
-                    onClick={async () => {
+                    onClick={() => {
+                        if (!isAuthenticated) {
+                            const currentPath = window.location.pathname
+                            window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
+                            window.location.reload()
+                            return
+                        }
                         if (showAIEvaluation) {
                             setShowAIEvaluation(false)
                         } else {
                             setShowSettings(false)
                             setShowAIEvaluation(true)
-
-                            // 如果已有结果或正在评估中，不做任何事
-                            if (evaluateResult || evaluating) {
-                                return
-                            }
-
-                            // 尝试从历史记录加载最新评估
-                            if (isAuthenticated) {
-                                try {
-                                    const res = await aiApi.getConversations({ type: 'evaluate', pageSize: 100 })
-                                    const existingEval = res.items
-                                        .filter((item) => item.resumeId === resume.id)
-                                        .sort((a, b) => b.createdAt - a.createdAt)[0]
-
-                                    if (existingEval) {
-                                        const detail = await aiApi.getConversation(existingEval.id)
-                                        if (detail.context) {
-                                            const ctx = detail.context as {
-                                                overallScore?: number
-                                                level?: string
-                                                summary?: string
-                                                dimensions?: unknown[]
-                                                issues?: unknown[]
-                                                actionItems?: string[]
-                                                model?: string
-                                            }
-                                            if (ctx.overallScore !== undefined) {
-                                                setRestoredEvaluation({
-                                                    overallScore: ctx.overallScore,
-                                                    level: ctx.level ?? 'C',
-                                                    summary: ctx.summary ?? '',
-                                                    dimensions: ctx.dimensions as ResumeEvaluateOutput['dimensions'],
-                                                    issues: ctx.issues as ResumeEvaluateOutput['issues'],
-                                                    actionItems: ctx.actionItems ?? [],
-                                                    model: ctx.model,
-                                                })
-                                                return
-                                            }
-                                        }
-                                    }
-                                } catch (err) {
-                                    console.error('Failed to load existing evaluation:', err)
-                                }
-                            }
-
-                            // 无历史记录，运行新评估
-                            await runEvaluate(resume)
                         }
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 disabled:opacity-60 disabled:cursor-wait transition-colors flex-shrink min-w-0"
@@ -733,13 +747,13 @@ const RightPanel: React.FC = () => {
                     <span className="truncate">{showAIEvaluation ? '返回编辑' : evaluating ? '评估中...' : 'AI评估'}</span>
                 </button>
 
-                <button
+                {/* <button
                     onClick={handlePreview}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 transition-colors flex-shrink min-w-0"
                 >
                     <Eye className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">预览</span>
-                </button>
+                </button> */}
 
                 <button
                     onClick={handleExport}
@@ -781,6 +795,7 @@ const RightPanel: React.FC = () => {
                         lastEvaluatedAt={lastEvaluatedAt}
                         modeLabel={aiModeLabel}
                         isAuthenticated={isAuthenticated}
+                        resumeId={resume.id}
                         onReevaluate={handleReevaluate}
                         onRetry={handleRetryEvaluate}
                         onJumpToModule={handleJumpToIssueModule}

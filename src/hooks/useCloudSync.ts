@@ -269,8 +269,13 @@ export function useCloudSync() {
   // 暴露全局方法供外部调用（如 ResumeListPage）
   useEffect(() => {
     (window as any).__cloudSyncSetCloudId = setCloudId
+    ;(window as any).__cloudSyncMarkSynced = () => {
+      hasSyncedOnMountRef.current = true
+      console.log('[CloudSync] 标记为已完成初始同步')
+    }
     return () => {
       delete (window as any).__cloudSyncSetCloudId
+      delete (window as any).__cloudSyncMarkSynced
     }
   }, [setCloudId])
 

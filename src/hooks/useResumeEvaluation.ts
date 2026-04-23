@@ -85,6 +85,7 @@ export const useResumeEvaluation = () => {
                 reasoningSteps: output.reasoningSteps,
                 rawText: output.rawText,
                 model: output.model,
+                conversationId: output.conversationId,
             }
 
             setState({

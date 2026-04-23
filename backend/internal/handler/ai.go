@@ -106,8 +106,9 @@ func (h *Handler) ListAIConversations(c *gin.Context) {
 		}
 	}
 	conversationType := c.Query("type")
+	resumeID := c.Query("resumeId")
 
-	result, err := h.aiService.ListConversations(c.Request.Context(), userID.(string), conversationType, page, pageSize)
+	result, err := h.aiService.ListConversations(c.Request.Context(), userID.(string), conversationType, resumeID, page, pageSize)
 	if err != nil {
 		log.Printf("[ai] ListConversations error: %v", err)
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "获取对话列表失败")
