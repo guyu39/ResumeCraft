@@ -1,22 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import type { ModuleType } from '@/types/resume'
 import type { ResumeEvaluateOutput } from '@/ai'
+import { aiApi, type ConversationItem } from '@/api/ai'
 
 interface ResumeScoreDrawerProps {
     open: boolean
     embedded?: boolean
     result: ResumeEvaluateOutput | null
+    restoredResult?: ResumeEvaluateOutput | null
     loading: boolean
+    streamDone: boolean
     error: string | null
     streamText: string
+    modelName: string | null
     currentResumeUpdatedAt: number
     evaluatedResumeUpdatedAt: number | null
     lastEvaluatedAt: number | null
     modeLabel?: string
-    onClose: () => void
+    isAuthenticated?: boolean
+    // onClose: () => void
     onReevaluate: () => void
     onRetry: () => void
     onJumpToModule: (moduleType: ModuleType) => void
+    onConversationSelect?: (conversationId: string) => void
 }
 
 interface StreamDimensionPreview {
@@ -66,188 +72,6 @@ const normalizeStreamText = (streamText: string): string => {
         .replace(/：/g, ':')
 }
 
-const extractQuotedField = (text: string, fieldName: string): string | null => {
-    const keyPattern = new RegExp(`["“”]${fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["“”]\\s*:`)
-    const keyMatch = keyPattern.exec(text)
-    if (!keyMatch) return null
-
-    let index = (keyMatch.index ?? 0) + keyMatch[0].length
-    while (index < text.length && /\s/.test(text[index])) index += 1
-
-    const startQuote = text[index]
-    const quotePairs: Record<string, string> = {
-        '"': '"',
-        "'": "'",
-        '“': '”',
-        '‘': '’',
-    }
-    const endQuote = quotePairs[startQuote]
-    if (!endQuote) return null
-
-    index += 1
-    let escaped = false
-    let result = ''
-
-    while (index < text.length) {
-        const char = text[index]
-        if (startQuote === '"' && !escaped && char === '\\') {
-            escaped = true
-            result += char
-            index += 1
-            continue
-        }
-
-        if (char === endQuote && !escaped) {
-            return result.replace(/\\n/g, '\n').trim()
-        }
-
-        escaped = false
-        result += char
-        index += 1
-    }
-
-    // 流式未闭合时返回当前已到达片段
-    return result.replace(/\\n/g, '\n').trim() || null
-}
-
-const extractArraySection = (source: string, fieldName: string): string | null => {
-    const keyRegex = new RegExp(`["“”]${fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["“”]\\s*:`)
-    const keyMatch = keyRegex.exec(source)
-    if (!keyMatch) return null
-
-    const start = source.indexOf('[', (keyMatch.index ?? 0) + keyMatch[0].length)
-    if (start === -1) return null
-
-    let inString = false
-    let escaped = false
-    let depth = 0
-
-    for (let i = start; i < source.length; i += 1) {
-        const char = source[i]
-        if (inString) {
-            if (escaped) {
-                escaped = false
-            } else if (char === '\\') {
-                escaped = true
-            } else if (char === '"') {
-                inString = false
-            }
-            continue
-        }
-
-        if (char === '"') {
-            inString = true
-            continue
-        }
-
-        if (char === '[') {
-            depth += 1
-            continue
-        }
-
-        if (char === ']') {
-            depth -= 1
-            if (depth === 0) {
-                return source.slice(start + 1, i)
-            }
-        }
-    }
-
-    // 流式阶段可能尚未闭合
-    return source.slice(start + 1)
-}
-
-const parseObjectBlocksFromArray = (source: string): string[] => {
-    const blocks: string[] = []
-    let start = -1
-    let depth = 0
-    let inString = false
-    let escaped = false
-
-    for (let i = 0; i < source.length; i += 1) {
-        const char = source[i]
-
-        if (inString) {
-            if (escaped) {
-                escaped = false
-            } else if (char === '\\') {
-                escaped = true
-            } else if (char === '"') {
-                inString = false
-            }
-            continue
-        }
-
-        if (char === '"') {
-            inString = true
-            continue
-        }
-
-        if (char === '{') {
-            if (depth === 0) start = i
-            depth += 1
-            continue
-        }
-
-        if (char === '}') {
-            depth -= 1
-            if (depth === 0 && start !== -1) {
-                blocks.push(source.slice(start, i + 1))
-                start = -1
-            }
-        }
-    }
-
-    return blocks
-}
-
-const extractNumberField = (text: string, fieldName: string): number | null => {
-    const escapedField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const numberMatch = text.match(new RegExp(`["“”]${escapedField}["“”]\\s*:\\s*(-?\\d{1,3}(?:\\.\\d+)?)`))
-    if (!numberMatch) {
-        return null
-    }
-    const value = Number(numberMatch[1])
-    return Number.isFinite(value) ? value : null
-}
-
-const parseQuotedItemsFromArray = (sectionText: string): string[] => {
-    const result: string[] = []
-    let index = 0
-
-    while (index < sectionText.length) {
-        const start = sectionText.indexOf('"', index)
-        if (start === -1) break
-        index = start + 1
-
-        let value = ''
-        let escaped = false
-        while (index < sectionText.length) {
-            const char = sectionText[index]
-            if (!escaped && char === '\\') {
-                escaped = true
-                value += char
-                index += 1
-                continue
-            }
-            if (!escaped && char === '"') {
-                index += 1
-                break
-            }
-            escaped = false
-            value += char
-            index += 1
-        }
-
-        const normalized = value.replace(/\\n/g, '\n').trim()
-        if (normalized && normalized.length >= 6) {
-            result.push(normalized)
-        }
-    }
-
-    return result.slice(0, 3)
-}
-
 const levelColorClass = (score: number): string => {
     if (score >= 85) return 'text-green-600'
     if (score >= 70) return 'text-amber-600'
@@ -268,61 +92,62 @@ const severityTextMap: Record<'high' | 'medium' | 'low', string> = {
 
 const parseStreamPreview = (streamText: string): StreamPreview => {
     const text = normalizeStreamText(streamText)
+    const lines = text.split('\n').filter(l => l.trim())
 
-    const overallScoreMatch = text.match(/"overallScore"\s*:\s*(\d{1,3})/)
-    const levelMatch = text.match(/"level"\s*:\s*"([^"]*)"/)
-    const summaryValue = extractQuotedField(text, 'summary')
-
+    let overallScore: number | null = null
+    let level: string | null = null
+    let summary: string | null = null
     const dimensions: StreamDimensionPreview[] = []
-    const dimensionSection = extractArraySection(text, 'dimensions') ?? ''
-    const dimensionBlocks = parseObjectBlocksFromArray(dimensionSection)
-    dimensionBlocks.forEach((block) => {
-        const key = extractQuotedField(block, 'key')
-        const label = extractQuotedField(block, 'label')
-        if (!key || !label) return
-
-        const score = extractNumberField(block, 'score')
-        const comment = extractQuotedField(block, 'comment') ?? undefined
-        dimensions.push({
-            key,
-            label,
-            score: score === null ? undefined : Math.max(0, Math.min(100, Math.round(score))),
-            comment,
-        })
-    })
-
     const issues: StreamIssuePreview[] = []
-    const issueSection = extractArraySection(text, 'issues') ?? ''
-    const issueBlocks = parseObjectBlocksFromArray(issueSection)
-    issueBlocks.forEach((block, index) => {
-        const id = extractQuotedField(block, 'id') ?? `issue-${index + 1}`
-        const severityValue = extractQuotedField(block, 'severity')
-        const title = extractQuotedField(block, 'title') ?? undefined
-        const description = extractQuotedField(block, 'description') ?? undefined
-        const suggestion = extractQuotedField(block, 'suggestion') ?? undefined
+    const actionItems: string[] = []
 
-        issues.push({
-            id,
-            severity: severityValue === 'high' || severityValue === 'medium' || severityValue === 'low'
-                ? severityValue
-                : undefined,
-            title,
-            description,
-            suggestion,
-        })
-    })
+    for (const line of lines) {
+        let obj: Record<string, unknown>
+        try {
+            obj = JSON.parse(line)
+        } catch {
+            continue
+        }
 
-    const actionItems = parseQuotedItemsFromArray(extractArraySection(text, 'actionItems') ?? '')
-
-    const summary = summaryValue ?? null
-    const overallScore = overallScoreMatch ? Number(overallScoreMatch[1]) : null
-    const level = levelMatch?.[1] ?? null
+        switch (obj.type) {
+            case 'overall_score':
+                if (typeof obj.score === 'number') overallScore = obj.score
+                if (typeof obj.level === 'string') level = obj.level
+                break
+            case 'summary':
+                if (typeof obj.content === 'string') summary = obj.content
+                break
+            case 'dimension_score':
+                if (obj.key && obj.label) {
+                    dimensions.push({
+                        key: String(obj.key),
+                        label: String(obj.label),
+                        score: typeof obj.score === 'number' ? Math.round(obj.score) : undefined,
+                        comment: typeof obj.comment === 'string' ? obj.comment : undefined,
+                    })
+                }
+                break
+            case 'issue_item':
+                issues.push({
+                    id: typeof obj.id === 'string' ? obj.id : '',
+                    severity: (['high', 'medium', 'low'].includes(obj.severity as string) ? obj.severity : undefined) as 'high' | 'medium' | 'low' | undefined,
+                    title: typeof obj.title === 'string' ? obj.title : undefined,
+                    description: typeof obj.description === 'string' ? obj.description : undefined,
+                    suggestion: typeof obj.suggestion === 'string' ? obj.suggestion : undefined,
+                })
+                break
+            case 'action_item':
+                if (typeof obj.content === 'string') actionItems.push(obj.content)
+                break
+        }
+    }
 
     const hasStructuredContent = overallScore !== null
         || level !== null
         || Boolean(summary)
         || dimensions.length > 0
         || issues.length > 0
+        || actionItems.length > 0
         || actionItems.length > 0
 
     return {
@@ -490,21 +315,66 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     embedded = false,
     result,
     loading,
+    streamDone,
     error,
     streamText,
+    modelName,
     currentResumeUpdatedAt,
     evaluatedResumeUpdatedAt,
     lastEvaluatedAt,
     modeLabel,
-    onClose,
+    isAuthenticated,
+    // onClose,
     onReevaluate,
     onRetry,
     onJumpToModule,
+    onConversationSelect,
+    restoredResult,
 }) => {
     if (!open) return null
 
+    // Use restored result for display when available
+    const displayResult = restoredResult ?? result
+
+    // Reset history state when drawer closes
+    useEffect(() => {
+        if (!open) {
+            setShowHistory(false)
+            setSelectedHistoryId(null)
+            return
+        }
+        // 打开时：自动加载评估历史
+        setHistoryLoading(true)
+        // 用 authAtOpen 捕获此刻的登录状态，避免 Promise 异步回调中 state 已变化
+        const authAtOpen = isAuthenticated
+        aiApi.getConversations({ type: 'evaluate', pageSize: 5 }).then((res) => {
+            const items = res.items || []
+            setConversationHistory(items)
+            // 有历史记录：自动选中最新一条并渲染
+            if (items.length > 0) {
+                const latestId = items[0].id
+                setSelectedHistoryId(latestId)
+                setShowHistory(false)
+                onConversationSelect?.(latestId)
+            } else if (authAtOpen) {
+                // 打开时无历史记录且已登录：自动触发评估
+                onReevaluate()
+            }
+        }).catch(() => {
+            setConversationHistory([])
+            if (authAtOpen) {
+                onReevaluate()
+            }
+        }).finally(() => {
+            setHistoryLoading(false)
+        })
+    }, [open])
+
     const [elapsedSeconds, setElapsedSeconds] = useState(0)
-    const [thinkingCollapsed, setThinkingCollapsed] = useState(false)
+    const [conversationHistory, setConversationHistory] = useState<ConversationItem[]>([])
+    const [historyLoading, setHistoryLoading] = useState(false)
+    const [showHistory, setShowHistory] = useState(false)
+    const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
 
     const isLatest = evaluatedResumeUpdatedAt !== null && evaluatedResumeUpdatedAt === currentResumeUpdatedAt
     const hasVersionInfo = evaluatedResumeUpdatedAt !== null
@@ -516,44 +386,20 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
         [streamPreview.dimensions],
     )
     const resultDimensionItems = useMemo(
-        () => normalizeDimensionItems(result?.dimensions ?? []),
-        [result?.dimensions],
+        () => normalizeDimensionItems(displayResult?.dimensions ?? []),
+        [displayResult?.dimensions],
     )
     const resultActionItems = useMemo(
-        () => (result?.actionItems ?? [])
+        () => (displayResult?.actionItems ?? [])
             .map((item) => item.trim())
             .filter((item) => item.length >= 6)
             .slice(0, 3),
-        [result?.actionItems],
+        [displayResult?.actionItems],
     )
-
-    const thinkingNotes = useMemo(() => {
-        const notes: string[] = []
-        if (streamPreview.overallScore !== null || streamPreview.level) {
-            notes.push('正在生成综合评分结果...')
-        }
-        if (streamPreview.summary) {
-            notes.push('正在生成评估摘要...')
-        }
-        if (streamPreview.dimensions.length > 0) {
-            notes.push(`正在补全维度评分（已识别 ${streamPreview.dimensions.length} 项）...`)
-        }
-        if (streamPreview.issues.length > 0) {
-            notes.push(`正在整理重点问题（已识别 ${streamPreview.issues.length} 条）...`)
-        }
-        if (streamPreview.actionItems.length > 0) {
-            notes.push('正在生成优化动作建议...')
-        }
-        if (notes.length === 0) {
-            notes.push('正在分析简历内容并提取结构化结果...')
-        }
-        return notes
-    }, [streamPreview])
 
     useEffect(() => {
         if (!loading) {
             setElapsedSeconds(0)
-            setThinkingCollapsed(false)
             return
         }
 
@@ -568,13 +414,6 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
         }
     }, [loading])
 
-    useEffect(() => {
-        if (!loading) return
-        if (streamPreview.hasStructuredContent) {
-            setThinkingCollapsed(true)
-        }
-    }, [loading, streamPreview.hasStructuredContent])
-
     return (
         <div className={embedded ? 'h-full' : 'fixed inset-0 z-50 bg-black/25'}>
             <div className={embedded ? 'h-full bg-white' : 'absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl'}>
@@ -582,7 +421,9 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                     <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                         <div>
                             <h4 className="text-sm font-semibold text-gray-800">AI 简历评估</h4>
-                            <p className="mt-0.5 text-xs text-gray-500">{modeLabel ?? '已连接 AI 模型'}</p>
+                            <p className="mt-0.5 text-xs text-gray-500">
+                                {isAuthenticated ? ((displayResult?.model ?? modelName) ?? modeLabel ?? '已连接 AI 模型') : '请先登录'}
+                            </p>
                             {hasVersionInfo && (
                                 <p className={`mt-1 text-xs ${isLatest ? 'text-green-600' : 'text-amber-600'}`}>
                                     {isLatest ? '版本：最新（与当前简历一致）' : '版本：已过期（简历已更新，建议重新评估）'}
@@ -591,161 +432,236 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                             )}
                         </div>
                         <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={onReevaluate}
-                                disabled={loading}
-                                className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait"
-                            >
-                                {loading ? '评估中...' : '评估'}
-                            </button>
-                            <button
+                            {!isAuthenticated ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const currentPath = window.location.pathname
+                                        window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
+                                        window.location.reload()
+                                    }}
+                                    className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                                >
+                                    登录
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={onReevaluate}
+                                    disabled={loading}
+                                    className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait"
+                                >
+                                    {loading ? '评估中...' : '评估'}
+                                </button>
+                            )}
+                            {isAuthenticated && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowHistory((prev) => !prev)
+                                        if (!showHistory && conversationHistory.length === 0) {
+                                            setHistoryLoading(true)
+                                            aiApi.getConversations({ type: 'evaluate' }).then((res) => {
+                                                setConversationHistory(res.items)
+                                                // Auto-select first (latest) item and load its detail
+                                                if (res.items.length > 0) {
+                                                    const latestId = res.items[0].id
+                                                    setSelectedHistoryId(latestId)
+                                                    onConversationSelect?.(latestId)
+                                                }
+                                            }).catch(() => {
+                                                setConversationHistory([])
+                                            }).finally(() => {
+                                                setHistoryLoading(false)
+                                            })
+                                        }
+                                    }}
+                                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                                >
+                                    {showHistory ? '收起历史' : '查看历史'}
+                                </button>
+                            )}
+                            {/* <button
                                 type="button"
                                 onClick={onClose}
                                 className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
                             >
                                 关闭
-                            </button>
+                            </button> */}
                         </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto no-scrollbar p-4">
-                        {loading && (
+                        {showHistory && (
+                            <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                <h5 className="mb-2 text-sm font-semibold text-gray-700">评估历史<span className="text-xs text-gray-500">（仅显示5条评估记录）</span></h5>
+
+                                {historyLoading ? (
+                                    <p className="text-xs text-gray-500">加载中...</p>
+                                ) : conversationHistory.length === 0 ? (
+                                    <p className="text-xs text-gray-500">暂无评估记录</p>
+                                ) : (
+                                    <ul className="space-y-2">
+                                        {conversationHistory.map((item) => (
+                                            <li key={item.id}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedHistoryId(item.id)
+                                                        setShowHistory(false)
+                                                        onConversationSelect?.(item.id)
+                                                    }}
+                                                    className={`w-full text-left rounded-md border px-3 py-2 ${selectedHistoryId === item.id
+                                                        ? 'border-blue-400 bg-blue-50'
+                                                        : 'border-gray-100 bg-white hover:bg-gray-100'
+                                                        }`}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-xs font-medium text-gray-700">{item.title}</span>
+                                                        <span className="text-xs text-gray-400">
+                                                            {item.context && typeof item.context === 'object' && 'overallScore' in item.context
+                                                                ? `${(item.context as { overallScore: number }).overallScore}分`
+                                                                : ''}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-0.5 text-xs text-gray-400">
+                                                        {new Date(item.createdAt).toLocaleString()}
+                                                    </p>
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        )}
+                        {loading && !displayResult && (
                             <div className="space-y-3">
-                                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                                    AI 正在分析整份简历，请稍候...（已耗时 {elapsedSeconds}s）
+                                <div className={`rounded-lg border px-3 py-2 text-sm ${streamDone ? 'border-green-100 bg-green-50 text-green-700' : 'border-blue-100 bg-blue-50 text-blue-700'}`}>
+                                    {streamDone ? '评估完成，正在生成最终报告...' : `AI 正在分析整份简历，请稍候...（已耗时 ${elapsedSeconds}s）`}
                                 </div>
 
-                                <div className="rounded-xl border border-blue-100 bg-white p-4">
-                                    <div className="flex items-center justify-between">
-                                        <h5 className="text-sm font-semibold text-gray-800">思考过程</h5>
-                                        <button
-                                            type="button"
-                                            onClick={() => setThinkingCollapsed((prev) => !prev)}
-                                            className="text-xs text-gray-500 hover:text-gray-700"
-                                        >
-                                            {thinkingCollapsed ? '展开' : '折叠'}
-                                        </button>
-                                    </div>
-                                    {!thinkingCollapsed && (
-                                        <ul className="mt-2 space-y-1 text-xs leading-5 text-gray-500">
-                                            {thinkingNotes.map((note, index) => (
-                                                <li key={`${index}-${note}`} className="break-words">{note}</li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </div>
-
-                                <div className="rounded-xl border border-blue-100 bg-white p-4">
-                                    <h5 className="text-sm font-semibold text-gray-800">评估内容</h5>
-
-                                    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                        <p className="text-xs text-gray-500">综合评分</p>
-                                        <div className="mt-1 flex items-end gap-2">
-                                            <span className={`text-2xl font-bold ${levelColorClass(streamPreview.overallScore ?? 0)}`}>
-                                                {streamPreview.overallScore ?? '--'}
-                                            </span>
-                                            <span className="pb-0.5 text-xs text-gray-600">/ 100</span>
-                                            <span className="rounded bg-white px-2 py-0.5 text-xs text-gray-700 border border-gray-200">
-                                                {streamPreview.level ?? '--'}
-                                            </span>
-                                        </div>
-                                        {streamPreview.summary && (
-                                            <p className="mt-2 break-words text-xs leading-5 text-gray-600">{streamPreview.summary}</p>
-                                        )}
-                                    </div>
-
-                                    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                        <p className="text-xs font-medium text-gray-700">维度评分</p>
-                                        {streamPreview.dimensions.length === 0 ? (
-                                            <p className="mt-2 text-xs text-gray-500">正在提取维度评分...</p>
-                                        ) : (
-                                            <div className="mt-2">
-                                                <HexDimensionChart items={streamDimensionItems} />
+                                {streamPreview.hasStructuredContent && (
+                                    <div className="rounded-xl border border-blue-100 bg-white p-4 space-y-4">
+                                        {streamPreview.overallScore !== null && (
+                                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                                <p className="text-xs text-gray-500">综合评分</p>
+                                                <div className="mt-1 flex items-end gap-2">
+                                                    <span className={`text-2xl font-bold ${levelColorClass(streamPreview.overallScore)}`}>
+                                                        {streamPreview.overallScore}
+                                                    </span>
+                                                    <span className="pb-0.5 text-xs text-gray-600">/ 100</span>
+                                                    <span className="rounded bg-white px-2 py-0.5 text-xs text-gray-700 border border-gray-200">
+                                                        {streamPreview.level ?? '--'}
+                                                    </span>
+                                                </div>
                                             </div>
                                         )}
-                                    </div>
 
-                                    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                        <p className="text-xs font-medium text-gray-700">重点问题</p>
-                                        {streamPreview.issues.length === 0 ? (
-                                            <p className="mt-2 text-xs text-gray-500">正在提取问题列表...</p>
-                                        ) : (
-                                            <div className="mt-2 space-y-2">
-                                                {streamPreview.issues.map((issue, index) => (
-                                                    <div key={`${issue.id}-${index}`} className="rounded border border-gray-200 bg-white p-2">
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <p className="text-xs font-medium text-gray-700 break-words">{issue.title ?? '问题识别中...'}</p>
-                                                            {issue.severity && (
-                                                                <span className={`rounded border px-1.5 py-0.5 text-[10px] ${severityClassMap[issue.severity]}`}>
-                                                                    {severityTextMap[issue.severity]}
-                                                                </span>
+                                        {streamPreview.summary && (
+                                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                                <p className="text-xs text-gray-500">摘要</p>
+                                                <p className="mt-1 break-words text-xs leading-5 text-gray-600">{streamPreview.summary}</p>
+                                            </div>
+                                        )}
+
+                                        {streamPreview.dimensions.length > 0 && (
+                                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                                <p className="text-xs font-medium text-gray-700">维度评分</p>
+                                                <div className="mt-2">
+                                                    <HexDimensionChart items={streamDimensionItems} />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {streamPreview.issues.length > 0 && (
+                                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                                <p className="text-xs font-medium text-gray-700">重点问题</p>
+                                                <div className="mt-2 space-y-2">
+                                                    {streamPreview.issues.map((issue, index) => (
+                                                        <div key={`${issue.id}-${index}`} className="rounded border border-gray-200 bg-white p-2">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <p className="text-xs font-medium text-gray-700 break-words">{issue.title ?? '问题识别中...'}</p>
+                                                                {issue.severity && (
+                                                                    <span className={`rounded border px-1.5 py-0.5 text-[10px] ${severityClassMap[issue.severity]}`}>
+                                                                        {severityTextMap[issue.severity]}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {issue.description && (
+                                                                <p className="mt-1 break-words text-[11px] text-gray-500">{issue.description}</p>
+                                                            )}
+                                                            {issue.suggestion && (
+                                                                <p className="mt-1 break-words text-[11px] text-gray-600">建议：{issue.suggestion}</p>
                                                             )}
                                                         </div>
-                                                        {issue.description && (
-                                                            <p className="mt-1 break-words text-[11px] text-gray-500">{issue.description}</p>
-                                                        )}
-                                                        {issue.suggestion && (
-                                                            <p className="mt-1 break-words text-[11px] text-gray-600">建议：{issue.suggestion}</p>
-                                                        )}
-                                                    </div>
-                                                ))}
+                                                    ))}
+                                                </div>
                                             </div>
                                         )}
-                                    </div>
 
-                                    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                        <p className="text-xs font-medium text-gray-700">下一步优化动作</p>
-                                        {streamPreview.actionItems.length === 0 ? (
-                                            <p className="mt-2 text-xs text-gray-500">正在提取优化动作...</p>
-                                        ) : (
-                                            <div className="mt-2 space-y-2">
-                                                {streamPreview.actionItems.map((item, index) => (
-                                                    <div key={`${index}-${item}`} className="rounded border border-gray-200 bg-white p-2">
-                                                        <p className="text-xs font-medium text-gray-700">优化动作 {index + 1}</p>
-                                                        <p className="mt-1 break-words text-[11px] text-gray-600">{item}</p>
-                                                    </div>
-                                                ))}
+                                        {streamPreview.actionItems.length > 0 && (
+                                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                                <p className="text-xs font-medium text-gray-700">下一步优化动作</p>
+                                                <div className="mt-2 space-y-2">
+                                                    {streamPreview.actionItems.map((item, index) => (
+                                                        <div key={`${index}-${item}`} className="rounded border border-gray-200 bg-white p-2">
+                                                            <p className="text-xs font-medium text-gray-700">优化动作 {index + 1}</p>
+                                                            <p className="mt-1 break-words text-[11px] text-gray-600">{item}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
-                                </div>
+                                )}
                             </div>
                         )}
 
-                        {!loading && error && (
+                        {!loading && error && error !== '请登录使用' && (
                             <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3">
                                 <p className="text-sm text-red-700">{error}</p>
-                                <button
-                                    type="button"
-                                    onClick={onRetry}
-                                    className="mt-2 rounded-md bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-500"
-                                >
-                                    重试
-                                </button>
+                                {!isAuthenticated ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const currentPath = window.location.pathname
+                                            window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
+                                            window.location.reload()
+                                        }}
+                                        className="mt-2 rounded-md bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                                    >
+                                        登录
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={onRetry}
+                                        className="mt-2 rounded-md bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-500"
+                                    >
+                                        重试
+                                    </button>
+                                )}
                             </div>
                         )}
 
-                        {!loading && !result && (
-                            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                                暂无评估结果，请点击“开始评估”。
-                            </div>
+                        {!loading && !displayResult && !streamPreview.hasStructuredContent && (
+                            <div />
                         )}
 
-                        {!loading && result && (
+                        {!loading && displayResult && (
                             <div className="space-y-4">
                                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                                     <p className="text-xs text-gray-500">综合评分</p>
                                     <div className="mt-1 flex items-end gap-2">
-                                        <span className={`text-3xl font-bold ${levelColorClass(result.overallScore)}`}>
-                                            {result.overallScore}
+                                        <span className={`text-3xl font-bold ${levelColorClass(displayResult.overallScore)}`}>
+                                            {displayResult.overallScore}
                                         </span>
                                         <span className="pb-1 text-sm text-gray-600">/ 100</span>
                                         <span className="rounded bg-white px-2 py-0.5 text-xs text-gray-700 border border-gray-200">
-                                            {result.level}
+                                            {displayResult.level}
                                         </span>
                                     </div>
-                                    <p className="mt-2 break-words text-sm leading-6 text-gray-700">{result.summary}</p>
+                                    <p className="mt-2 break-words text-sm leading-6 text-gray-700">{displayResult.summary}</p>
                                 </div>
 
                                 <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -758,10 +674,10 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                 <div className="rounded-xl border border-gray-200 bg-white p-4">
                                     <h5 className="text-sm font-semibold text-gray-800">重点问题</h5>
                                     <div className="mt-3 space-y-2">
-                                        {result.issues.length === 0 && (
+                                        {displayResult.issues.length === 0 && (
                                             <p className="text-xs text-gray-500">未发现明显问题。</p>
                                         )}
-                                        {result.issues.map((issue, index) => (
+                                        {displayResult.issues.map((issue, index) => (
                                             <div key={`${issue.id}-${index}`} className="rounded-lg border border-gray-200 p-3">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <div>

@@ -8,6 +8,7 @@ export interface RichTextSuggestInput {
     selectedText?: string
     moduleType?: ModuleType
     targetPosition?: string
+    moduleInstanceId?: string
     tone?: 'professional' | 'concise' | 'achievement-focused'
 }
 
@@ -22,6 +23,7 @@ export interface RichTextSuggestOutput {
     suggestions: RichTextSuggestionItem[]
     model?: string
     rawText?: string
+    conversationId?: string
 }
 
 export interface ResumeEvaluateInput {
@@ -71,10 +73,7 @@ export interface AIConfig {
     mode: AIProviderMode
     baseUrl?: string
     model?: string
-    evaluateModel?: string
     apiKey?: string
-    timeoutMs?: number
-    evaluateTimeoutMs?: number
 }
 
 export interface AIProviderError extends Error {

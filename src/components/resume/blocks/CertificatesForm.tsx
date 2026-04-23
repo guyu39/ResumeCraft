@@ -7,7 +7,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { CertificateItem } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Button } from '@/components/common/FormField'
-import ModernDatePicker from '@/components/common/ModernDatePicker'
+import YearMonthPicker from '@/components/common/YearMonthPicker'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 
 interface CertificatesFormProps {
@@ -54,7 +54,7 @@ const CertificatesForm: React.FC<CertificatesFormProps> = ({ moduleId, items }) 
           </FormField>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="获得时间" required>
-              <ModernDatePicker value={item.date} onChange={(v) => updateItem(item.id, { date: v })} />
+              <YearMonthPicker value={item.date} onChange={(v) => updateItem(item.id, { date: v })} />
             </FormField>
             <FormField label="颁发机构">
               <TextInput value={item.issuer} onChange={(v) => updateItem(item.id, { issuer: v })} placeholder="AWS 官方" />

@@ -1,7 +1,35 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-.idea/
-backend/.idea/
+dist-ssr/
+*.egg-info/
+
+# Go
+backend/server
+backend/server.exe
+backend/server_new.exe
 backend/.env
-*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker
+docker/postgres-data/
+docker/postgres-logs/
+
+# Misc
+.claude/
+*.local

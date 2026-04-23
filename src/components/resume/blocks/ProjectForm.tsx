@@ -7,7 +7,7 @@ import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 import { ProjectItem } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Button } from '@/components/common/FormField'
-import ModernDateRangePicker from '@/components/common/ModernDateRangePicker'
+import YearMonthRangePicker from '@/components/common/YearMonthRangePicker'
 import TagInput from '@/components/common/TagInput'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
@@ -101,7 +101,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
           </div>
 
           <FormField label="项目时间" required>
-            <ModernDateRangePicker
+            <YearMonthRangePicker
               startDate={item.startDate}
               endDate={item.endDate}
               onChange={(start, end) => handleDateRangeChange(item.id, start, end)}
@@ -116,7 +116,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
             <RichTextEditor
               value={item.description}
               onChange={(v) => updateItem(item.id, { description: v })}
-              aiContext={{ moduleType: 'project', targetPosition: '项目描述' }}
+              aiContext={{ moduleType: 'project', targetPosition: '项目描述', moduleInstanceId: item.id }}
               placeholder="描述项目背景、你的职责和取得的成果"
               minRows={4}
             />

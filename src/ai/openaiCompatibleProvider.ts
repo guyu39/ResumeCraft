@@ -262,7 +262,7 @@ const extractStreamTextFromChatEvent = (payload: Record<string, unknown>): strin
 
 const callResponsesApi = async (config: AIConfig, prompt: string, options?: ResponsesRequestOptions): Promise<ModelTextResult> => {
     const model = options?.model ?? config.model
-    const timeoutMs = options?.timeoutMs ?? config.timeoutMs ?? 20000
+    const timeoutMs = options?.timeoutMs ?? 120000
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
     const url = buildResponsesUrl(config.baseUrl)
@@ -336,7 +336,7 @@ const callResponsesApi = async (config: AIConfig, prompt: string, options?: Resp
 
 const callChatCompletionsApi = async (config: AIConfig, prompt: string, options?: ResponsesRequestOptions): Promise<ModelTextResult> => {
     const model = options?.model ?? config.model
-    const timeoutMs = options?.timeoutMs ?? config.timeoutMs ?? 20000
+    const timeoutMs = options?.timeoutMs ?? 120000
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
     const url = buildChatCompletionsUrl(config.baseUrl)
@@ -722,7 +722,6 @@ export const createOpenAICompatibleProvider = (config: AIConfig): AIProvider => 
             const prompt = buildRichTextSuggestPrompt(input)
             const response = await callModelApi(config, prompt, {
                 model: config.model,
-                timeoutMs: config.timeoutMs,
             })
             const raw = response.text
             const parsed = parseSuggestResponse(raw)
@@ -733,11 +732,8 @@ export const createOpenAICompatibleProvider = (config: AIConfig): AIProvider => 
         },
         async evaluateResume(input: ResumeEvaluateInput, options?: ResumeEvaluateOptions): Promise<ResumeEvaluateOutput> {
             const prompt = buildResumeEvaluatePrompt(input)
-            const evalModel = config.evaluateModel ?? config.model
-            const evalTimeout = config.evaluateTimeoutMs ?? Math.max(config.timeoutMs ?? 20000, 90000)
             const response = await callModelApi(config, prompt, {
-                model: evalModel,
-                timeoutMs: evalTimeout,
+                model: config.model,
                 onMessage: options?.onMessage,
             })
             const raw = response.text
@@ -748,7 +744,7 @@ export const createOpenAICompatibleProvider = (config: AIConfig): AIProvider => 
             return {
                 ...parsed,
                 reasoningSteps,
-                model: evalModel,
+                model: config.model,
             }
         },
     }

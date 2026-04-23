@@ -67,7 +67,7 @@ const CustomForm: React.FC<CustomFormProps> = ({ moduleId, data }) => {
             <RichTextEditor
               value={item.content}
               onChange={(v) => updateItem(item.id, { content: v })}
-              aiContext={{ moduleType: 'custom', targetPosition: '自定义内容' }}
+              aiContext={{ moduleType: 'custom', targetPosition: '自定义内容', moduleInstanceId: item.id }}
               placeholder="详细描述..."
               minRows={3}
             />

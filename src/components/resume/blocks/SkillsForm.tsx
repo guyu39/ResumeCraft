@@ -31,7 +31,7 @@ const SkillsForm: React.FC<SkillsFormProps> = ({ moduleId, data }) => {
         <RichTextEditor
           value={content}
           onChange={updateContent}
-          aiContext={{ moduleType: 'skills', targetPosition: '专业技能' }}
+          aiContext={{ moduleType: 'skills', targetPosition: '专业技能', moduleInstanceId: moduleId }}
           placeholder="例如：熟练掌握 React、TypeScript、Vite，熟悉组件化、状态管理、工程化配置，具备性能优化与复杂页面开发经验"
           minRows={5}
           maxLength={1500}

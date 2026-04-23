@@ -31,7 +31,7 @@ const SummaryForm: React.FC<SummaryFormProps> = ({ moduleId, data }) => {
         <RichTextEditor
           value={data.content}
           onChange={update}
-          aiContext={{ moduleType: 'summary', targetPosition: '自我评价' }}
+          aiContext={{ moduleType: 'summary', targetPosition: '自我评价', moduleInstanceId: moduleId }}
           placeholder="例：拥有 3 年前端开发经验，擅长 React 技术栈，曾主导多个中大型项目的技术选型与架构设计。"
           minRows={6}
           maxLength={1000}

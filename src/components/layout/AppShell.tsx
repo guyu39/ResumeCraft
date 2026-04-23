@@ -7,19 +7,28 @@ import React from 'react'
 import LeftPanel from './LeftPanel'
 import CenterPanel from './CenterPanel'
 import RightPanel from './RightPanel.tsx'
+import { useCloudSync } from '@/hooks/useCloudSync'
 
 const AppShell: React.FC = () => {
   const [左栏宽度, 设置左栏宽度] = React.useState(300)
   const [右栏宽度, 设置右栏宽度] = React.useState(600)
   const [拖拽中, 设置拖拽中] = React.useState<'left' | 'right' | null>(null)
 
+  // 云端同步
+  const { saveStatus } = useCloudSync()
+
+  // 记录保存状态供 UI 使用
+  React.useEffect(() => {
+    console.log('[AppShell] 保存状态:', saveStatus)
+  }, [saveStatus])
+
   React.useEffect(() => {
     if (!拖拽中) return
 
     const 处理鼠标移动 = (e: MouseEvent) => {
-      const 最小左栏 = 300
+      const 最小左栏 = 200
       const 最大左栏 = 420
-      const 最小右栏 = 500
+      const 最小右栏 = 300
       const 最大右栏 = 700
       const 中栏最小宽度 = 520
 

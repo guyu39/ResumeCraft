@@ -7,7 +7,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { AwardItem } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Select, Button } from '@/components/common/FormField'
-import ModernDatePicker from '@/components/common/ModernDatePicker'
+import YearMonthPicker from '@/components/common/YearMonthPicker'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 
 interface AwardsFormProps {
@@ -72,7 +72,7 @@ const AwardsForm: React.FC<AwardsFormProps> = ({ moduleId, items }) => {
               />
             </FormField>
             <FormField label="获得时间" required>
-              <ModernDatePicker value={item.date} onChange={(v) => updateItem(item.id, { date: v })} />
+              <YearMonthPicker value={item.date} onChange={(v) => updateItem(item.id, { date: v })} />
             </FormField>
           </div>
           <FormField label="说明">

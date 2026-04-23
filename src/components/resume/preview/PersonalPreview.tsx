@@ -80,12 +80,12 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) =
         <img
           src={avatar}
           alt="头像"
-          className={`flex-shrink-0 w-20 h-20 object-cover border-2 ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
+          className={`flex-shrink-0 w-[108px] h-auto aspect-square object-cover border-2 ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
           style={{ borderColor: `${themeColor}40` }}
         />
       ) : (
         <div
-          className={`flex-shrink-0 w-20 h-20 flex items-center justify-center bg-gray-100 text-gray-400 text-2xl border-2 border-dashed ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
+          className={`flex-shrink-0 w-[300px] h-auto aspect-square flex items-center justify-center bg-gray-100 text-gray-400 text-2xl border-2 border-dashed ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
           style={{ borderColor: `${themeColor}40` }}
         >
           👤

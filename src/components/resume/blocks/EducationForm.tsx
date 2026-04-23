@@ -7,7 +7,7 @@ import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 import { EducationItem, DEGREE_OPTIONS } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Select, Button } from '@/components/common/FormField'
-import ModernDateRangePicker from '@/components/common/ModernDateRangePicker'
+import YearMonthRangePicker from '@/components/common/YearMonthRangePicker'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 
@@ -123,7 +123,7 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
 
           {/* 时间范围选择 */}
           <FormField label="在校时间" required>
-            <ModernDateRangePicker
+            <YearMonthRangePicker
               startDate={item.startDate}
               endDate={item.endDate}
               onChange={(start, end) => handleDateRangeChange(item.id, start, end)}
@@ -152,7 +152,7 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
             <RichTextEditor
               value={item.schoolExperience || ''}
               onChange={(v) => updateItem(item.id, { schoolExperience: v })}
-              aiContext={{ moduleType: 'education', targetPosition: '在校经历' }}
+              aiContext={{ moduleType: 'education', targetPosition: '在校经历', moduleInstanceId: item.id }}
               placeholder="例如：学生会技术部部长，组织校级活动 3 场，参与导师课题，负责数据清洗与分析"
               minRows={4}
             />

@@ -228,9 +228,11 @@ function createModule(type: ModuleType): Module {
 function createDefaultResume(): Resume {
   const fixedTypes: ModuleType[] = ['personal', 'education', 'work', 'project', 'skills', 'summary']
   const fixedModules = fixedTypes.map((type) => createModule(type))
+  const now = new Date()
+  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
   return {
     id: generateId(),
-    title: '我的简历',
+    title: `简历-${dateStr}`,
     locale: 'zh-CN',
     template: 'classic',
     themeColor: '#1A56DB',

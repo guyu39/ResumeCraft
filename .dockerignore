@@ -1,8 +1,0 @@
-node_modules
-dist
-backend/.idea
-.git
-.gitignore
-.vscode
-*.log
-backend/.env

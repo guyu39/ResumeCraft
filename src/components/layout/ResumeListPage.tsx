@@ -1,5 +1,9 @@
+// ============================================================
+// 简历列表页面
+// ============================================================
+
 import React, { useCallback, useMemo, useState } from 'react'
-import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2 } from 'lucide-react'
+import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, LogIn, User, Cloud } from 'lucide-react'
 import {
     createDefaultResume,
     getAllResumesFromStorage,
@@ -8,7 +12,10 @@ import {
     saveResumeToCollectionStorage,
     selectResumeForEditingInStorage,
 } from '@/store/resumeStore'
+import { useAuthStore } from '@/store/authStore'
+import { resumeApi, aiApi } from '@/api'
 import type { Resume, TemplateType } from '@/types/resume'
+import type { ResumeListItem } from '@/api'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 import { createPortal } from 'react-dom'
 
@@ -29,13 +36,51 @@ function formatDate(value: number): string {
     })
 }
 
-const ResumeListPage: React.FC = () => {
+interface ResumeListPageProps {
+    cloudResumes: ResumeListItem[]
+    isAuthenticated: boolean
+    onLogin: () => void
+    onLogout: () => void
+    onCloudResumeDeleted?: (id: string) => void
+    onCloudResumeUpdated?: (id: string, title: string, updatedAt: number) => void
+    onCloudResumeCreated?: (id: string, title: string, updatedAt: number) => void
+}
+
+const ResumeListPage: React.FC<ResumeListPageProps> = ({
+    cloudResumes,
+    isAuthenticated,
+    onLogin,
+    onLogout,
+    onCloudResumeDeleted,
+    onCloudResumeUpdated,
+    onCloudResumeCreated,
+}) => {
+    const { user } = useAuthStore()
     const [resumes, setResumes] = useState<Resume[]>(() => getAllResumesFromStorage())
     const [renamingResume, setRenamingResume] = useState<Resume | null>(null)
     const [renameTitle, setRenameTitle] = useState('')
     const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
+    const [syncing, setSyncing] = useState(false)
+    const [resumeEvaluations, setResumeEvaluations] = useState<Record<string, { score: number; level: string }>>({})
 
-    const sortedResumes = useMemo(
+    // 加载简历评估信息
+    React.useEffect(() => {
+        if (!isAuthenticated || cloudResumes.length === 0) return
+        aiApi.getConversations({ type: 'evaluate', pageSize: 100 }).then((res) => {
+            const evalMap: Record<string, { score: number; level: string }> = {}
+            res.items.forEach((item) => {
+                if (item.resumeId && item.context && typeof item.context === 'object' && 'overallScore' in item.context) {
+                    const ctx = item.context as { overallScore: number; level: string }
+                    if (!evalMap[item.resumeId] || evalMap[item.resumeId].score < ctx.overallScore) {
+                        evalMap[item.resumeId] = { score: ctx.overallScore, level: ctx.level }
+                    }
+                }
+            })
+            setResumeEvaluations(evalMap)
+        }).catch(() => {})
+    }, [isAuthenticated, cloudResumes])
+
+    const sortedResumes = React.useMemo(
         () => resumes.slice().sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)),
         [resumes]
     )
@@ -44,41 +89,120 @@ const ResumeListPage: React.FC = () => {
         setResumes(getAllResumesFromStorage())
     }, [])
 
+    // 同步简历到云端
+    const syncToCloud = useCallback(async (resume: Resume) => {
+        if (!isAuthenticated) return
+        setSyncing(true)
+        try {
+            const result = await resumeApi.update(resume.id, {
+                title: resume.title,
+                themeColor: resume.themeColor,
+                styleSettings: resume.styleSettings,
+                modules: resume.modules,
+            })
+            // 通知父组件云端简历已更新
+            onCloudResumeUpdated?.(resume.id, resume.title, result.updatedAt)
+        } catch (err) {
+            console.error('[ResumeList] 同步失败:', err)
+        } finally {
+            setSyncing(false)
+        }
+    }, [isAuthenticated, onCloudResumeUpdated])
+
     const goEditor = useCallback(() => {
         window.location.href = '/editor'
     }, [])
 
     const handleOpen = useCallback(
-        (id: string) => {
+        async (id: string) => {
+            // 如果已登录，先同步当前简历
+            if (isAuthenticated) {
+                const currentResume = getAllResumesFromStorage().find(r => r.id === id)
+                if (currentResume) {
+                    await syncToCloud(currentResume)
+                }
+            }
             const ok = selectResumeForEditingInStorage(id)
             if (ok) {
+                // 通知 useCloudSync 关于云端 ID
+                ;(window as any).__cloudSyncSetCloudId?.(id)
                 goEditor()
             }
         },
-        [goEditor]
+        [goEditor, isAuthenticated, syncToCloud]
     )
 
-    const handleCreate = useCallback(() => {
+    const handleCreate = useCallback(async () => {
         const resume = createDefaultResume()
-        saveResumeToCollectionStorage(resume)
-        selectResumeForEditingInStorage(resume.id)
+
+        if (isAuthenticated) {
+            // 云端创建
+            try {
+                const created = await resumeApi.create({
+                    title: resume.title,
+                    locale: resume.locale,
+                    template: resume.template,
+                    themeColor: resume.themeColor,
+                    styleSettings: resume.styleSettings,
+                    modules: resume.modules,
+                })
+                // 使用云端返回的简历
+                selectResumeForEditingInStorage(created.id)
+                saveResumeToCollectionStorage({
+                    ...resume,
+                    id: created.id,
+                    updatedAt: created.updatedAt,
+                } as Resume)
+                // 通知 useCloudSync 关于云端 ID
+                ;(window as any).__cloudSyncSetCloudId?.(created.id)
+                // 通知父组件云端简历已创建
+                onCloudResumeCreated?.(created.id, created.title, created.updatedAt)
+
+                // 设置标记：新建简历后不要自动加载其他简历
+                sessionStorage.setItem('skip_auto_load', 'true')
+                // 导航到编辑器
+                goEditor()
+                return
+            } catch (err) {
+                console.error('[ResumeList] 云端创建失败:', err)
+                // 回退到本地创建
+                saveResumeToCollectionStorage(resume)
+                selectResumeForEditingInStorage(resume.id)
+            }
+        } else {
+            saveResumeToCollectionStorage(resume)
+            selectResumeForEditingInStorage(resume.id)
+        }
         goEditor()
-    }, [goEditor])
+    }, [goEditor, isAuthenticated, onCloudResumeCreated])
 
     const handleDelete = useCallback(
         (id: string) => {
             const target = resumes.find((item) => item.id === id)
             const title = target?.title || '未命名简历'
+
             requestDelete({
                 title: '删除简历',
                 message: `确定删除「${title}」吗？该操作不可恢复。`,
-                onConfirm: () => {
+                onConfirm: async () => {
+                    // 用户确认后，先删除本地
                     removeResumeFromStorageCollection(id)
                     refresh()
+
+                    // 如果已登录，再调用云端删除
+                    if (isAuthenticated) {
+                        try {
+                            await resumeApi.delete(id)
+                            // 通知父组件云端简历已删除
+                            onCloudResumeDeleted?.(id)
+                        } catch (err) {
+                            console.error('[ResumeList] 云端删除失败:', err)
+                        }
+                    }
                 },
             })
         },
-        [refresh, requestDelete, resumes]
+        [refresh, requestDelete, resumes, isAuthenticated, onCloudResumeDeleted]
     )
 
     const openRename = useCallback((resume: Resume) => {
@@ -91,13 +215,22 @@ const ResumeListPage: React.FC = () => {
         setRenameTitle('')
     }, [])
 
-    const submitRename = useCallback(() => {
+    const submitRename = useCallback(async () => {
         if (!renamingResume) return
         const ok = renameResumeInStorage(renamingResume.id, renameTitle)
         if (!ok) return
+
+        // 如果已登录，同步到云端
+        if (isAuthenticated) {
+            const updated = getAllResumesFromStorage().find(r => r.id === renamingResume.id)
+            if (updated) {
+                await syncToCloud(updated)
+            }
+        }
+
         refresh()
         closeRename()
-    }, [closeRename, refresh, renameTitle, renamingResume])
+    }, [closeRename, isAuthenticated, refresh, renameTitle, renamingResume, syncToCloud])
 
     const renameDialog = useMemo(() => {
         if (!renamingResume) return null
@@ -154,10 +287,29 @@ const ResumeListPage: React.FC = () => {
         )
     }, [closeRename, renameTitle, renamingResume, submitRename])
 
+    // 合并本地和云端简历
+    const displayResumes = useMemo(() => {
+        if (!isAuthenticated || cloudResumes.length === 0) {
+            return sortedResumes
+        }
+        // 显示云端简历，时间戳来自云端
+        return cloudResumes.map(cr => ({
+            id: cr.id,
+            title: cr.title,
+            template: cr.template as TemplateType,
+            locale: 'zh-CN' as const,
+            themeColor: '#1A56DB',
+            styleSettings: { fontFamily: 'Microsoft YaHei', fontSize: 12, textColor: '#363636', lineHeight: 1.3, pagePaddingHorizontal: 20, pagePaddingVertical: 20, moduleSpacing: 7, paragraphSpacing: 1 },
+            updatedAt: cr.updatedAt,
+            modules: [],
+        })) as Resume[]
+    }, [isAuthenticated, cloudResumes, sortedResumes])
+
     return (
         <>
             <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-8">
                 <div className="mx-auto max-w-5xl space-y-6">
+                    {/* 头部 */}
                     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
@@ -168,18 +320,53 @@ const ResumeListPage: React.FC = () => {
                                     选择一份简历继续编辑，或创建新的简历版本。
                                 </p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={handleCreate}
-                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-                            >
-                                <Plus className="h-4 w-4" />
-                                新建简历
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {isAuthenticated && user && (
+                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                        <User className="h-4 w-4" />
+                                        <span>{user.displayName || user.email}</span>
+                                        {syncing && <Cloud className="h-4 w-4 animate-pulse" />}
+                                    </div>
+                                )}
+                                {isAuthenticated ? (
+                                    <button
+                                        type="button"
+                                        onClick={onLogout}
+                                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        <LogOut className="h-4 w-4" />
+                                        退出登录
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={onLogin}
+                                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                                    >
+                                        <LogIn className="h-4 w-4" />
+                                        登录
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={handleCreate}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    新建简历
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    {sortedResumes.length === 0 ? (
+                    {isAuthenticated && cloudResumes.length > 0 && (
+                        <div className="rounded-xl bg-blue-50 p-4 text-sm text-blue-700">
+                            <Cloud className="mr-2 inline h-4 w-4" />
+                            已同步 {cloudResumes.length} 份简历到云端
+                        </div>
+                    )}
+
+                    {displayResumes.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
                             <p className="text-base text-slate-600">还没有简历，先创建第一份吧。</p>
                             <button
@@ -193,7 +380,7 @@ const ResumeListPage: React.FC = () => {
                         </div>
                     ) : (
                         <div className="grid gap-4 sm:grid-cols-2">
-                            {sortedResumes.map((resume) => (
+                            {displayResumes.map((resume) => (
                                 <article
                                     key={resume.id}
                                     className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
@@ -204,7 +391,7 @@ const ResumeListPage: React.FC = () => {
                                                 {resume.title || '未命名简历'}
                                             </h2>
                                             <p className="mt-1 text-sm text-slate-500">
-                                                模板：{TEMPLATE_LABELS[resume.template]}
+                                                模板：{TEMPLATE_LABELS[resume.template] || '经典单栏'}
                                             </p>
                                         </div>
                                         <FileText className="h-5 w-5 shrink-0 text-slate-400" />
@@ -213,6 +400,21 @@ const ResumeListPage: React.FC = () => {
                                     <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
                                         <CalendarClock className="h-4 w-4" />
                                         <span>最近更新：{formatDate(resume.updatedAt)}</span>
+                                        {isAuthenticated && (
+                                            <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
+                                                云端
+                                            </span>
+                                        )}
+                                        {isAuthenticated && resumeEvaluations[resume.id] && (
+                                            <span className={`ml-2 rounded px-1.5 py-0.5 ${
+                                                resumeEvaluations[resume.id].level === 'A' ? 'bg-green-100 text-green-700' :
+                                                resumeEvaluations[resume.id].level === 'B' ? 'bg-blue-100 text-blue-700' :
+                                                resumeEvaluations[resume.id].level === 'C' ? 'bg-yellow-100 text-yellow-700' :
+                                                'bg-gray-100 text-gray-700'
+                                            }`}>
+                                                AI评分 {resumeEvaluations[resume.id].score}分
+                                            </span>
+                                        )}
                                     </div>
 
                                     <div className="mt-5 flex items-center gap-2">

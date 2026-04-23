@@ -7,7 +7,7 @@ import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 import { WorkItem } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Select, Button } from '@/components/common/FormField'
-import ModernDateRangePicker from '@/components/common/ModernDateRangePicker'
+import YearMonthRangePicker from '@/components/common/YearMonthRangePicker'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 
@@ -147,7 +147,7 @@ const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
           </div>
 
           <FormField label="工作时间" required>
-            <ModernDateRangePicker
+            <YearMonthRangePicker
               startDate={item.startDate}
               endDate={item.endDate}
               onChange={(start, end) => handleDateRangeChange(item.id, start, end)}
@@ -158,7 +158,7 @@ const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
             <RichTextEditor
               value={item.description}
               onChange={(v) => updateItem(item.id, { description: v })}
-              aiContext={{ moduleType: 'work', targetPosition: '工作描述' }}
+              aiContext={{ moduleType: 'work', targetPosition: '工作描述', moduleInstanceId: item.id }}
               placeholder="负责公司核心产品的前端架构设计与开发"
               minRows={5}
             />

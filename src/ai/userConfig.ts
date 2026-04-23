@@ -2,51 +2,109 @@ import type { AIConfig, AIProviderMode } from './types'
 
 const AI_USER_CONFIG_KEY = 'resumecraft_ai_user_config_v1'
 
-export type AIProviderPreset = 'doubao' | 'kimi' | 'minimax' | 'deepseek' | 'custom'
+export type AIProviderPreset =
+    | 'doubao'      // 豆包（字节）
+    | 'kimi'        // Kimi（Moonshot）
+    | 'minimax'     // MiniMax
+    | 'deepseek'    // DeepSeek
+    | 'zhipu'       // 智谱AI
+    | 'qwen'        // 阿里通义
+    | 'wenxin'      // 百度文心
+    | 'spark'       // 讯飞星火
+    | 'siliconflow' // 硅基流动
+    | 'openai'      // OpenAI
+    | 'claude'      // Anthropic Claude
+    | 'gemini'      // Google Gemini
+    | 'custom'      // 自定义
 
 export interface AIProviderPresetConfig {
     id: AIProviderPreset
     label: string
     baseUrl: string
     modelPlaceholder: string
-    evaluateModelPlaceholder?: string
 }
 
 export const AI_PROVIDER_PRESETS: AIProviderPresetConfig[] = [
+    // 国内主流
     {
         id: 'doubao',
-        label: '豆包（方舟）',
+        label: '豆包（字节）',
         baseUrl: '/api/ark',
         modelPlaceholder: 'doubao-seed-2-0-pro-260215',
-        evaluateModelPlaceholder: 'doubao-seed-2-0-pro-260215',
     },
     {
         id: 'kimi',
         label: 'Kimi（Moonshot）',
         baseUrl: 'https://api.moonshot.cn/v1',
         modelPlaceholder: 'moonshot-v1-8k',
-        evaluateModelPlaceholder: 'moonshot-v1-32k',
     },
     {
         id: 'minimax',
         label: 'MiniMax',
         baseUrl: 'https://api.minimax.chat/v1',
         modelPlaceholder: 'MiniMax-Text-01',
-        evaluateModelPlaceholder: 'MiniMax-Text-01',
     },
     {
         id: 'deepseek',
         label: 'DeepSeek',
         baseUrl: 'https://api.deepseek.com/v1',
         modelPlaceholder: 'deepseek-chat',
-        evaluateModelPlaceholder: 'deepseek-reasoner',
     },
+    {
+        id: 'zhipu',
+        label: '智谱AI（GLM）',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        modelPlaceholder: 'glm-4-flash',
+    },
+    {
+        id: 'qwen',
+        label: '阿里通义（Qwen）',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        modelPlaceholder: 'qwen-plus',
+    },
+    {
+        id: 'wenxin',
+        label: '百度文心（Ernie）',
+        baseUrl: 'https://qianfan.baidubce.com/v2',
+        modelPlaceholder: 'ernie-4.0-8k-latest',
+    },
+    {
+        id: 'spark',
+        label: '讯飞星火（Spark）',
+        baseUrl: 'https://spark-api.xf-yun.com/v4.0/chat',
+        modelPlaceholder: 'Spark-4.0 Ultra',
+    },
+    {
+        id: 'siliconflow',
+        label: '硅基流动（SiliconFlow）',
+        baseUrl: 'https://api.siliconflow.cn/v1',
+        modelPlaceholder: 'Qwen/Qwen2.5-7B-Instruct',
+    },
+    // 国外主流
+    {
+        id: 'openai',
+        label: 'OpenAI',
+        baseUrl: 'https://api.openai.com/v1',
+        modelPlaceholder: 'gpt-4o-mini',
+    },
+    {
+        id: 'claude',
+        label: 'Anthropic Claude',
+        baseUrl: 'https://api.anthropic.com/v1',
+        modelPlaceholder: 'claude-sonnet-4-20250514',
+    },
+    {
+        id: 'gemini',
+        label: 'Google Gemini',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        modelPlaceholder: 'gemini-2.0-flash',
+    },
+    // 自定义
     {
         id: 'custom',
         label: '自定义 OpenAI-Compatible',
         baseUrl: '',
         modelPlaceholder: 'your-model-name',
-        evaluateModelPlaceholder: 'your-evaluate-model-name',
     },
 ]
 
@@ -61,21 +119,7 @@ export interface AIUserConfig {
     mode: AIProviderMode
     baseUrl?: string
     model?: string
-    evaluateModel?: string
     apiKey?: string
-    timeoutMs?: number
-    evaluateTimeoutMs?: number
-}
-
-const toNumber = (value: unknown): number | undefined => {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        return value
-    }
-    if (typeof value === 'string' && value.trim()) {
-        const parsed = Number(value)
-        return Number.isFinite(parsed) ? parsed : undefined
-    }
-    return undefined
 }
 
 const normalizeMode = (value: unknown): AIProviderMode => {
@@ -108,10 +152,7 @@ export const readAIUserConfig = (): AIUserConfig | null => {
             mode: normalizeMode(parsed.mode),
             baseUrl: normalizeText(parsed.baseUrl) ?? preset.baseUrl,
             model: normalizeText(parsed.model),
-            evaluateModel: normalizeText(parsed.evaluateModel),
             apiKey: normalizeText(parsed.apiKey),
-            timeoutMs: toNumber(parsed.timeoutMs),
-            evaluateTimeoutMs: toNumber(parsed.evaluateTimeoutMs),
         }
     } catch {
         return null
@@ -126,10 +167,7 @@ export const saveAIUserConfig = (config: AIUserConfig): void => {
         mode: normalizeMode(config.mode),
         baseUrl: normalizeText(config.baseUrl) ?? preset.baseUrl,
         model: normalizeText(config.model),
-        evaluateModel: normalizeText(config.evaluateModel),
         apiKey: normalizeText(config.apiKey),
-        timeoutMs: toNumber(config.timeoutMs),
-        evaluateTimeoutMs: toNumber(config.evaluateTimeoutMs),
     }
     localStorage.setItem(AI_USER_CONFIG_KEY, JSON.stringify(normalized))
 }
@@ -143,10 +181,7 @@ export const toAIConfigOverride = (config: AIUserConfig): Partial<AIConfig> => {
         mode: 'openai-compatible',
         baseUrl: config.baseUrl,
         model: config.model,
-        evaluateModel: config.evaluateModel,
         apiKey: config.apiKey,
-        timeoutMs: config.timeoutMs,
-        evaluateTimeoutMs: config.evaluateTimeoutMs,
     }
 }
 

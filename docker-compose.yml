@@ -1,0 +1,68 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: resumecraft-app
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: 8787
+      FRONTEND_DIST_DIR: /app/dist
+
+      # 数据库（使用 docker-compose 服务名作为主机名）
+      PG_DSN: postgres://resumecraft:resumecraft@postgres:5432/resumecraft?sslmode=disable
+
+      # 认证
+      AUTH_ENABLED: "true"
+      AUTH_JWT_SECRET: "${JWT_SECRET:-change-this-in-production-32ch}"
+
+      # PDF/Chromium 配置
+      CHROMIUM_HEADLESS: "true"
+      CHROMIUM_DISABLE_GPU: "true"
+      CHROMIUM_NO_SANDBOX: "true"
+      CHROMIUM_DISABLE_SETUID_SANDBOX: "true"
+      PDF_RENDER_TIMEOUT_SEC: 60
+      PDF_VIEWPORT_WIDTH: 794
+      PDF_VIEWPORT_HEIGHT: 1123
+      PDF_DEVICE_SCALE_FACTOR: "1"
+      PDF_PAPER_WIDTH_INCH: "8.27"
+      PDF_PAPER_HEIGHT_INCH: "11.69"
+      PDF_SCALE: "1"
+
+      # AI 加密密钥
+      AI_ENCRYPTION_KEY: "${AI_ENCRYPTION_KEY:-change-this-32-char-key!!}"
+
+      TZ: Asia/Shanghai
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8787/api/pdf/export || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: bitnami/postgresql:16
+    container_name: resumecraft-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRESQL_USERNAME: resumecraft
+      POSTGRESQL_PASSWORD: resumecraft
+      POSTGRESQL_DATABASE: resumecraft
+      POSTGRESQL_POSTGRES_PASSWORD: postgres
+      TZ: Asia/Shanghai
+    volumes:
+      - ./docker/postgres-data:/bitnami/postgresql
+      - ./docker/postgres-logs:/opt/bitnami/postgresql/logs
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resumecraft -d resumecraft -h 127.0.0.1 -p 5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

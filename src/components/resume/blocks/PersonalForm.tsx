@@ -8,7 +8,7 @@ import { PersonalData } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Select } from '@/components/common/FormField'
 import { WORK_YEARS_OPTIONS } from '@/types/resume'
-import ModernDatePicker from '@/components/common/ModernDatePicker'
+import YearMonthPicker from '@/components/common/YearMonthPicker'
 
 interface PersonalFormProps {
   moduleId: string
@@ -193,13 +193,12 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="出生年月" required error={hasError('age')}>
             <div onBlur={() => handleBlur('age')}>
-              <ModernDatePicker
+              <YearMonthPicker
                 value={data.age}
                 onChange={(v) => update('age', v)}
                 placeholder="选择出生年月"
                 maxYear={当前年份}
                 minYear={1900}
-                showPresentOption={false}
               />
             </div>
           </FormField>

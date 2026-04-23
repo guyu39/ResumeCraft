@@ -82,7 +82,7 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
               <img
                 src={personalData.avatar}
                 alt="头像"
-                className={`mx-auto mb-2 w-20 h-20 object-cover border-2 ${personalData.avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
+                className={`mx-auto mb-3 w-[108px] h-auto aspect-square object-cover border-2 ${personalData.avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
                 style={{ borderColor: `${themeColor}40` }}
               />
             )}

@@ -4,21 +4,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"resumecraft-pdf-backend/internal/model"
 	"resumecraft-pdf-backend/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
-
-func (h *Handler) PDFHealth(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"ok":        true,
-		"service":   "pdf-export",
-		"timestamp": time.Now().UnixMilli(),
-	})
-}
 
 func (h *Handler) ExportPDF(c *gin.Context) {
 	var req model.ExportPDFRequest

@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Eye, Download, Settings, Sparkles, X } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
+import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType } from '@/types/resume'
 import {
     AIProviderPreset,
@@ -16,10 +17,12 @@ import {
     saveAIUserConfig,
     toAIConfigOverride,
     validateAIConfig,
+    type ResumeEvaluateOutput,
 } from '@/ai'
-import { useExportPDF } from '@/hooks/useExportPDF'
+import { useSyncExport } from '@/hooks/useExportPDF'
 import { useResumeEvaluation } from '@/hooks/useResumeEvaluation'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
+import { aiApi } from '@/api'
 
 // 各模块表单
 import PersonalForm from '@/components/resume/blocks/PersonalForm'
@@ -64,10 +67,7 @@ interface AIConfigForm {
     providerPreset: AIProviderPreset
     baseUrl: string
     model: string
-    evaluateModel: string
     apiKey: string
-    timeoutMs: string
-    evaluateTimeoutMs: string
 }
 
 const createAIFormFromStorage = (): AIConfigForm => {
@@ -76,12 +76,9 @@ const createAIFormFromStorage = (): AIConfigForm => {
     const preset = getProviderPresetById(providerPreset)
     return {
         providerPreset,
-        baseUrl: stored?.baseUrl ?? preset.baseUrl,
+        baseUrl: (stored?.baseUrl ?? preset.baseUrl) ?? '',
         model: stored?.model ?? '',
-        evaluateModel: stored?.evaluateModel ?? '',
         apiKey: stored?.apiKey ?? '',
-        timeoutMs: String(stored?.timeoutMs ?? 45000),
-        evaluateTimeoutMs: String(stored?.evaluateTimeoutMs ?? 90000),
     }
 }
 
@@ -150,12 +147,41 @@ const renderModuleForm = (
 }
 
 // ---------- 设置面板 ----------
-const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+interface SettingsPanelProps {
+    onClose: () => void
+    initialAIConfig?: {
+        provider: string
+        baseUrl: string
+        defaultModel: string
+    } | null
+}
+
+const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig }) => {
     const { resume, setThemeColor, setTemplate, setStyleSettings, applyIndustryPreset } = useResumeStore()
     const { styleSettings } = resume
-    const [aiForm, setAiForm] = useState<AIConfigForm>(createAIFormFromStorage)
+    const { isAuthenticated } = useAuthStore()
+
+    // 优先使用后端配置，否则使用本地配置
+    const getInitialAIForm = (): AIConfigForm => {
+        if (initialAIConfig) {
+            return {
+                providerPreset: initialAIConfig.provider as AIProviderPreset,
+                baseUrl: initialAIConfig.baseUrl,
+                model: initialAIConfig.defaultModel,
+                apiKey: '', // API Key 不返回前端
+            }
+        }
+        return createAIFormFromStorage()
+    }
+
+    const [aiForm, setAiForm] = useState<AIConfigForm>(getInitialAIForm)
     const [aiStatus, setAiStatus] = useState<string | null>(null)
     const [aiError, setAiError] = useState<string | null>(null)
+
+    // initialAIConfig 变化时更新表单
+    useEffect(() => {
+        setAiForm(getInitialAIForm())
+    }, [initialAIConfig])
 
     const updateAIForm = <K extends keyof AIConfigForm>(key: K, value: AIConfigForm[K]) => {
         setAiForm((prev) => ({ ...prev, [key]: value }))
@@ -166,34 +192,54 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         setAiForm((prev) => ({
             ...prev,
             providerPreset,
-            baseUrl: preset.baseUrl || prev.baseUrl,
+            baseUrl: preset.baseUrl ?? prev.baseUrl ?? '',
             model: prev.model || preset.modelPlaceholder,
-            evaluateModel: prev.evaluateModel || preset.evaluateModelPlaceholder || '',
         }))
     }
 
-    const saveAIConfig = () => {
-        const payload = {
+    const saveAIConfig = async () => {
+        const baseUrl = aiForm.baseUrl?.trim() || ''
+        const model = aiForm.model?.trim() || ''
+        const apiKey = aiForm.apiKey?.trim() || ''
+
+        // 验证
+        const testConfig = {
             providerPreset: aiForm.providerPreset,
             mode: 'openai-compatible' as const,
-            baseUrl: aiForm.baseUrl.trim() || undefined,
-            model: aiForm.model.trim() || undefined,
-            evaluateModel: aiForm.evaluateModel.trim() || undefined,
-            apiKey: aiForm.apiKey.trim() || undefined,
-            timeoutMs: Number(aiForm.timeoutMs || 0),
-            evaluateTimeoutMs: Number(aiForm.evaluateTimeoutMs || 0),
+            baseUrl: baseUrl || undefined,
+            model: model || undefined,
+            apiKey: apiKey || undefined,
         }
-
-        const errors = validateAIConfig(resolveAIConfig(toAIConfigOverride(payload)))
+        const errors = validateAIConfig(resolveAIConfig(toAIConfigOverride(testConfig)), aiForm.providerPreset)
         if (errors.length > 0) {
             setAiError(errors.join('；'))
             setAiStatus(null)
             return
         }
 
-        saveAIUserConfig(payload)
-        setAiError(null)
-        setAiStatus('AI 配置已保存')
+        // 保存到后端和本地缓存
+        try {
+            await aiApi.saveConfig({
+                provider: aiForm.providerPreset,
+                model: model,
+                apiKey: apiKey,
+                baseUrl: baseUrl || undefined,
+            })
+            // 同步到本地缓存，确保 AI 评估页能读取到最新模型名
+            saveAIUserConfig({
+                providerPreset: aiForm.providerPreset,
+                mode: 'openai-compatible',
+                baseUrl: baseUrl || undefined,
+                model: model || undefined,
+                apiKey: apiKey || undefined,
+            })
+            setAiError(null)
+            setAiStatus('AI 配置已保存')
+        } catch (err) {
+            console.error('保存AI配置失败:', err)
+            setAiError('保存失败，请重试')
+            setAiStatus(null)
+        }
     }
 
     const clearAIConfig = () => {
@@ -335,103 +381,92 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             <div className="border-t border-gray-100 pt-4 space-y-3">
                 <h5 className="text-sm font-semibold text-gray-800">AI 接入配置</h5>
 
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">模型供应商</label>
-                    <select
-                        value={aiForm.providerPreset}
-                        onChange={(e) => applyProviderPreset(e.target.value as AIProviderPreset)}
-                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                        {AI_PROVIDER_PRESETS.map((preset) => (
-                            <option key={preset.id} value={preset.id}>{preset.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Base URL</label>
-                    <input
-                        value={aiForm.baseUrl}
-                        onChange={(e) => updateAIForm('baseUrl', e.target.value)}
-                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        placeholder="/api/ark 或 https://api.deepseek.com/v1"
-                    />
-                </div>
-
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">建议模型</label>
-                    <input
-                        value={aiForm.model}
-                        onChange={(e) => updateAIForm('model', e.target.value)}
-                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        placeholder={getProviderPresetById(aiForm.providerPreset).modelPlaceholder}
-                    />
-                </div>
-
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">评估模型（可选）</label>
-                    <input
-                        value={aiForm.evaluateModel}
-                        onChange={(e) => updateAIForm('evaluateModel', e.target.value)}
-                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        placeholder={getProviderPresetById(aiForm.providerPreset).evaluateModelPlaceholder || '留空则复用建议模型'}
-                    />
-                </div>
-
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">API Key</label>
-                    <input
-                        type="password"
-                        value={aiForm.apiKey}
-                        onChange={(e) => updateAIForm('apiKey', e.target.value)}
-                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        placeholder="输入可用 API Key"
-                    />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-700">建议超时(ms)</label>
-                        <input
-                            type="number"
-                            value={aiForm.timeoutMs}
-                            onChange={(e) => updateAIForm('timeoutMs', e.target.value)}
-                            className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        />
+                {!isAuthenticated ? (
+                    <div className="flex items-center gap-2">
+                        <p className="text-xs text-gray-500">请登录后配置 AI 设置</p>
+                        <button
+                            onClick={() => {
+                                const currentPath = window.location.pathname
+                                window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
+                                window.location.reload()
+                            }}
+                            className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                        >
+                            登录
+                        </button>
                     </div>
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-700">评估超时(ms)</label>
-                        <input
-                            type="number"
-                            value={aiForm.evaluateTimeoutMs}
-                            onChange={(e) => updateAIForm('evaluateTimeoutMs', e.target.value)}
-                            className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        />
-                    </div>
-                </div>
+                ) : (
+                    <>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-700">模型供应商</label>
+                            <select
+                                value={aiForm.providerPreset}
+                                onChange={(e) => applyProviderPreset(e.target.value as AIProviderPreset)}
+                                className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            >
+                                {AI_PROVIDER_PRESETS.map((preset) => (
+                                    <option key={preset.id} value={preset.id}>{preset.label}</option>
+                                ))}
+                            </select>
+                        </div>
 
-                <div className="flex items-center gap-2 pt-1">
-                    <button
-                        type="button"
-                        onClick={saveAIConfig}
-                        className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
-                    >
-                        保存 AI 配置
-                    </button>
-                    <button
-                        type="button"
-                        onClick={clearAIConfig}
-                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-                    >
-                        清空配置
-                    </button>
-                </div>
+                        {aiForm.providerPreset === 'custom' && (
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-gray-700">Base URL（自定义必填）</label>
+                                <input
+                                    value={aiForm.baseUrl}
+                                    onChange={(e) => updateAIForm('baseUrl', e.target.value)}
+                                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                    placeholder="https://api.example.com/v1"
+                                />
+                            </div>
+                        )}
 
-                {aiError && (
-                    <p className="text-xs text-red-600">{aiError}</p>
-                )}
-                {aiStatus && (
-                    <p className="text-xs text-green-600">{aiStatus}</p>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-700">模型</label>
+                            <input
+                                value={aiForm.model}
+                                onChange={(e) => updateAIForm('model', e.target.value)}
+                                className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                placeholder={getProviderPresetById(aiForm.providerPreset).modelPlaceholder}
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-700">API Key</label>
+                            <input
+                                type="password"
+                                value={aiForm.apiKey}
+                                onChange={(e) => updateAIForm('apiKey', e.target.value)}
+                                className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                placeholder="输入可用 API Key"
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={saveAIConfig}
+                                className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                            >
+                                保存 AI 配置
+                            </button>
+                            <button
+                                type="button"
+                                onClick={clearAIConfig}
+                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                            >
+                                清空配置
+                            </button>
+                        </div>
+
+                        {aiError && (
+                            <p className="text-xs text-red-600">{aiError}</p>
+                        )}
+                        {aiStatus && (
+                            <p className="text-xs text-green-600">{aiStatus}</p>
+                        )}
+                    </>
                 )}
             </div>
         </div>
@@ -441,36 +476,82 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 // ---------- 右栏主组件 ----------
 const RightPanel: React.FC = () => {
     const { resume, activeModuleId, lastSavedAt, setActiveModule } = useResumeStore()
+    const { isAuthenticated } = useAuthStore()
     const formRef = useRef<HTMLDivElement>(null)
     const [showSaved, setShowSaved] = useState(false)
     const [showSettings, setShowSettings] = useState(false)
     const [showAIEvaluation, setShowAIEvaluation] = useState(false)
-    const { exportPDF, exporting, error: exportError } = useExportPDF()
+    const [aiConfigFromServer, setAiConfigFromServer] = useState<{
+        provider: string
+        baseUrl: string
+        defaultModel: string
+    } | null>(null)
+    const [restoredEvaluation, setRestoredEvaluation] = useState<ResumeEvaluateOutput | null>(null)
+    const { exportPDF, exporting, error: exportError } = useSyncExport()
     const {
         loading: evaluating,
+        streamDone: evaluateStreamDone,
         error: evaluateError,
         result: evaluateResult,
         streamText: evaluateStreamText,
-        hasResult: hasEvaluateResult,
+        modelName: evaluateModelName,
         lastEvaluatedAt,
         evaluatedResumeUpdatedAt,
         runEvaluate,
         mode: evaluateMode,
     } = useResumeEvaluation()
 
+    // 打开设置时从后端加载 AI 配置
+    useEffect(() => {
+        if (!showSettings || !isAuthenticated) {
+            setAiConfigFromServer(null)
+            return
+        }
+        aiApi.getConfig().then((config) => {
+            setAiConfigFromServer({
+                provider: config.provider,
+                baseUrl: config.baseUrl,
+                defaultModel: config.defaultModel,
+            })
+        }).catch(() => {
+            setAiConfigFromServer(null)
+        })
+    }, [showSettings, isAuthenticated])
+
+    // 打开 AI 评估时也从后端加载 AI 配置（用于模型名称显示）
+    useEffect(() => {
+        if (!showAIEvaluation || !isAuthenticated) {
+            return
+        }
+        aiApi.getConfig().then((config) => {
+            setAiConfigFromServer({
+                provider: config.provider,
+                baseUrl: config.baseUrl,
+                defaultModel: config.defaultModel,
+            })
+        }).catch(() => {
+            // ignore error
+        })
+    }, [showAIEvaluation, isAuthenticated])
+
     const activeModule = resume.modules.find((m) => m.id === activeModuleId) ?? null
     const aiModeLabel = (() => {
+        if (!isAuthenticated) {
+            return '未登录或登录已过期'
+        }
         if (evaluateMode !== 'openai-compatible') {
             return '未接入AI'
         }
-
+        // 优先从本地缓存读取模型名称
         const userConfig = readAIUserConfig()
-        if (!userConfig?.providerPreset) {
-            return '已接入AI'
+        if (userConfig?.model) {
+            return userConfig.model
         }
-
-        const presetId = getProviderPresetById(userConfig.providerPreset).id
-        return `已接入${presetId}`
+        // 本地缓存为空时，从服务器配置读取
+        if (aiConfigFromServer?.defaultModel) {
+            return aiConfigFromServer.defaultModel
+        }
+        return '未配置AI'
     })()
 
     const activeModuleTitle =
@@ -498,7 +579,7 @@ const RightPanel: React.FC = () => {
     // ---------- PDF 导出 ----------
     const handleExport = async () => {
         try {
-            await exportPDF('resume-paper-export', resume)
+            await exportPDF('resume-paper-export', resume.title)
         } catch {
             // 错误已由 hook 内部处理
         }
@@ -510,20 +591,14 @@ const RightPanel: React.FC = () => {
     }
 
     // ---------- AI 综合评估 ----------
-    const handleEvaluateResume = async () => {
-        setShowAIEvaluation(true)
-        if (!hasEvaluateResult) {
-            await runEvaluate(resume)
-        }
-    }
-
     const handleRetryEvaluate = async () => {
-        await runEvaluate(resume, { force: true })
+        await runEvaluate(resume)
     }
 
     const handleReevaluate = async () => {
-        setShowAIEvaluation(true)
-        await runEvaluate(resume, { force: true })
+        // 清除历史选择，直接运行新的评估
+        setRestoredEvaluation(null)
+        await runEvaluate(resume)
     }
 
     const handleJumpToIssueModule = (moduleType: ModuleType) => {
@@ -534,10 +609,41 @@ const RightPanel: React.FC = () => {
         setShowAIEvaluation(false)
     }
 
+    const handleConversationSelect = async (conversationId: string) => {
+        try {
+            const detail = await aiApi.getConversation(conversationId)
+            if (detail.context) {
+                const ctx = detail.context as {
+                    overallScore?: number
+                    level?: string
+                    summary?: string
+                    dimensions?: unknown[]
+                    issues?: unknown[]
+                    actionItems?: string[]
+                    model?: string
+                }
+                if (ctx.overallScore !== undefined) {
+                    setRestoredEvaluation({
+                        overallScore: ctx.overallScore,
+                        level: ctx.level ?? 'C',
+                        summary: ctx.summary ?? '',
+                        dimensions: (ctx.dimensions ?? []) as ResumeEvaluateOutput['dimensions'],
+                        issues: (ctx.issues ?? []) as ResumeEvaluateOutput['issues'],
+                        actionItems: ctx.actionItems ?? [],
+                        model: ctx.model,
+                    })
+                    setShowAIEvaluation(true)
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load conversation:', err)
+        }
+    }
+
     return (
         <div className="flex flex-col h-full">
             {/* 顶部操作栏 */}
-            <div className="relative flex-shrink-0 flex items-center justify-end gap-2 px-4 py-3 border-b border-gray-100 bg-white z-10">
+            <div className="relative flex-shrink-0 flex items-center justify-end gap-2 px-4 py-3 border-b border-gray-100 bg-white z-10 overflow-hidden">
                 {/* 自动保存状态（固定在顶部左侧，不占按钮布局） */}
                 {showSaved && (
                     <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700 animate-fade-in">
@@ -553,7 +659,7 @@ const RightPanel: React.FC = () => {
                         setShowAIEvaluation(false)
                     }}
                     className={`
-            flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors
+            flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors flex-shrink min-w-0
             ${showSettings
                             ? 'border-primary text-primary bg-primary/5'
                             : 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
@@ -561,33 +667,87 @@ const RightPanel: React.FC = () => {
           `}
                     title="简历设置"
                 >
-                    <Settings className="w-3.5 h-3.5" />
-                    {showSettings ? '收起' : '设置'}
+                    <Settings className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{showSettings ? '收起' : '设置'}</span>
                 </button>
 
                 <button
-                    onClick={showAIEvaluation ? () => setShowAIEvaluation(false) : handleEvaluateResume}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 disabled:opacity-60 disabled:cursor-wait transition-colors"
+                    onClick={async () => {
+                        if (showAIEvaluation) {
+                            setShowAIEvaluation(false)
+                        } else {
+                            setShowSettings(false)
+                            setShowAIEvaluation(true)
+
+                            // 如果已有结果或正在评估中，不做任何事
+                            if (evaluateResult || evaluating) {
+                                return
+                            }
+
+                            // 尝试从历史记录加载最新评估
+                            if (isAuthenticated) {
+                                try {
+                                    const res = await aiApi.getConversations({ type: 'evaluate', pageSize: 100 })
+                                    const existingEval = res.items
+                                        .filter((item) => item.resumeId === resume.id)
+                                        .sort((a, b) => b.createdAt - a.createdAt)[0]
+
+                                    if (existingEval) {
+                                        const detail = await aiApi.getConversation(existingEval.id)
+                                        if (detail.context) {
+                                            const ctx = detail.context as {
+                                                overallScore?: number
+                                                level?: string
+                                                summary?: string
+                                                dimensions?: unknown[]
+                                                issues?: unknown[]
+                                                actionItems?: string[]
+                                                model?: string
+                                            }
+                                            if (ctx.overallScore !== undefined) {
+                                                setRestoredEvaluation({
+                                                    overallScore: ctx.overallScore,
+                                                    level: ctx.level ?? 'C',
+                                                    summary: ctx.summary ?? '',
+                                                    dimensions: ctx.dimensions as ResumeEvaluateOutput['dimensions'],
+                                                    issues: ctx.issues as ResumeEvaluateOutput['issues'],
+                                                    actionItems: ctx.actionItems ?? [],
+                                                    model: ctx.model,
+                                                })
+                                                return
+                                            }
+                                        }
+                                    }
+                                } catch (err) {
+                                    console.error('Failed to load existing evaluation:', err)
+                                }
+                            }
+
+                            // 无历史记录，运行新评估
+                            await runEvaluate(resume)
+                        }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 disabled:opacity-60 disabled:cursor-wait transition-colors flex-shrink min-w-0"
                 >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    {showAIEvaluation ? '返回编辑' : evaluating ? '评估中...' : 'AI评估'}
+                    <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{showAIEvaluation ? '返回编辑' : evaluating ? '评估中...' : 'AI评估'}</span>
                 </button>
 
                 <button
                     onClick={handlePreview}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 transition-colors flex-shrink min-w-0"
                 >
-                    <Eye className="w-3.5 h-3.5" />
-                    预览
+                    <Eye className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">预览</span>
                 </button>
 
                 <button
                     onClick={handleExport}
                     disabled={exporting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait transition-colors flex-shrink min-w-0"
                 >
-                    <Download className="w-3.5 h-3.5" />
-                    {exporting ? '导出中...' : '导出PDF'}
+                    <Download className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{exporting ? '导出中...' : '导出PDF'}</span>
                 </button>
             </div>
 
@@ -601,7 +761,7 @@ const RightPanel: React.FC = () => {
             {showSettings ? (
                 <div className="flex-1 bg-gray-50/90 px-4 py-4 overflow-y-auto no-scrollbar">
                     <div className="max-w-[96%] mx-auto">
-                        <SettingsPanel onClose={() => setShowSettings(false)} />
+                        <SettingsPanel onClose={() => setShowSettings(false)} initialAIConfig={aiConfigFromServer ?? null} />
                     </div>
                 </div>
             ) : showAIEvaluation ? (
@@ -610,17 +770,21 @@ const RightPanel: React.FC = () => {
                         embedded
                         open={showAIEvaluation}
                         result={evaluateResult}
+                        restoredResult={restoredEvaluation}
                         loading={evaluating}
+                        streamDone={evaluateStreamDone}
                         error={evaluateError}
                         streamText={evaluateStreamText}
+                        modelName={evaluateModelName}
                         currentResumeUpdatedAt={resume.updatedAt}
                         evaluatedResumeUpdatedAt={evaluatedResumeUpdatedAt}
                         lastEvaluatedAt={lastEvaluatedAt}
                         modeLabel={aiModeLabel}
+                        isAuthenticated={isAuthenticated}
                         onReevaluate={handleReevaluate}
                         onRetry={handleRetryEvaluate}
                         onJumpToModule={handleJumpToIssueModule}
-                        onClose={() => setShowAIEvaluation(false)}
+                        onConversationSelect={handleConversationSelect}
                     />
                 </div>
             ) : (

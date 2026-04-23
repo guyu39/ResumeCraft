@@ -10,6 +10,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import { useResumeStore } from '@/store/resumeStore'
+import { useAuthStore } from '@/store/authStore'
 import type { ModuleType } from '@/types/resume'
 import AISuggestionPanel from '@/components/common/ai/AISuggestionPanel'
 import { getProviderPresetById, readAIUserConfig } from '@/ai'
@@ -26,6 +27,7 @@ interface RichTextEditorProps {
     aiContext?: {
         moduleType?: ModuleType
         targetPosition?: string
+        moduleInstanceId?: string
     }
 }
 
@@ -52,6 +54,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     enableAISuggest = true,
     aiContext,
 }) => {
+    const resumeId = useResumeStore((state) => state.resume.id)
     const locale = useResumeStore((state) => state.resume.locale)
     const 上次合法HTML引用 = useRef<string>(转为编辑器HTML(value))
     const 链接输入框引用 = useRef<HTMLInputElement>(null)
@@ -65,11 +68,16 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         moduleType?: ModuleType
         targetPosition?: string
     } | null>(null)
-    const { loading: AI建议加载中, error: AI建议错误, data: AI建议结果, runSuggest, mode } = useAISuggest()
+    const { loading: AI建议加载中, error: AI建议错误, data: AI建议结果, fromCache, runSuggest, mode } = useAISuggest()
+    const { isAuthenticated } = useAuthStore()
     const 编辑器高度 = Math.max(8, minRows) * 28
     const AI模式文案 = (() => {
         if (mode !== 'openai-compatible') {
             return '未接入AI'
+        }
+        // 优先使用实际调用的模型名
+        if (AI建议结果?.model) {
+            return `已接入${AI建议结果.model}`
         }
 
         const userConfig = readAIUserConfig()
@@ -183,7 +191,19 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
 
     const 触发AI建议 = async () => {
-        if (!editor || AI建议加载中) return
+        if (!editor) return
+
+        // 未登录：只显示面板提示，不调用后端
+        if (!isAuthenticated) {
+            setAI建议面板显示(true)
+            return
+        }
+
+        // 如果正在加载中，直接显示面板，不打断生成过程
+        if (AI建议加载中) {
+            setAI建议面板显示(true)
+            return
+        }
 
         const { fullText, selectedText } = 获取编辑器文本()
         if (!fullText) {
@@ -196,23 +216,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             selectedText,
             moduleType: aiContext?.moduleType,
             targetPosition: aiContext?.targetPosition,
+            moduleInstanceId: aiContext?.moduleInstanceId,
         }
         set上次建议输入(suggestInput)
         setAI建议面板显示(true)
 
-        const 是否与上次输入一致 = Boolean(
-            上次建议输入
-            && 上次建议输入.fullText === suggestInput.fullText
-            && (上次建议输入.selectedText ?? '') === (suggestInput.selectedText ?? '')
-            && (上次建议输入.moduleType ?? '') === (suggestInput.moduleType ?? '')
-            && (上次建议输入.targetPosition ?? '') === (suggestInput.targetPosition ?? '')
-        )
-
-        if (是否与上次输入一致 && AI建议结果?.suggestions?.length) {
-            return
-        }
-
-        await runSuggest(suggestInput)
+        await runSuggest(suggestInput, resumeId)
     }
 
     const 应用AI建议 = (rewrite: string) => {
@@ -230,19 +239,19 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
 
     const 重试AI建议 = async () => {
-        if (!上次建议输入 || AI建议加载中) return
+        if (!isAuthenticated || !上次建议输入 || AI建议加载中) return
         await runSuggest({
             locale,
             ...上次建议输入,
-        })
+        }, resumeId)
     }
 
     const 重新优化AI建议 = async () => {
-        if (!上次建议输入 || AI建议加载中) return
+        if (!isAuthenticated || !上次建议输入 || AI建议加载中) return
         await runSuggest({
             locale,
             ...上次建议输入,
-        }, { force: true })
+        }, resumeId)
     }
 
     const 按钮列表 = useMemo(
@@ -251,10 +260,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 ? [
                     {
                         key: 'ai-suggest',
-                        title: 'AI 优化建议',
-                        label: AI建议加载中 ? '生成中...' : 'AI建议',
+                        title: 'AI 润色',
+                        label: AI建议加载中 ? '生成中...' : '润色',
                         icon: Sparkles,
-                        active: false,
+                        active: AI建议面板显示,
                         onClick: 触发AI建议,
                         disabled: AI建议加载中,
                     },
@@ -314,7 +323,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
     return (
         <div className="rounded-md border border-gray-200 bg-white overflow-hidden">
-            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50">
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50 overflow-hidden">
                 {按钮列表.map((item) => (
                     <button
                         key={item.key}
@@ -323,13 +332,13 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                         disabled={Boolean(item.disabled)}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={item.onClick}
-                        className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${item.active
+                        className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors disabled:cursor-not-allowed disabled:opacity-60 flex-shrink min-w-0 ${item.active
                             ? 'bg-primary/10 text-primary'
                             : 'hover:bg-gray-100 text-gray-700'
                             }`}
                     >
-                        <item.icon className="w-3.5 h-3.5" />
-                        {item.label}
+                        <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{item.label}</span>
                     </button>
                 ))}
             </div>
@@ -394,6 +403,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 loading={AI建议加载中}
                 error={AI建议错误}
                 modeLabel={AI模式文案}
+                fromCache={fromCache}
+                originalContent={上次建议输入?.fullText}
+                resumeId={resumeId}
+                moduleType={aiContext?.moduleType}
+                fieldKey={aiContext?.targetPosition}
+                moduleInstanceId={aiContext?.moduleInstanceId}
+                conversationId={AI建议结果?.conversationId}
+                isAuthenticated={isAuthenticated}
                 onApplySuggestion={应用AI建议}
                 onRetry={重试AI建议}
                 onRefresh={重新优化AI建议}

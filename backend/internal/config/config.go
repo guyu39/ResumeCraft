@@ -2,7 +2,9 @@ package config
 
 import (
 	"bufio"
+	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -10,7 +12,21 @@ import (
 
 type Config struct {
 	Server ServerConfig
+	DB     DBConfig
+	Auth   AuthConfig
 	PDF    PDFConfig
+	AI     AIConfig
+}
+
+type DBConfig struct {
+	DSN string
+}
+
+type AuthConfig struct {
+	Enabled         bool
+	JWTSecret       string
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
 }
 
 type ServerConfig struct {
@@ -35,8 +51,29 @@ type PDFConfig struct {
 	PDFScale              float64
 }
 
+type AIConfig struct {
+	EncryptionKey string
+}
+
 func Load() Config {
-	_ = loadDotEnv(".env")
+	// 尝试从多个位置加载 .env 文件
+	dirs := []string{
+		".",
+		filepath.Dir(os.Args[0]),
+		getWorkingDir(),
+	}
+
+	for _, dir := range dirs {
+		envPath := filepath.Join(dir, ".env")
+		if err := loadDotEnv(envPath); err == nil {
+			log.Printf("[config] Loaded .env from: %s", envPath)
+			break
+		}
+	}
+
+	// 打印加载的配置（用于调试）
+	dsn := getEnv("PG_DSN", "")
+	log.Printf("[config] PG_DSN: %s", maskPassword(dsn))
 
 	return Config{
 		Server: ServerConfig{
@@ -45,6 +82,15 @@ func Load() Config {
 			ReadHeaderTimeout: getEnvDurationSeconds("SERVER_READ_HEADER_TIMEOUT_SEC", 10),
 			ReadTimeout:       getEnvDurationSeconds("SERVER_READ_TIMEOUT_SEC", 30),
 			WriteTimeout:      getEnvDurationSeconds("SERVER_WRITE_TIMEOUT_SEC", 120),
+		},
+		DB: DBConfig{
+			DSN: dsn,
+		},
+		Auth: AuthConfig{
+			Enabled:         getEnvBool("AUTH_ENABLED", true),
+			JWTSecret:       getEnv("AUTH_JWT_SECRET", "change-this-in-production"),
+			AccessTokenTTL:  getEnvDurationMinutes("AUTH_ACCESS_TTL_MIN", 120),
+			RefreshTokenTTL: getEnvDurationMinutes("AUTH_REFRESH_TTL_MIN", 43200),
 		},
 		PDF: PDFConfig{
 			RenderTimeout:         getEnvDurationSeconds("PDF_RENDER_TIMEOUT_SEC", 60),
@@ -59,14 +105,40 @@ func Load() Config {
 			PaperHeightInches:     getEnvFloat64("PDF_PAPER_HEIGHT_INCH", 11.69),
 			PDFScale:              getEnvFloat64("PDF_SCALE", 1),
 		},
+		AI: AIConfig{
+			EncryptionKey: getEnv("AI_ENCRYPTION_KEY", "change-this-32-char-key!!"),
+		},
 	}
+}
+
+func getWorkingDir() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return dir
+}
+
+func maskPassword(dsn string) string {
+	// 简单的密码脱敏
+	if strings.Contains(dsn, "@") {
+		parts := strings.Split(dsn, "@")
+		if len(parts) >= 2 {
+			userPart := parts[0]
+			if idx := strings.Index(userPart, ":"); idx > 0 {
+				userPart = userPart[:idx+1] + "*****"
+			}
+			return userPart + "@" + parts[1]
+		}
+	}
+	return dsn
 }
 
 func loadDotEnv(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return err
 		}
 		return err
 	}
@@ -129,6 +201,18 @@ func getEnvDurationSeconds(key string, fallbackSeconds int) time.Duration {
 		return time.Duration(fallbackSeconds) * time.Second
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+func getEnvDurationMinutes(key string, fallbackMinutes int) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return time.Duration(fallbackMinutes) * time.Minute
+	}
+	minutes, err := strconv.Atoi(raw)
+	if err != nil || minutes <= 0 {
+		return time.Duration(fallbackMinutes) * time.Minute
+	}
+	return time.Duration(minutes) * time.Minute
 }
 
 func getEnvInt(key string, fallback int) int {
