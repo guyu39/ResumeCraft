@@ -12,17 +12,10 @@
 6. **富文本能力**：加粗/斜体/下划线/链接/列表，链接使用应用内弹窗。
 7. **技术栈输入优化**：支持 `,` `，` `、` `+` 和回车分隔。
 8. **自动保存**：localStorage 防抖持久化，刷新后可恢复。
-9. **A4 分页预览**：按页切片展示，减少内容截断。
-10. **AI 辅助**：简历评估、内容润色建议。
-11. **PDF 导出**：前端生成 HTML + 后端渲染 PDF。
-
-## 页面展示
-![alt text](image.png)
-![alt text](image-1.png)
-![alt text](image-4.png)
-![alt text](image-6.png)
-![alt text](image-7.png)
-
+9. **云端同步**：登录后自动同步到云端，支持跨端恢复。
+10. **A4 分页预览**：按页切片展示，减少内容截断。
+11. **AI 辅助**：简历评估、内容润色建议。
+12. **PDF 导出**：后端异步任务模式（创建任务 → 轮询状态 → 下载）。
 
 ## 技术栈
 
@@ -31,11 +24,11 @@
 | 前端框架 | React 18 + TypeScript 5 + Vite 5 |
 | 状态管理 | Zustand（localStorage 持久化） |
 | 样式 | Tailwind CSS |
-| 拖拽 | dnd-kit |
+| 拖拽 | @dnd-kit |
 | 富文本 | Tiptap |
 | 后端框架 | Go (Gin) |
 | PDF 渲染 | chromedp (Chromium) |
-| 安全性 | DOMPurify（HTML 净化） |
+| 数据安全 | DOMPurify（HTML 净化） |
 | AI | OpenAI Compatible API（流式 SSE） |
 
 ## 项目结构
@@ -44,103 +37,38 @@
 introduce/
 ├── src/                          # 前端源码
 │   ├── api/                      # API 客户端
+│   │   ├── client.ts             # 通用请求客户端
+│   │   ├── types.ts              # API 类型定义
 │   │   ├── auth.ts               # 认证接口
 │   │   ├── resume.ts             # 简历 CRUD
-│   │   ├── export.ts             # 导出任务
-│   │   ├── ai.ts                 # AI 配置/对话/评估
-│   │   ├── client.ts             # 通用请求客户端
-│   │   └── types.ts              # 共享类型定义
+│   │   ├── export.ts            # 导出任务
+│   │   ├── ai.ts                 # AI 接口
+│   │   └── index.ts
 │   ├── components/
 │   │   ├── layout/               # 布局组件
-│   │   │   ├── AppShell.tsx      # 根布局（三栏容器）
-│   │   │   ├── LeftPanel.tsx     # 左栏：模块管理
-│   │   │   ├── CenterPanel.tsx   # 中栏：预览区
-│   │   │   ├── RightPanel.tsx    # 右栏：表单编辑
-│   │   │   ├── PreviewPage.tsx   # A4 预览页
-│   │   │   ├── ResumeListPage.tsx# 简历列表页
-│   │   │   ├── LoginPage.tsx     # 登录页
-│   │   │   └── ai/               # AI 相关面板
-│   │   │       ├── AISuggestionPanel.tsx  # 润色建议面板
-│   │   │       └── ResumeScoreDrawer.tsx  # 简历评分抽屉
-│   │   ├── resume/
-│   │   │   ├── blocks/           # 各模块表单
-│   │   │   │   ├── PersonalForm.tsx       # 个人信息
-│   │   │   │   ├── EducationForm.tsx      # 教育经历
-│   │   │   │   ├── WorkForm.tsx           # 工作经历
-│   │   │   │   ├── ProjectForm.tsx       # 项目经历
-│   │   │   │   ├── AwardsForm.tsx        # 荣誉奖项
-│   │   │   │   ├── CertificatesForm.tsx  # 证书资质
-│   │   │   │   ├── SkillsForm.tsx        # 技能清单
-│   │   │   │   ├── SummaryForm.tsx       # 自我评价
-│   │   │   │   └── CustomForm.tsx        # 自定义模块
-│   │   │   ├── preview/          # 简历模板渲染
-│   │   │   │   ├── ResumePreview.tsx      # 模板分发器
-│   │   │   │   ├── PagedResumePaper.tsx  # A4 分页器
-│   │   │   │   ├── ClassicTemplate.tsx    # 经典单栏
-│   │   │   │   ├── ModernTemplate.tsx    # 现代双栏
-│   │   │   │   └── MinimalTemplate.tsx   # 简约极简
-│   │   │   └── DragHandle.tsx     # 拖拽手柄
+│   │   ├── resume/               # 简历模块
 │   │   └── common/               # 通用组件
-│   │       ├── RichTextEditor.tsx # 富文本编辑器（Tiptap）
-│   │       ├── TagInput.tsx      # 标签输入（技能/关键词）
-│   │       ├── TemplateSwitcher.tsx    # 模板切换器
-│   │       ├── ThemeColorPicker.tsx    # 主题色选择器
-│   │       ├── IndustryPresetPicker.tsx# 行业预设选择
-│   │       ├── YearMonthPicker.tsx     # 年月选择器
-│   │       └── YearMonthRangePicker.tsx# 年月范围选择器
 │   ├── hooks/
-│   │   ├── useExportPDF.ts        # PDF 导出流程
-│   │   ├── useResumeEvaluation.ts # 简历评估流式交互
-│   │   ├── useAISuggest.ts        # 内容润色建议
-│   │   ├── useCloudSync.ts        # 云端同步
-│   │   └── useDeleteConfirm.tsx   # 删除确认弹窗
+│   │   ├── useExportPDF.ts       # PDF 导出（异步任务）
+│   │   ├── useCloudSync.ts       # 云端同步
+│   │   └── ...
 │   ├── store/
-│   │   └── resumeStore.ts         # 简历状态管理
-│   ├── types/
-│   │   └── resume.ts              # 简历数据模型定义
-│   ├── ai/
-│   │   ├── config.ts              # AI 模型配置
-│   │   ├── provider.ts            # AI Provider 封装
-│   │   └── userConfig.ts         # 用户 AI 配置
-│   ├── App.tsx
-│   └── main.tsx
-│
-├── backend/                       # 后端 API 服务
-│   ├── cmd/server/main.go         # 入口
+│   │   ├── authStore.ts          # 认证状态
+│   │   └── resumeStore.ts        # 简历状态
+│   └── App.tsx
+├── backend/                      # 后端 API 服务
+│   ├── cmd/server/main.go
 │   └── internal/
-│       ├── app/server.go          # Gin 引擎与依赖注入
-│       ├── router/router.go       # 路由注册
-│       ├── config/config.go       # 配置管理
-│       ├── middleware/
-│       │   ├── auth.go            # JWT 认证中间件
-│       │   ├── cors.go            # CORS 中间件
-│       │   └── logger.go          # 日志中间件
-│       ├── handler/
-│       │   ├── handler.go         # Handler 依赖注入容器
-│       │   ├── auth.go           # 认证接口
-│       │   ├── resume.go          # 简历 CRUD
-│       │   ├── export.go         # 导出任务管理
-│       │   ├── pdf.go            # PDF 渲染接口
-│       │   └── ai.go             # AI 配置/对话/评估/润色
-│       ├── service/
-│       │   ├── auth/              # 认证服务
-│       │   ├── resume/           # 简历服务
-│       │   ├── export/           # 导出任务服务
-│       │   ├── pdf/              # PDF 渲染服务
-│       │   └── ai/               # AI 服务（评估/润色/对话）
-│       ├── storage/
-│       │   ├── db/postgres.go    # PostgreSQL 连接池
-│       │   ├── resume/           # 简历存储
-│       │   ├── export/           # 导出存储
-│       │   └── ai/               # AI 会话/配置存储
+│       ├── app/
+│       ├── router/
+│       ├── handler/              # HTTP Handler
+│       ├── service/              # 业务逻辑
+│       ├── storage/              # 数据访问
 │       ├── model/                # 数据模型
-│       ├── renderer/             # PDF 渲染器（chromedp）
-│       └── ssr/                  # 简历 HTML SSR
-│
-├── Dockerfile                    # 前端 + Go 后端一体镜像
-├── docker-compose.yml            # 开发环境编排
-├── vite.config.ts               # Vite 配置（含 API 代理）
-└── package.json
+│       └── renderer/             # PDF 渲染
+├── 需求文档.md
+├── 技术文档.md
+└── AI后端移植与双版本规划.md
 ```
 
 ## 快速开始
@@ -219,11 +147,10 @@ OPENAI_API_KEY=sk-...
 | GET | /api/ai/conversations | AI 对话列表 |
 | GET | /api/ai/conversations/:id | 获取对话详情 |
 | DELETE | /api/ai/conversations/:id | 删除对话 |
-| POST | /api/ai/evaluate/stream | 简历评估 |
+| POST | /api/ai/evaluate/stream | 简历评估（SSE 流式） |
 | POST | /api/ai/suggest | 内容润色建议 |
 | GET | /api/ai/suggest-records | 润色记录列表 |
 | POST | /api/ai/suggest-records | 保存润色记录 |
-| POST | /api/pdf/export | 渲染 HTML 为 PDF |
 
 ## 部署
 
@@ -250,8 +177,14 @@ docker run --rm -p 8787:8787 \
 ## 已知限制
 
 1. PDF 导出依赖后端 `chromedp` 服务，请确保后端正常启动。
-2. 头像图片以 Base64 存入 localStorage，建议单张不超过 1mb。
+2. 头像图片以 Base64 存入 localStorage，建议单张不超过 1MB。
 3. AI 功能需要用户自行配置 OpenAI API Key。
+4. 版本管理 UI（列表/恢复）待开发，后端已支持 `RestoreVersion`。
+5. 导出文件下载接口 `GET /api/exports/:taskId/download` 后端尚未实现，当前通过 `downloadUrl` 字段获取。
+
+## 已知问题
+
+1. **简历名称冲突循环**：同步成功后本地简历未删除，刷新后重复触发同步提示。修复方向：同步成功后删除本地简历，持久化 `hasSyncedOnLogin` 状态。
 
 ## License
 
