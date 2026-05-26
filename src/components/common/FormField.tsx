@@ -3,7 +3,8 @@
 // 遵循 PRD 4.4 表单组件通用规范
 // ============================================================
 
-import React from 'react'
+import React, { useRef, useState } from 'react'
+import { getAutoFixEnabled, inspectClipboardText } from '@/utils/textGuard'
 
 interface FormFieldProps {
   label: string
@@ -64,26 +65,63 @@ export const TextInput: React.FC<TextInputProps> = ({
   onChange,
   error = false,
   className = '',
+  onPaste,
   ...props
 }) => {
+  const [clipboardHint, setClipboardHint] = useState<string | null>(null)
+  const hintTimerRef = useRef<number | null>(null)
+
+  const showClipboardHint = (message: string | null) => {
+    if (hintTimerRef.current) {
+      window.clearTimeout(hintTimerRef.current)
+      hintTimerRef.current = null
+    }
+    setClipboardHint(message)
+    if (message) {
+      hintTimerRef.current = window.setTimeout(() => setClipboardHint(null), 1000)
+    }
+  }
   return (
-    <input
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`
-        w-full h-9 px-3 text-sm text-gray-800
-        border rounded-md bg-white
-        outline-none transition-all duration-150
-        placeholder:text-gray-300
-        ${error
-          ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-          : 'border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/10'
-        }
-        ${className}
-      `}
-      {...props}
-    />
+    <div className="space-y-1">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onPaste={(event) => {
+          const text = event.clipboardData?.getData('text') ?? ''
+          const result = inspectClipboardText(text, getAutoFixEnabled())
+          showClipboardHint(result.message)
+
+          if (result.nextText !== text) {
+            event.preventDefault()
+            const target = event.currentTarget
+            const start = target.selectionStart ?? target.value.length
+            const end = target.selectionEnd ?? target.value.length
+            const nextValue = value.slice(0, start) + result.nextText + value.slice(end)
+            onChange(nextValue)
+            const caret = start + result.nextText.length
+            requestAnimationFrame(() => target.setSelectionRange(caret, caret))
+          }
+
+          onPaste?.(event)
+        }}
+        className={`
+          w-full h-9 px-3 text-sm text-gray-800
+          border rounded-md bg-white
+          outline-none transition-all duration-150
+          placeholder:text-gray-300
+          ${error
+            ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+            : 'border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/10'
+          }
+          ${className}
+        `}
+        {...props}
+      />
+      {clipboardHint && (
+        <p className="text-[12px] text-amber-600">{clipboardHint}</p>
+      )}
+    </div>
   )
 }
 
@@ -101,26 +139,63 @@ export const TextArea: React.FC<TextAreaProps> = ({
   error = false,
   minRows = 3,
   className = '',
+  onPaste,
   ...props
 }) => {
+  const [clipboardHint, setClipboardHint] = useState<string | null>(null)
+  const hintTimerRef = useRef<number | null>(null)
+
+  const showClipboardHint = (message: string | null) => {
+    if (hintTimerRef.current) {
+      window.clearTimeout(hintTimerRef.current)
+      hintTimerRef.current = null
+    }
+    setClipboardHint(message)
+    if (message) {
+      hintTimerRef.current = window.setTimeout(() => setClipboardHint(null), 1000)
+    }
+  }
   return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      rows={minRows}
-      className={`
-        w-full px-3 py-2 text-sm text-gray-800
-        border rounded-md bg-white resize-y
-        outline-none transition-all duration-150
-        placeholder:text-gray-300
-        ${error
-          ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-          : 'border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/10'
-        }
-        ${className}
-      `}
-      {...props}
-    />
+    <div className="space-y-1">
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onPaste={(event) => {
+          const text = event.clipboardData?.getData('text') ?? ''
+          const result = inspectClipboardText(text, getAutoFixEnabled())
+          showClipboardHint(result.message)
+
+          if (result.nextText !== text) {
+            event.preventDefault()
+            const target = event.currentTarget
+            const start = target.selectionStart ?? target.value.length
+            const end = target.selectionEnd ?? target.value.length
+            const nextValue = value.slice(0, start) + result.nextText + value.slice(end)
+            onChange(nextValue)
+            const caret = start + result.nextText.length
+            requestAnimationFrame(() => target.setSelectionRange(caret, caret))
+          }
+
+          onPaste?.(event)
+        }}
+        rows={minRows}
+        className={`
+          w-full px-3 py-2 text-sm text-gray-800
+          border rounded-md bg-white resize-y
+          outline-none transition-all duration-150
+          placeholder:text-gray-300
+          ${error
+            ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+            : 'border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/10'
+          }
+          ${className}
+        `}
+        {...props}
+      />
+      {clipboardHint && (
+        <p className="text-[12px] text-amber-600">{clipboardHint}</p>
+      )}
+    </div>
   )
 }
 

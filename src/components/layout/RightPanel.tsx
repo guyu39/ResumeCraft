@@ -7,6 +7,7 @@ import { Download, Settings, Sparkles, X } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
+import { getAutoFixEnabled, setAutoFixEnabled } from '@/utils/textGuard'
 import {
     AIProviderPreset,
     AI_PROVIDER_PRESETS,
@@ -46,9 +47,9 @@ const FONT_OPTIONS = [
     { label: '微软雅黑', value: 'Microsoft YaHei' },
     { label: '宋体', value: 'SimSun' },
     { label: '楷体', value: 'KaiTi' },
-    { label: 'Arial', value: 'Arial' },
-    { label: 'Times New Roman', value: 'Times New Roman' },
-    { label: '苹方', value: 'PingFang SC' },
+    // { label: 'Arial', value: 'Arial' },
+    // { label: 'Times New Roman', value: 'Times New Roman' },
+    // { label: '苹方', value: 'PingFang SC' },
     { label: '黑体', value: 'SimHei' },
 ]
 
@@ -167,6 +168,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
     const { resume, setThemeColor, setTemplate, setStyleSettings } = useResumeStore()
     const { styleSettings } = resume
     const { isAuthenticated } = useAuthStore()
+    const [autoFixEnabled, setAutoFixEnabledState] = useState(getAutoFixEnabled())
 
     // 优先使用后端配置，否则使用本地配置
     const getInitialAIForm = (): AIConfigForm => {
@@ -288,6 +290,30 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
             </div>
 
             <div className="border-t border-gray-100 pt-4 space-y-4">
+                <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">剪贴板异常字符</label>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const next = !autoFixEnabled
+                            setAutoFixEnabledState(next)
+                            setAutoFixEnabled(next)
+                        }}
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs border rounded-lg transition ${autoFixEnabled
+                            ? 'border-primary/40 bg-primary/5 text-primary'
+                            : 'border-gray-200 bg-white text-gray-600'
+                            }`}
+                    >
+                        <span>{autoFixEnabled ? '自动修复已开启' : '仅提示（不自动修复）'}</span>
+                        <span className={`inline-flex h-4 w-8 items-center rounded-full p-0.5 ${autoFixEnabled ? 'bg-primary' : 'bg-gray-300'}`}>
+                            <span className={`h-3 w-3 rounded-full bg-white transition ${autoFixEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </span>
+                    </button>
+                    <p className="text-[12px] text-gray-400">
+                        粘贴时检测康熙部首等异常字符，开启后会尝试标准化替换。
+                    </p>
+                </div>
+
                 <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
                         字体（{FONT_OPTIONS.find((item) => item.value === styleSettings.fontFamily)?.label ?? styleSettings.fontFamily}）

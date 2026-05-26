@@ -15,6 +15,7 @@ import type { ModuleType } from '@/types/resume'
 import AISuggestionPanel from '@/components/common/ai/AISuggestionPanel'
 import { getProviderPresetById, readAIUserConfig } from '@/ai'
 import { useAISuggest } from '@/hooks/useAISuggest'
+import { getAutoFixEnabled, inspectClipboardText } from '@/utils/textGuard'
 
 interface RichTextEditorProps {
     value: string
@@ -62,6 +63,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const [链接弹窗显示, set链接弹窗显示] = useState(false)
     const [链接输入值, set链接输入值] = useState('https://')
     const [AI建议面板显示, setAI建议面板显示] = useState(false)
+    const [剪贴板提示, set剪贴板提示] = useState<string | null>(null)
+    const 提示定时器引用 = useRef<number | null>(null)
     const [上次建议输入, set上次建议输入] = useState<{
         fullText: string
         selectedText?: string
@@ -116,6 +119,26 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 class:
                     'overflow-y-auto no-scrollbar px-3 py-2 text-sm text-gray-800 outline-none ProseMirror rich-editor-content',
                 style: `height: ${编辑器高度}px;`,
+            },
+            handlePaste: (view, event) => {
+                const text = event.clipboardData?.getData('text') ?? ''
+                const result = inspectClipboardText(text, getAutoFixEnabled())
+                if (提示定时器引用.current) {
+                    window.clearTimeout(提示定时器引用.current)
+                    提示定时器引用.current = null
+                }
+                set剪贴板提示(result.message)
+                if (result.message) {
+                    提示定时器引用.current = window.setTimeout(() => set剪贴板提示(null), 1000)
+                }
+
+                if (result.nextText !== text) {
+                    event.preventDefault()
+                    view.dispatch(view.state.tr.insertText(result.nextText))
+                    return true
+                }
+
+                return false
             },
         },
     })
@@ -351,6 +374,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                     </p>
                 )}
             </div>
+            {剪贴板提示 && (
+                <p className="px-3 pb-2 text-[12px] text-amber-600">
+                    {剪贴板提示}
+                </p>
+            )}
 
             {链接弹窗显示 && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 px-4">

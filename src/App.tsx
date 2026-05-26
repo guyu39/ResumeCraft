@@ -85,8 +85,8 @@ const App: React.FC = () => {
               modules: firstResume.modules as Module[],
               updatedAt: firstResume.updatedAt,
             })
-            // 通知 useCloudSync 关于云端 ID
-            ;(window as any).__cloudSyncSetCloudId?.(firstResume.id)
+              // 通知 useCloudSync 关于云端 ID
+              ; (window as any).__cloudSyncSetCloudId?.(firstResume.id)
           }
         } else if (currentId && isValidUUID(currentId)) {
           // 当前有选中的云端简历，加载它
@@ -103,8 +103,8 @@ const App: React.FC = () => {
                 modules: currentResume.modules as Module[],
                 updatedAt: currentResume.updatedAt,
               })
-              // 通知 useCloudSync 关于云端 ID
-              ;(window as any).__cloudSyncSetCloudId?.(currentResume.id)
+                // 通知 useCloudSync 关于云端 ID
+                ; (window as any).__cloudSyncSetCloudId?.(currentResume.id)
             }
           } catch (err) {
             console.error('[App] 加载当前云端简历失败:', err)
