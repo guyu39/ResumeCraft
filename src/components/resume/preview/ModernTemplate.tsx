@@ -187,6 +187,9 @@ const ModernTemplate: React.FC<ModernTemplateProps> = ({ resume }) => {
   return (
     <div
       className="w-full flex bg-white resume-preview-content"
+      data-module-title-line-position={styleSettings.moduleTitleLinePosition ?? 'left'}
+      data-module-title-marker-style={styleSettings.moduleTitleMarkerStyle ?? 'bar'}
+      data-module-title-marker-visible={styleSettings.moduleTitleMarkerVisible === false ? 'false' : 'true'}
       style={{
         minHeight: '842px',
         padding: `${styleSettings.pagePaddingVertical}px ${styleSettings.pagePaddingHorizontal}px`,
@@ -199,6 +202,7 @@ const ModernTemplate: React.FC<ModernTemplateProps> = ({ resume }) => {
         ['--resume-font-family' as string]: styleSettings.fontFamily,
         ['--resume-text-color' as string]: styleSettings.textColor,
         ['--resume-font-scale' as string]: String(styleSettings.fontSize / DEFAULT_RESUME_STYLE_SETTINGS.fontSize),
+        ['--module-title-color' as string]: resume.themeColor,
       }}
     >
       <div className="w-[35%] flex-shrink-0">

@@ -102,7 +102,7 @@ export const AI_PROVIDER_PRESETS: AIProviderPresetConfig[] = [
     // 自定义
     {
         id: 'custom',
-        label: '自定义 OpenAI-Compatible',
+        label: '自定义模型',
         baseUrl: '',
         modelPlaceholder: 'your-model-name',
     },

@@ -77,6 +77,9 @@ export interface ResumeStyleSettings {
   pagePaddingVertical: number
   moduleSpacing: number
   paragraphSpacing: number
+  moduleTitleLinePosition: 'left' | 'bottom' | 'none'
+  moduleTitleMarkerStyle: 'bar' | 'pill' | 'dot' | 'square' | 'none'
+  moduleTitleMarkerVisible: boolean
 }
 
 export interface ResumeDetail {

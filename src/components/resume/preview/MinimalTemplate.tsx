@@ -97,6 +97,9 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
   return (
     <div
       className="w-full bg-white resume-preview-content"
+      data-module-title-line-position={styleSettings.moduleTitleLinePosition ?? 'left'}
+      data-module-title-marker-style={styleSettings.moduleTitleMarkerStyle ?? 'bar'}
+      data-module-title-marker-visible={styleSettings.moduleTitleMarkerVisible === false ? 'false' : 'true'}
       style={{
         minHeight: '842px',
         padding: `${styleSettings.pagePaddingVertical}px ${styleSettings.pagePaddingHorizontal}px`,
@@ -109,6 +112,7 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
         ['--resume-font-family' as string]: styleSettings.fontFamily,
         ['--resume-text-color' as string]: styleSettings.textColor,
         ['--resume-font-scale' as string]: String(styleSettings.fontSize / DEFAULT_RESUME_STYLE_SETTINGS.fontSize),
+        ['--module-title-color' as string]: themeColor,
       }}
     >
       <div className="relative mb-1 pr-[92px]">

@@ -218,6 +218,9 @@ export interface Module {
   data: ModuleData
 }
 
+export type ModuleTitleLinePosition = 'left' | 'bottom' | 'none'
+export type ModuleTitleMarkerStyle = 'bar' | 'pill' | 'dot' | 'square' | 'none'
+
 export interface ResumeStyleSettings {
   fontFamily: string
   fontSize: number
@@ -227,6 +230,9 @@ export interface ResumeStyleSettings {
   pagePaddingVertical: number
   moduleSpacing: number
   paragraphSpacing: number
+  moduleTitleLinePosition: ModuleTitleLinePosition
+  moduleTitleMarkerStyle: ModuleTitleMarkerStyle
+  moduleTitleMarkerVisible: boolean
 }
 
 export const DEFAULT_RESUME_STYLE_SETTINGS: ResumeStyleSettings = {
@@ -238,6 +244,9 @@ export const DEFAULT_RESUME_STYLE_SETTINGS: ResumeStyleSettings = {
   pagePaddingVertical: 20,
   moduleSpacing: 7,
   paragraphSpacing: 1,
+  moduleTitleLinePosition: 'left',
+  moduleTitleMarkerStyle: 'bar',
+  moduleTitleMarkerVisible: true,
 }
 
 export interface IndustryTemplatePreset {

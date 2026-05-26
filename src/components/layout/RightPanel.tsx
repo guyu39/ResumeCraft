@@ -3,10 +3,10 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Download, Settings, Sparkles, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Download, Settings, Sparkles, X } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
-import { MODULE_META_LIST, ModuleType } from '@/types/resume'
+import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
 import {
     AIProviderPreset,
     AI_PROVIDER_PRESETS,
@@ -40,7 +40,6 @@ import CustomForm from '@/components/resume/blocks/CustomForm'
 // 设置面板组件
 import ThemeColorPicker from '@/components/common/ThemeColorPicker'
 import TemplateSwitcher from '@/components/common/TemplateSwitcher'
-import IndustryPresetPicker from '@/components/common/IndustryPresetPicker'
 
 const FONT_OPTIONS = [
     { label: '思源黑体', value: 'Source Han Sans' },
@@ -51,6 +50,14 @@ const FONT_OPTIONS = [
     { label: 'Times New Roman', value: 'Times New Roman' },
     { label: '苹方', value: 'PingFang SC' },
     { label: '黑体', value: 'SimHei' },
+]
+
+const MODULE_TITLE_MARKER_STYLE_OPTIONS: Array<{ label: string; value: ModuleTitleMarkerStyle }> = [
+    { label: '竖线', value: 'bar' },
+    { label: '圆角块', value: 'pill' },
+    { label: '圆点', value: 'dot' },
+    { label: '方块', value: 'square' },
+    { label: '不显示', value: 'none' },
 ]
 
 interface RangeFieldProps {
@@ -157,7 +164,7 @@ interface SettingsPanelProps {
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig }) => {
-    const { resume, setThemeColor, setTemplate, setStyleSettings, applyIndustryPreset } = useResumeStore()
+    const { resume, setThemeColor, setTemplate, setStyleSettings } = useResumeStore()
     const { styleSettings } = resume
     const { isAuthenticated } = useAuthStore()
 
@@ -176,7 +183,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
 
     const [aiForm, setAiForm] = useState<AIConfigForm>(getInitialAIForm)
     const [aiStatus, setAiStatus] = useState<string | null>(null)
-    const [industryPresetCollapsed, setIndustryPresetCollapsed] = useState(false)
     const [aiError, setAiError] = useState<string | null>(null)
 
     // initialAIConfig 变化时更新表单
@@ -273,18 +279,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 locale={resume.locale}
                 onChange={setTemplate}
             />
-
-            <div className="border-t border-gray-100 pt-4">
-                <button
-                    type="button"
-                    className="flex items-center justify-between w-full text-xs font-medium text-gray-700 mb-2"
-                    onClick={() => setIndustryPresetCollapsed((v) => !v)}
-                >
-                    <span>行业模版</span>
-                    {industryPresetCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-                </button>
-                {!industryPresetCollapsed && <IndustryPresetPicker onApply={applyIndustryPreset} />}
-            </div>
 
             <div className="border-t border-gray-100 pt-4">
                 <ThemeColorPicker
@@ -385,10 +379,42 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     unit="px"
                     onChange={(value) => setStyleSettings({ paragraphSpacing: value })}
                 />
+
+                <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">模块标题下划线</label>
+                    <select
+                        value={styleSettings.moduleTitleLinePosition ?? 'left'}
+                        onChange={(e) => setStyleSettings({ moduleTitleLinePosition: e.target.value as 'left' | 'bottom' | 'none' })}
+                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                        <option value="left">标题右侧</option>
+                        <option value="bottom">标题下方</option>
+                        <option value="none">不显示</option>
+                    </select>
+                </div>
+
+                <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">标题左侧样式</label>
+                    <select
+                        value={styleSettings.moduleTitleMarkerVisible === false ? 'none' : (styleSettings.moduleTitleMarkerStyle ?? 'bar')}
+                        onChange={(e) => {
+                            const value = e.target.value as ModuleTitleMarkerStyle
+                            setStyleSettings({
+                                moduleTitleMarkerStyle: value,
+                                moduleTitleMarkerVisible: value !== 'none',
+                            })
+                        }}
+                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                        {MODULE_TITLE_MARKER_STYLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
             <div className="border-t border-gray-100 pt-4 space-y-3">
-                <h5 className="text-sm font-semibold text-gray-800">AI 接入配置</h5>
+                <h5 className="text-sm font-semibold text-gray-800">AI 配置</h5>
 
                 {!isAuthenticated ? (
                     <div className="flex items-center gap-2">
