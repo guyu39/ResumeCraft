@@ -60,6 +60,7 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
       ...(personalData.education ? [`学历：${personalData.education}`] : []),
       ...(personalData.politics ? [`政治面貌：${personalData.politics}`] : []),
       ...(personalData.workYears ? [`工作年限：${personalData.workYears}`] : []),
+      ...(personalData.personalAccount ? [`个人账号：${personalData.personalAccount}`] : []),
       ...((personalData.extraInfos ?? [])
         .filter((item) => item.title && item.value)
         .map((item) => `${item.title}：${item.value}`)),

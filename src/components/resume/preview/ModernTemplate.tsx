@@ -67,6 +67,7 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
       ...(personalData.education ? [`学历：${personalData.education}`] : []),
       ...(personalData.politics ? [`政治面貌：${personalData.politics}`] : []),
       ...(personalData.workYears ? [`工作年限：${personalData.workYears}`] : []),
+      ...(personalData.personalAccount ? [`个人账号：${personalData.personalAccount}`] : []),
       ...((personalData.extraInfos ?? [])
         .filter((item) => item.title && item.value)
         .map((item) => `${item.title}：${item.value}`)),
@@ -75,7 +76,7 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
 
   return (
     <div className="h-full" style={{ background: `${themeColor}08`, borderRight: `2px solid ${themeColor}30` }}>
-      <div className="p-4">
+      <div className="py-4 pr-4">
         {personalModule?.visible !== false && personalData && (
           <div className="text-center mb-4">
             {personalData.avatar && (
@@ -203,7 +204,7 @@ const ModernTemplate: React.FC<ModernTemplateProps> = ({ resume }) => {
       <div className="w-[35%] flex-shrink-0">
         <LeftCol resume={resume} />
       </div>
-      <div className="flex-1 px-4">
+      <div className="flex-1 pl-4">
         <RightModules resume={resume} />
       </div>
     </div>
