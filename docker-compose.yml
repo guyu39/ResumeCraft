@@ -9,7 +9,6 @@ services:
       - "8787:8787"
     environment:
       PORT: 8787
-      FRONTEND_DIST_DIR: /app/dist
 
       # 数据库（使用 docker-compose 服务名作为主机名）
       PG_DSN: postgres://resumecraft:resumecraft@postgres:5432/resumecraft?sslmode=disable
@@ -39,30 +38,40 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8787/api/pdf/export || exit 1"]
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:8787/api/pdf/export || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 
   postgres:
-    image: bitnami/postgresql:16
+    image: oyh0mq3odt54g3vzjv.xuanyuan.run/library/postgres:16.14
     container_name: resumecraft-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRESQL_USERNAME: resumecraft
-      POSTGRESQL_PASSWORD: resumecraft
-      POSTGRESQL_DATABASE: resumecraft
-      POSTGRESQL_POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: resumecraft
+      POSTGRES_PASSWORD: resumecraft
+      POSTGRES_DB: resumecraft
       TZ: Asia/Shanghai
     volumes:
-      - ./docker/postgres-data:/bitnami/postgresql
-      - ./docker/postgres-logs:/opt/bitnami/postgresql/logs
+      - ./docker/postgres-data:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U resumecraft -d resumecraft -h 127.0.0.1 -p 5432"]
+      test: [ "CMD-SHELL", "pg_isready -U resumecraft -d resumecraft -h 127.0.0.1 -p 5432" ]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  web:
+    image: xuanyuan.run/library/nginx:alpine
+    container_name: resumecraft-web
+    restart: unless-stopped
+    ports:
+      - "89:80"
+    volumes:
+      - ../docker/frontend:/usr/share/nginx/html:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app

@@ -235,6 +235,9 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
         <FormField label="邮箱" required error={hasError('email')}>
           <TextInput value={data.email} onChange={(v) => update('email', v)} onBlur={() => handleBlur('email')} placeholder="example@email.com" error={hasError('email')} type="email" />
         </FormField>
+        <FormField label="个人账号（选填）">
+          <TextInput value={data.personalAccount ?? ''} onChange={(v) => update('personalAccount', v)} placeholder="GitHub / Gitee / 个人主页账号" />
+        </FormField>
         <FormField label="所在城市（选填）">
           <TextInput value={data.city} onChange={(v) => update('city', v)} placeholder="北京市" />
         </FormField>

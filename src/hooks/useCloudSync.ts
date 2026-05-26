@@ -73,24 +73,11 @@ export function useCloudSync() {
     console.log('[CloudSync] 开始保存到云端...')
 
     try {
-      let targetId = resume.id
-
-      // 如果本地 ID 不是有效的 UUID，且还没有云端 ID，则在云端创建新简历
-      if (!isValidUUID(resume.id) && !cloudIdRef.current) {
-        console.log('[CloudSync] 本地简历尚未同步到云端，先创建...')
-        const created = await resumeApi.create({
-          title: resume.title,
-          locale: resume.locale,
-          template: resume.template,
-          themeColor: resume.themeColor,
-          styleSettings: resume.styleSettings,
-          modules: resume.modules,
-        })
-        cloudIdRef.current = created.id
-        targetId = created.id
-        console.log('[CloudSync] 云端创建成功，新 ID:', targetId)
-      } else if (cloudIdRef.current) {
-        targetId = cloudIdRef.current
+      const targetId = cloudIdRef.current || resume.id
+      if (!isValidUUID(targetId)) {
+        console.warn('[CloudSync] 当前简历不是云端简历，跳过保存')
+        setSaveStatus('error')
+        return false
       }
 
       const result = await resumeApi.update(targetId, {
@@ -215,13 +202,7 @@ export function useCloudSync() {
         }
       } catch (err) {
         console.error('[CloudSync] 同步检查失败:', err)
-        // 如果是 404，说明云端没有这个简历，需要创建
-        if (err instanceof ApiError && err.status === 404) {
-          console.log('[CloudSync] 云端简历不存在，需要创建')
-          await saveToCloud()
-        } else {
-          setSaveStatus('error')
-        }
+        setSaveStatus('error')
       }
     }
 

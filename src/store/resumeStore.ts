@@ -74,6 +74,7 @@ function createDefaultModuleData(type: ModuleType): ModuleData {
         gender: '',
         education: '',
         extraInfos: [],
+        personalAccount: '',
         city: '',
         avatar: '',
         avatarShape: 'circle',

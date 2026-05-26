@@ -26,6 +26,7 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) =
     politics,
     gender,
     education,
+    personalAccount,
     extraInfos,
   } = data
 
@@ -48,6 +49,7 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) =
     ...(education ? [{ value: `学历：${education}` }] : []),
     ...(politics ? [{ value: `政治面貌：${politics}` }] : []),
     ...(workYears ? [{ value: `工作年限：${workYears}` }] : []),
+    ...(personalAccount ? [{ value: `个人账号：${personalAccount}` }] : []),
     ...((extraInfos ?? [])
       .filter((item) => item.title && item.value)
       .map((item) => ({ value: `${item.title}：${item.value}` }))),

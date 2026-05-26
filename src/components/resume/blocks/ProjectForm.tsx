@@ -8,7 +8,6 @@ import { ProjectItem } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Button } from '@/components/common/FormField'
 import YearMonthRangePicker from '@/components/common/YearMonthRangePicker'
-import TagInput from '@/components/common/TagInput'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 
@@ -56,6 +55,12 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
   const handleDateRangeChange = (id: string, start: string, end: string) => {
     updateItem(id, { startDate: start, endDate: end })
   }
+
+  const parseTechStack = (value: string) =>
+    value
+      .split('+')
+      .map((item) => item.trim())
+      .filter(Boolean)
 
   return (
     <div className="editor-form-root space-y-5">
@@ -122,11 +127,13 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
             />
           </FormField>
 
-          <div onClick={(e) => e.stopPropagation()}>
-            <FormField label="技术栈">
-              <TagInput value={item.techStack} onChange={(v) => updateItem(item.id, { techStack: v })} placeholder="React, TypeScript" />
-            </FormField>
-          </div>
+          <FormField label="技术栈" hint="使用 + 分隔，如：React + TypeScript + Vite">
+            <TextInput
+              value={(item.techStack ?? []).join(' + ')}
+              onChange={(v) => updateItem(item.id, { techStack: parseTechStack(v) })}
+              placeholder="React + TypeScript + Vite"
+            />
+          </FormField>
         </div>
       ))}
 

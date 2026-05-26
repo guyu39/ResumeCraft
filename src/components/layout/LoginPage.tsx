@@ -121,16 +121,6 @@ const LoginPage: React.FC = () => {
               )}
             </button>
           </div>
-
-          <div className="mt-6 border-t border-slate-100 pt-4 text-center">
-            <button
-              type="button"
-              onClick={() => (window.location.href = '/editor')}
-              className="text-sm text-slate-500 hover:text-slate-700"
-            >
-              暂不登录，继续使用本地模式
-            </button>
-          </div>
         </div>
       </div>
     </div>

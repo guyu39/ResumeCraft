@@ -17,12 +17,11 @@ function isValidUUID(id: string): boolean {
 }
 
 const App: React.FC = () => {
-  const { loadFromStorage, initResume } = useResumeStore()
+  const { initResume } = useResumeStore()
   const { isAuthenticated, checkAuth, logout } = useAuthStore()
   const [authChecked, setAuthChecked] = useState(false)
   const [cloudResumes, setCloudResumes] = useState<any[]>([])
   const [showLogin, setShowLogin] = useState(false)
-  const [hasCloudLoaded, setHasCloudLoaded] = useState(false)
 
   const pathname = window.location.pathname
   const isPreviewPage = pathname === '/preview'
@@ -67,7 +66,6 @@ const App: React.FC = () => {
         if (skipAutoLoad) {
           sessionStorage.removeItem('skip_auto_load')
           console.log('[App] 跳过自动加载，等待本地简历')
-          setHasCloudLoaded(true)
           return
         }
 
@@ -115,7 +113,6 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('[App] 加载云端简历失败:', err)
       }
-      setHasCloudLoaded(true)
     }
 
     loadCloudResumes()
@@ -123,15 +120,11 @@ const App: React.FC = () => {
 
   // 编辑页和预览页需要恢复简历
   useEffect(() => {
-    if (!authChecked) return
+    if (!authChecked || !isAuthenticated) return
     if (isEditorPage || isPreviewPage) {
-      if (!isAuthenticated) {
-        // 未登录时从 localStorage 加载
-        loadFromStorage()
-      }
       // 已登录时，云端简历已在上面加载
     }
-  }, [authChecked, isAuthenticated, isEditorPage, isPreviewPage, loadFromStorage])
+  }, [authChecked, isAuthenticated, isEditorPage, isPreviewPage])
 
   // 等待认证状态确定
   if (!authChecked) {
@@ -142,8 +135,8 @@ const App: React.FC = () => {
     )
   }
 
-  // 显示登录页
-  if (showLogin) {
+  // 未登录时强制显示登录页
+  if (!isAuthenticated || showLogin) {
     return <LoginPage />
   }
 
@@ -155,8 +148,6 @@ const App: React.FC = () => {
     <ResumeListPage
       cloudResumes={cloudResumes}
       isAuthenticated={isAuthenticated}
-      hasCloudLoaded={hasCloudLoaded}
-      onLogin={() => setShowLogin(true)}
       onLogout={async () => {
         await logout()
         setCloudResumes([])

@@ -1,48 +1,24 @@
-# syntax=docker/dockerfile:1
-
-# ============================================================
-# Stage 1: Frontend build
-# ============================================================
-FROM node:20-bookworm-slim AS frontend-builder
-WORKDIR /app
-
-# 依赖层优先缓存
-COPY package.json package-lock.json ./
-RUN npm ci
-
-# 源码层
-COPY index.html ./
-COPY tsconfig.json tsconfig.node.json vite.config.ts postcss.config.js tailwind.config.js ./
-COPY src ./src
-RUN npm run build
-
-# ============================================================
-# Stage 2: Go backend build
-# ============================================================
-FROM golang:1.22-bookworm AS backend-builder
+FROM xuanyuan.run/library/golang:1.24.13-alpine AS backend-builder
 WORKDIR /app/backend
 
-# 依赖层优先缓存
 COPY backend/go.mod backend/go.sum ./
+ENV GOPROXY=https://goproxy.cn,direct
 RUN go mod download
 
-# 源码层
-COPY backend/. /
+COPY backend/. ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/server ./cmd/server
 
-# ============================================================
-# Stage 3: Runtime
-# ============================================================
-FROM debian:bookworm-slim AS runtime
+FROM xuanyuan.run/library/debian:bookworm-slim AS runtime
 
-# 安装运行时依赖（无 root 用户）
-RUN apt-get update && \
+RUN sed -i 's|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list.d/debian.sources && \
+    sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
-        chromium \
-        ca-certificates \
-        fonts-noto-cjk \
-        tzdata \
-        wget \
+    chromium \
+    ca-certificates \
+    fonts-noto-cjk \
+    tzdata \
+    wget \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -s /bin/bash appuser \
     && mkdir -p /app \
@@ -51,13 +27,9 @@ RUN apt-get update && \
 USER appuser
 WORKDIR /app
 
-# 复制构建产物
 COPY --chown=appuser:appuser --from=backend-builder /out/server /app/server
-COPY --chown=appuser:appuser --from=frontend-builder /app/dist /app/dist
 
-# 环境变量（可在 docker-compose.yml 中覆盖）
 ENV PORT=8787 \
-    FRONTEND_DIST_DIR=/app/dist \
     CHROMIUM_HEADLESS=true \
     CHROMIUM_DISABLE_GPU=true \
     CHROMIUM_NO_SANDBOX=true \
@@ -72,8 +44,4 @@ ENV PORT=8787 \
 
 EXPOSE 8787
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10s \
-    CMD wget -qO- http://localhost:8787/api/pdf/export || exit 1
-
-# 信号处理：前台运行 PID 1
 CMD ["/app/server"]

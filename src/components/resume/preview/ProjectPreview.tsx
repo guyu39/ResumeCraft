@@ -69,7 +69,7 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor }) =>
               {/* 技术栈 */}
               {item.techStack && item.techStack.length > 0 && (
                 <p className="text-[8.8pt] text-gray-900 font-semibold mt-0.5">
-                  {item.techStack.join(' · ')}
+                  技术栈：{item.techStack.join(' + ')}
                 </p>
               )}
 
