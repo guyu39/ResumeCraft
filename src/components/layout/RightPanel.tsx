@@ -2,8 +2,8 @@
 // RightPanel — 右栏（步骤五/六/七：设置面板 + PDF 导出）
 // ============================================================
 
-import React, { useEffect, useRef, useState } from 'react'
-import { Download, Settings, Sparkles, X } from 'lucide-react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Download, Settings, Sparkles, X } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
@@ -676,6 +676,28 @@ const RightPanel: React.FC = () => {
     const [showSaved, setShowSaved] = useState(false)
     const [showSettings, setShowSettings] = useState(false)
     const [showAIEvaluation, setShowAIEvaluation] = useState(false)
+
+    // 收集所有模块的日期范围校验错误
+    const dateErrors = useMemo(() => {
+        const result: { moduleId: string; moduleTitle: string; itemIndexes: number[] }[] = []
+        for (const mod of resume.modules) {
+            if (mod.type !== 'education' && mod.type !== 'work' && mod.type !== 'project') continue
+            const items = (mod.data as { items?: Array<{ startDate?: string; endDate?: string }> }).items
+            if (!items) continue
+            const badIndexes: number[] = []
+            items.forEach((item, i) => {
+                if (item.startDate && item.endDate && item.endDate !== '至今' && item.startDate > item.endDate) {
+                    badIndexes.push(i)
+                }
+            })
+            if (badIndexes.length > 0) {
+                result.push({ moduleId: mod.id, moduleTitle: mod.title, itemIndexes: badIndexes })
+            }
+        }
+        return result
+    }, [resume.modules])
+
+    const hasDateErrors = dateErrors.length > 0
     const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'cover_letter'>('evaluate')
     const [aiConfigFromServer, setAiConfigFromServer] = useState<{
         provider: string
@@ -980,6 +1002,7 @@ const RightPanel: React.FC = () => {
 
                 <button
                     onClick={() => {
+                        if (hasDateErrors) return
                         if (!isAuthenticated) {
                             const currentPath = window.location.pathname
                             window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
@@ -993,7 +1016,13 @@ const RightPanel: React.FC = () => {
                             setShowAIEvaluation(true)
                         }
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 disabled:opacity-60 disabled:cursor-wait transition-colors flex-shrink min-w-0"
+                    disabled={hasDateErrors}
+                    title={hasDateErrors ? '请先修正日期范围错误' : undefined}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors flex-shrink min-w-0 ${
+                        hasDateErrors
+                            ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                    }`}
                 >
                     <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">{showAIEvaluation ? '返回编辑' : evaluating ? '评估中...' : 'AI评估'}</span>
@@ -1009,13 +1038,39 @@ const RightPanel: React.FC = () => {
 
                 <button
                     onClick={handleExport}
-                    disabled={exporting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait transition-colors flex-shrink min-w-0"
+                    disabled={exporting || hasDateErrors}
+                    title={hasDateErrors ? '请先修正日期范围错误' : undefined}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors flex-shrink min-w-0 ${
+                        hasDateErrors
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'text-white bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait'
+                    }`}
                 >
                     <Download className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">{exporting ? '导出中...' : '导出PDF'}</span>
                 </button>
             </div>
+
+            {/* 日期范围校验错误横幅 */}
+            {hasDateErrors && (
+                <div className="flex-shrink-0 mx-4 mt-2 space-y-1.5">
+                    {dateErrors.map((err) => (
+                        <div
+                            key={err.moduleId}
+                            className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg"
+                        >
+                            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm text-amber-800">
+                                <span className="font-semibold">{err.moduleTitle}</span>
+                                {err.itemIndexes.length > 0 && (
+                                    <span> 第{err.itemIndexes.map(i => i + 1).join('、')}条</span>
+                                )}
+                                ：结束时间不能早于开始时间，请修正后再导出或评估。
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* 导出错误提示 */}
             {exportError && (

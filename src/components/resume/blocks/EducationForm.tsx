@@ -31,13 +31,6 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
   const { updateModuleData } = useResumeStore()
   const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
 
-  const dateErrorById = items.reduce<Record<string, string>>((acc, item) => {
-    if (item.startDate && item.endDate && item.endDate !== '至今' && item.startDate > item.endDate) {
-      acc[item.id] = '结束时间不能早于开始时间'
-    }
-    return acc
-  }, {})
-
   const update = (newItems: EducationItem[]) => {
     updateModuleData(moduleId, { items: newItems } as unknown as Partial<{ items: EducationItem[] }>)
   }
@@ -129,9 +122,6 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
               onChange={(start, end) => handleDateRangeChange(item.id, start, end)}
               futureYears={10}
             />
-            {dateErrorById[item.id] && (
-              <p className="text-[12px] text-red-500 mt-1">{dateErrorById[item.id]}</p>
-            )}
           </FormField>
 
           {/* GPA / 荣誉 */}

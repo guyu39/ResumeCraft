@@ -1,8 +1,10 @@
 // ============================================================
 // YearMonthRangePicker — 年月范围选择器（两个 YearMonthPicker 并排）
+// 内建校验：开始时间不能晚于结束时间（"至今"视为有效结束值）
 // ============================================================
 
-import React from 'react'
+import React, { useMemo } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import YearMonthPicker from './YearMonthPicker'
 
 interface YearMonthRangePickerProps {
@@ -24,6 +26,13 @@ const YearMonthRangePicker: React.FC<YearMonthRangePickerProps> = ({
   pastYears = 60,
   futureYears = 1,
 }) => {
+  const dateError = useMemo(() => {
+    if (startDate && endDate && endDate !== '至今' && startDate > endDate) {
+      return '结束时间不能早于开始时间'
+    }
+    return null
+  }, [startDate, endDate])
+
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
@@ -31,7 +40,7 @@ const YearMonthRangePicker: React.FC<YearMonthRangePickerProps> = ({
         <p>结束时间（可不填）</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 items-start">
+      <div className={`grid grid-cols-2 gap-2 items-start ${dateError ? '[&_button]:border-red-400 [&_button]:ring-2 [&_button]:ring-red-200' : ''}`}>
         <YearMonthPicker
           value={startDate}
           onChange={(v) => onChange(v, endDate)}
@@ -48,6 +57,13 @@ const YearMonthRangePicker: React.FC<YearMonthRangePickerProps> = ({
           presentLabel="至今"
         />
       </div>
+
+      {dateError && (
+        <div className="flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <p className="text-sm font-medium text-red-600">{dateError}</p>
+        </div>
+      )}
     </div>
   )
 }
