@@ -80,7 +80,7 @@ export const MODULE_META_LIST: ModuleMeta[] = [
   { type: 'languages', label: '语言能力', icon: '🌐', maxCount: 1, category: 'ability' },
   { type: 'awards', label: '荣誉奖项', icon: '🏆', maxCount: 1, category: 'achievement' },
   { type: 'certificates', label: '证书资质', icon: '📜', maxCount: 1, category: 'achievement' },
-  { type: 'portfolio', label: '作品集链接', icon: '🔗', maxCount: 1, category: 'link' },
+  { type: 'portfolio', label: '作品链接', icon: '🔗', maxCount: 1, category: 'link' },
   { type: 'custom', label: '自定义模块', icon: '✨', maxCount: 0, category: 'special' },
 ]
 

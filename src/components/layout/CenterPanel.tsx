@@ -7,8 +7,8 @@ import { useResumeStore } from '@/store/resumeStore'
 import PagedResumePaper, { A4_HEIGHT_PX, A4_WIDTH_PX } from '@/components/resume/PagedResumePaper'
 
 const FIT_PADDING_PX = 24
-const FIT_BOOST_RATIO = 1.15
-const MAX_PREVIEW_SCALE = 1.25
+const FIT_BOOST_RATIO = 1.3
+const MAX_PREVIEW_SCALE = 1.3
 
 const CenterPanel: React.FC = () => {
   const { resume } = useResumeStore()
@@ -36,11 +36,12 @@ const CenterPanel: React.FC = () => {
   }, [])
 
   const autoFitScale = useMemo(() => {
-    const { width } = viewportSize
-    if (!width) return 1
+    const { width, height } = viewportSize
+    if (!width || !height) return 1
 
     const fitWidth = (width - FIT_PADDING_PX * 2) / A4_WIDTH_PX
-    return Math.max(0.2, Math.min(fitWidth, 1))
+    const fitHeight = (height - FIT_PADDING_PX * 2) / A4_HEIGHT_PX
+    return Math.max(0.2, Math.min(fitWidth, fitHeight, 1))
   }, [viewportSize])
 
   const finalScale = Math.min(autoFitScale * FIT_BOOST_RATIO, MAX_PREVIEW_SCALE)

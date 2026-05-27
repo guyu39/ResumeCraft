@@ -27,10 +27,10 @@ const AppShell: React.FC = () => {
 
     const 处理鼠标移动 = (e: MouseEvent) => {
       const 最小左栏 = 200
-      const 最大左栏 = 420
+      const 最大左栏 = 320
       const 最小右栏 = 300
-      const 最大右栏 = 700
-      const 中栏最小宽度 = 520
+      const 最大右栏 = 550
+      const 中栏最小宽度 = 550
 
       if (拖拽中 === 'left') {
         const 可用最大左栏 = Math.min(最大左栏, window.innerWidth - 右栏宽度 - 中栏最小宽度)

@@ -1,5 +1,5 @@
 // ============================================================
-// PortfolioPreview — 作品集链接预览
+// PortfolioPreview — 作品链接预览
 // ============================================================
 
 import React from 'react'
@@ -15,9 +15,9 @@ const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({ items, themeColor }
   const validItems = items.filter((item) => item.title || item.url)
 
   return (
-    <ModuleSection title="作品集" themeColor={themeColor}>
+    <ModuleSection title="作品" themeColor={themeColor}>
       {validItems.length === 0 ? (
-        <p className="text-[9pt] text-gray-300 italic">请添加作品集链接</p>
+        <p className="text-[9pt] text-gray-300 italic">请添加作品链接</p>
       ) : (
         <div className="space-y-1.5">
           {validItems.map((item) => (
