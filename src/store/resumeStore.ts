@@ -479,16 +479,22 @@ export const useResumeStore = create<ResumeStore>((set) => ({
       const preset = INDUSTRY_TEMPLATE_PRESETS.find((item) => item.id === presetId)
       if (!preset) return state
 
+      const merged = {
+        ...DEFAULT_RESUME_STYLE_SETTINGS,
+        ...state.resume.styleSettings,
+        ...preset.styleSettings,
+      }
+      // 确保模块标题字号 >= 内容字号 + 1
+      if (merged.moduleTitleFontSize <= merged.fontSize) {
+        merged.moduleTitleFontSize = merged.fontSize + 1
+      }
+
       const next = {
         ...state.resume,
         template: preset.template,
         themeColor: preset.themeColor,
         locale: preset.locale,
-        styleSettings: {
-          ...DEFAULT_RESUME_STYLE_SETTINGS,
-          ...state.resume.styleSettings,
-          ...preset.styleSettings,
-        },
+        styleSettings: merged,
         updatedAt: Date.now(),
       }
       debouncedSave(next)
@@ -512,13 +518,19 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   // ---------- setStyleSettings ----------
   setStyleSettings: (settings) => {
     set((state) => {
+      const merged = {
+        ...DEFAULT_RESUME_STYLE_SETTINGS,
+        ...state.resume.styleSettings,
+        ...settings,
+      }
+      // 确保模块标题字号 >= 内容字号 + 1
+      if (merged.moduleTitleFontSize <= merged.fontSize) {
+        merged.moduleTitleFontSize = merged.fontSize + 1
+      }
+
       const next = {
         ...state.resume,
-        styleSettings: {
-          ...DEFAULT_RESUME_STYLE_SETTINGS,
-          ...state.resume.styleSettings,
-          ...settings,
-        },
+        styleSettings: merged,
         updatedAt: Date.now(),
       }
       debouncedSave(next)

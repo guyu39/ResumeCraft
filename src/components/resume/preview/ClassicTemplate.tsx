@@ -87,6 +87,8 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({ resume }) => {
         ['--resume-font-family' as string]: styleSettings.fontFamily,
         ['--resume-text-color' as string]: styleSettings.textColor,
         ['--resume-font-scale' as string]: String(styleSettings.fontSize / DEFAULT_RESUME_STYLE_SETTINGS.fontSize),
+        ['--module-title-font-family' as string]: styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily,
+        ['--module-title-font-size' as string]: `${styleSettings.moduleTitleFontSize ?? styleSettings.fontSize + 2}pt`,
         ['--module-title-color' as string]: themeColor,
       }}
     >

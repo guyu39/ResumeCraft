@@ -71,6 +71,8 @@ export interface ResumeListResponse {
 export interface ResumeStyleSettings {
   fontFamily: string
   fontSize: number
+  moduleTitleFontFamily: string
+  moduleTitleFontSize: number
   textColor: string
   lineHeight: number
   pagePaddingHorizontal: number

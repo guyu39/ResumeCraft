@@ -367,7 +367,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
 
                 <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                        字体（{FONT_OPTIONS.find((item) => item.value === styleSettings.fontFamily)?.label ?? styleSettings.fontFamily}）
+                        内容字体（{FONT_OPTIONS.find((item) => item.value === styleSettings.fontFamily)?.label ?? styleSettings.fontFamily}）
                     </label>
                     <select
                         value={styleSettings.fontFamily}
@@ -383,13 +383,44 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 </div>
 
                 <RangeField
-                    label="字号"
+                    label="内容字号"
                     value={styleSettings.fontSize}
                     min={8}
                     max={18}
                     unit="pt"
                     onChange={(value) => setStyleSettings({ fontSize: value })}
                 />
+
+                <div className="border-t border-gray-100 pt-3 space-y-3">
+                    <p className="text-xs text-gray-400">模块标题字体设置</p>
+
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">
+                            标题字体（{FONT_OPTIONS.find((item) => item.value === (styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily))?.label ?? (styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily)}）
+                        </label>
+                        <select
+                            value={styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily}
+                            onChange={(e) => setStyleSettings({ moduleTitleFontFamily: e.target.value })}
+                            className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                            {FONT_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <RangeField
+                        label="标题字号"
+                        value={styleSettings.moduleTitleFontSize ?? styleSettings.fontSize + 2}
+                        min={styleSettings.fontSize + 1}
+                        max={22}
+                        unit="pt"
+                        onChange={(value) => setStyleSettings({ moduleTitleFontSize: value })}
+                    />
+                    <p className="text-[11px] text-gray-400">标题字号需比内容字号至少大 1pt</p>
+                </div>
 
                 <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">

@@ -222,8 +222,10 @@ export type ModuleTitleLinePosition = 'left' | 'bottom' | 'none'
 export type ModuleTitleMarkerStyle = 'bar' | 'pill' | 'dot' | 'square' | 'none'
 
 export interface ResumeStyleSettings {
-  fontFamily: string
-  fontSize: number
+  fontFamily: string            // 内容字体（向后兼容）
+  fontSize: number              // 内容字号（向后兼容）
+  moduleTitleFontFamily: string // 模块标题字体
+  moduleTitleFontSize: number   // 模块标题字号（必须 >= fontSize + 1）
   textColor: string
   lineHeight: number
   pagePaddingHorizontal: number
@@ -238,6 +240,8 @@ export interface ResumeStyleSettings {
 export const DEFAULT_RESUME_STYLE_SETTINGS: ResumeStyleSettings = {
   fontFamily: 'Microsoft YaHei',
   fontSize: 12,
+  moduleTitleFontFamily: 'Microsoft YaHei',
+  moduleTitleFontSize: 14,
   textColor: '#363636',
   lineHeight: 1.3,
   pagePaddingHorizontal: 20,

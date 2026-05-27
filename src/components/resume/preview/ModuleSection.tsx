@@ -18,8 +18,12 @@ const ModuleSection: React.FC<ModuleSectionProps> = ({ title, themeColor, childr
         style={{ ['--module-title-color' as string]: themeColor }}
       />
       <h4
-        className="resume-module-title-text m-0 text-[11pt] font-bold uppercase tracking-wider leading-[1.1] text-gray-700"
-        style={{ color: themeColor }}
+        className="resume-module-title-text m-0 font-bold uppercase tracking-wider leading-[1.1] text-gray-700"
+        style={{
+          color: themeColor,
+          fontFamily: 'var(--module-title-font-family)',
+          fontSize: 'var(--module-title-font-size)',
+        }}
       >
         {title}
       </h4>
