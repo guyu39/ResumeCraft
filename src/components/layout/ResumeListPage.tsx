@@ -18,6 +18,7 @@ import { resumeApi } from '@/api'
 import type { Resume, TemplateType } from '@/types/resume'
 import type { ResumeListItem } from '@/api'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
+import AccountDialog from '@/components/layout/AccountDialog'
 import { createPortal } from 'react-dom'
 
 const TEMPLATE_LABELS: Record<TemplateType, string> = {
@@ -68,6 +69,7 @@ const ResumeListPage: React.FC<ResumeListPageProps> = ({
     const [syncing, setSyncing] = useState(false)
 
     const [showCreateMode, setShowCreateMode] = useState(false)
+    const [showAccount, setShowAccount] = useState(false)
     const [parseError, setParseError] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const refresh = useCallback(() => {
@@ -464,11 +466,15 @@ setPendingCreateName(defaultTitle)
                             </div>
                             <div className="flex items-center gap-3">
                                 {isAuthenticated && user && (
-                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAccount(true)}
+                                        className="flex items-center gap-2 text-sm text-slate-600 hover:text-primary transition-colors cursor-pointer rounded-lg hover:bg-white/60 px-2 py-1"
+                                    >
                                         <User className="h-4 w-4" />
                                         <span>{user.displayName || user.email}</span>
                                         {syncing && <Cloud className="h-4 w-4 animate-pulse" />}
-                                    </div>
+                                    </button>
                                 )}
                                 <button
                                     type="button"
@@ -660,6 +666,13 @@ setPendingCreateName(defaultTitle)
                 </div>,
                 document.body
             )}
+
+            {/* 账户弹窗 */}
+            <AccountDialog
+                open={showAccount}
+                onClose={() => setShowAccount(false)}
+                user={user}
+            />
         </>
     )
 }

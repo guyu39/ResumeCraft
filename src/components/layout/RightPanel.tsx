@@ -206,7 +206,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 apiKey: '',
                 baseUrl: cfg.baseUrl || '',
             })
-        }).catch(() => {})
+        }).catch(() => { })
     }, [isAuthenticated])
 
     const saveParserConfig = async () => {
@@ -492,6 +492,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
 
             <div className="border-t border-gray-100 pt-4 space-y-3">
                 <h5 className="text-sm font-semibold text-gray-800">AI 配置</h5>
+                <p className="text-xs text-gray-400">用于「ai评估润色、JD 匹配分析、求职信」功能</p>
 
                 {!isAuthenticated ? (
                     <div className="flex items-center gap-2">
@@ -583,8 +584,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
             </div>
 
             <div className="border-t border-gray-100 pt-4 space-y-3">
-                <h5 className="text-sm font-semibold text-gray-800">简历解析配置</h5>
-                <p className="text-xs text-gray-400">用于「新建简历 → 解析简历导入」功能，独立于 AI 评估配置</p>
+                <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 p-3 space-y-3">
+                    <div>
+                        <h6 className="text-xs font-semibold text-gray-600">简历解析专用</h6>
+                        <p className="text-[11px] text-gray-400 mt-0.5">仅用于「新建简历 → 解析简历导入」的文件识别，与上方 AI 评估独立配置</p>
+                    </div>
 
                 {!isAuthenticated ? (
                     <p className="text-xs text-gray-500">请登录后配置</p>
@@ -658,6 +662,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                         )}
                     </>
                 )}
+                </div>
             </div>
         </div>
     )
@@ -712,9 +717,9 @@ const RightPanel: React.FC = () => {
         resetCoverLetter,
     } = useCoverLetter()
 
-    // 打开设置时从后端加载 AI 配置
+    // 组件挂载时从后端加载 AI 配置（按用户 ID，不依赖是否打开设置）
     useEffect(() => {
-        if (!showSettings || !isAuthenticated) {
+        if (!isAuthenticated) {
             setAiConfigFromServer(null)
             return
         }
@@ -725,9 +730,9 @@ const RightPanel: React.FC = () => {
                 defaultModel: config.defaultModel,
             })
         }).catch(() => {
-            setAiConfigFromServer(null)
+            // 未配置时静默忽略
         })
-    }, [showSettings, isAuthenticated])
+    }, [isAuthenticated])
 
     // 进入评估面板时：加载最新评估历史，无历史且未登录才触发评估
     useEffect(() => {
@@ -795,7 +800,7 @@ const RightPanel: React.FC = () => {
                         setRestoredJDMatch(ctx as unknown as JDMatchResponse)
                     }
                 }
-            }).catch(() => {})
+            }).catch(() => { })
         } else if (activeAITool === 'cover_letter') {
             setRestoredCoverLetter(null)
             aiApi.getConversations({ type: 'cover_letter', resumeId: resume.id, pageSize: 1 }).then((res) => {
@@ -811,7 +816,7 @@ const RightPanel: React.FC = () => {
                         setRestoredCoverLetter(ctx as unknown as CoverLetterResponse)
                     }
                 }
-            }).catch(() => {})
+            }).catch(() => { })
         }
     }, [showAIEvaluation, activeAITool, isAuthenticated, resume.id])
 
