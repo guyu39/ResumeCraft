@@ -18,6 +18,7 @@ import (
 	aiStorage "resumecraft-pdf-backend/internal/storage/ai"
 	"resumecraft-pdf-backend/internal/storage/db"
 	exportStorage "resumecraft-pdf-backend/internal/storage/export"
+	"resumecraft-pdf-backend/internal/storage/object"
 	resumeStorage "resumecraft-pdf-backend/internal/storage/resume"
 
 	"github.com/gin-gonic/gin"
@@ -56,9 +57,12 @@ func NewServer() *http.Server {
 				// 初始化简历服务
 				resumeRepo := resumeStorage.NewRepository(pool)
 				resumeService = resume.NewService(resumeRepo)
+				// 初始化对象存储
+				objectStorage := object.NewObjectStorage(cfg.Storage)
+
 				// 初始化导出服务
 				exportRepo := exportStorage.NewInMemoryRepository()
-				exportService = export.NewService(exportRepo, resumeService, pdfService, 3)
+				exportService = export.NewService(exportRepo, resumeService, pdfService, 3, objectStorage)
 				// 初始化 AI 服务
 				aiRepo := aiStorage.NewRepository(pool)
 				aiCfgRepo := aiStorage.NewConfigRepository(pool)
@@ -68,7 +72,10 @@ func NewServer() *http.Server {
 		}
 	}
 
-	h := handler.New(pdfService, authService, resumeService, exportService, aiService)
+	// 初始化对象存储（不依赖数据库）
+	objectStorage := object.NewObjectStorage(cfg.Storage)
+
+	h := handler.New(pdfService, authService, resumeService, exportService, aiService, objectStorage)
 	router.Register(engine, h, cfg.Server.FrontendDistDir)
 
 	server := &http.Server{

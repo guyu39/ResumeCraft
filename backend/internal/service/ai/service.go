@@ -35,6 +35,8 @@ type Service interface {
 	// AI 操作
 	EvaluateStream(ctx context.Context, userID string, req model.EvaluateRequest, onChunk func(chunk string)) (*model.EvaluateResponse, error)
 	StreamEvaluate(ctx context.Context, userID string, req model.EvaluateRequest, onEvent func(StreamEvent)) (*model.EvaluateResponse, error)
+	StreamJDMatch(ctx context.Context, userID string, req model.JDMatchRequest, onEvent func(StreamEvent)) (*model.JDMatchResponse, error)
+	GenerateCoverLetter(ctx context.Context, userID string, req model.CoverLetterRequest) (*model.CoverLetterResponse, error)
 	Suggest(ctx context.Context, userID string, req model.SuggestRequest) (*model.SuggestResponse, error)
 
 	// 对话消息
@@ -509,6 +511,302 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 	return evalResp, nil
 }
 
+// StreamJDMatch 流式分析简历与 JD 的匹配度
+func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JDMatchRequest, onEvent func(StreamEvent)) (*model.JDMatchResponse, error) {
+	cfg, err := s.cfgRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+	if !cfg.Enabled {
+		return nil, fmt.Errorf("AI 功能未启用")
+	}
+	apiKey, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt API key")
+	}
+
+	jdMatchModel := cfg.DefaultModel
+	prompt := buildJDMatchPrompt(req.Content, req.JDText, req.TargetTitle, req.CompanyName)
+	onEvent(StreamEvent{Type: "model", Model: jdMatchModel})
+
+	accumulated := &strings.Builder{}
+	pendingBuf := ""
+	ch := make(chan string)
+	doneCh := make(chan struct{})
+
+	var (
+		pendingSummary     string
+		pendingScore       *int
+		pendingLevel       string
+		pendingKeywords    []model.JDKeywordMatch
+		pendingStrengths   []string
+		pendingGaps        []model.JDGap
+		pendingSuggestions []model.JDResumeSuggestion
+		pendingActions     []string
+		prevType           string
+	)
+
+	flushModule := func() {
+		if pendingSummary != "" {
+			onEvent(StreamEvent{Type: "summary", Summary: pendingSummary})
+			pendingSummary = ""
+		}
+		if pendingScore != nil || pendingLevel != "" {
+			onEvent(StreamEvent{Type: "match_score", MatchScore: pendingScore, Level: pendingLevel})
+			pendingScore = nil
+			pendingLevel = ""
+		}
+		if len(pendingKeywords) > 0 {
+			onEvent(StreamEvent{Type: "keyword_match", KeywordMatches: pendingKeywords})
+			pendingKeywords = nil
+		}
+		if len(pendingStrengths) > 0 {
+			onEvent(StreamEvent{Type: "strength_item", Strengths: pendingStrengths})
+			pendingStrengths = nil
+		}
+		if len(pendingGaps) > 0 {
+			onEvent(StreamEvent{Type: "gap_item", Gaps: pendingGaps})
+			pendingGaps = nil
+		}
+		if len(pendingSuggestions) > 0 {
+			onEvent(StreamEvent{Type: "resume_suggestion", ResumeSuggestions: pendingSuggestions})
+			pendingSuggestions = nil
+		}
+		if len(pendingActions) > 0 {
+			onEvent(StreamEvent{Type: "action_item", ActionItems: pendingActions})
+			pendingActions = nil
+		}
+	}
+
+	flushLine := func(line string) {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "{") || !strings.HasSuffix(line, "}") {
+			return
+		}
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			return
+		}
+		accumulated.WriteString(line + "\n")
+
+		evtType := getString(obj["type"])
+		if prevType != "" && evtType != prevType {
+			flushModule()
+			time.Sleep(200 * time.Millisecond)
+		}
+		prevType = evtType
+
+		switch evtType {
+		case "summary":
+			pendingSummary = getString(obj["content"])
+		case "match_score":
+			score := int(getFloat(obj["score"]))
+			if score == 0 {
+				score = int(getFloat(obj["matchScore"]))
+			}
+			pendingScore = &score
+			pendingLevel = getString(obj["level"])
+		case "keyword_match":
+			pendingKeywords = append(pendingKeywords, model.JDKeywordMatch{
+				Keyword:  getString(obj["keyword"]),
+				Required: getBool(obj["required"]),
+				Matched:  getBool(obj["matched"]),
+				Evidence: getString(obj["evidence"]),
+			})
+		case "strength_item":
+			pendingStrengths = append(pendingStrengths, getString(obj["content"]))
+		case "gap_item":
+			pendingGaps = append(pendingGaps, model.JDGap{
+				Severity:        getString(obj["severity"]),
+				Requirement:     getString(obj["requirement"]),
+				CurrentEvidence: getString(obj["currentEvidence"]),
+				Suggestion:      getString(obj["suggestion"]),
+			})
+		case "resume_suggestion":
+			pendingSuggestions = append(pendingSuggestions, model.JDResumeSuggestion{
+				ModuleType: getString(obj["moduleType"]),
+				Title:      getString(obj["title"]),
+				Suggestion: getString(obj["suggestion"]),
+			})
+		case "action_item":
+			pendingActions = append(pendingActions, getString(obj["content"]))
+		case "finish":
+			flushModule()
+			onEvent(StreamEvent{Type: "finish"})
+		}
+	}
+
+	go func() {
+		defer close(doneCh)
+		for raw := range ch {
+			for _, r := range raw {
+				pendingBuf += string(r)
+				if string(r) == "\n" {
+					flushLine(pendingBuf)
+					pendingBuf = ""
+				}
+			}
+		}
+		if pendingBuf != "" {
+			flushLine(pendingBuf)
+		}
+	}()
+
+	_, err = s.aiProvider.StreamComplete(ctx, CompleteRequest{
+		APIKey:    apiKey,
+		BaseURL:   cfg.BaseURL,
+		Model:     jdMatchModel,
+		Prompt:    prompt,
+		TimeoutMs: cfg.TimeoutMs,
+		OnProgress: func(chunk string) {
+			ch <- chunk
+		},
+	})
+	close(ch)
+	<-doneCh
+	if err != nil {
+		log.Printf("[ai] StreamJDMatch failed: %v", err)
+		return nil, ErrAIRequestFailed
+	}
+
+	fullText := accumulated.String()
+	jdResp, err := parseJDMatchResponse(fullText)
+	if err != nil {
+		log.Printf("[ai] Failed to parse JD match response: %v, text: %s", err, fullText)
+		return nil, fmt.Errorf("failed to parse AI response")
+	}
+	jdResp.Model = jdMatchModel
+
+	convID := uuid.New().String()
+	contextData := map[string]any{
+		"matchScore":        jdResp.MatchScore,
+		"level":             jdResp.Level,
+		"summary":           jdResp.Summary,
+		"keywordMatches":    jdResp.KeywordMatches,
+		"strengths":         jdResp.Strengths,
+		"gaps":              jdResp.Gaps,
+		"resumeSuggestions": jdResp.ResumeSuggestions,
+		"actionItems":       jdResp.ActionItems,
+		"model":             jdResp.Model,
+		"targetTitle":       req.TargetTitle,
+		"companyName":       req.CompanyName,
+	}
+	contextJSON, _ := json.Marshal(contextData)
+	title := "JD匹配分析"
+	if strings.TrimSpace(req.TargetTitle) != "" {
+		title = fmt.Sprintf("JD匹配 - %s", strings.TrimSpace(req.TargetTitle))
+	}
+	conversation := &aiStorage.ConversationRecord{
+		ID:       convID,
+		UserID:   userID,
+		ResumeID: &req.ResumeID,
+		Type:     string(model.ConversationTypeJDMatch),
+		Title:    stringPtr(title),
+		Context:  contextJSON,
+	}
+	if err := s.repo.Create(ctx, conversation); err != nil {
+		log.Printf("[ai] Failed to create JD match conversation: %v", err)
+	}
+	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+		ID:             uuid.New().String(),
+		ConversationID: convID,
+		Role:           "user",
+		Content:        prompt,
+		Model:          &jdMatchModel,
+	})
+	jdResp.ConversationID = convID
+	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+		ID:             uuid.New().String(),
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        fullText,
+		Model:          &jdMatchModel,
+	})
+
+	return jdResp, nil
+}
+
+// GenerateCoverLetter 生成求职信
+func (s *service) GenerateCoverLetter(ctx context.Context, userID string, req model.CoverLetterRequest) (*model.CoverLetterResponse, error) {
+	cfg, err := s.cfgRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+	if !cfg.Enabled {
+		return nil, fmt.Errorf("AI 功能未启用")
+	}
+	apiKey, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt API key")
+	}
+
+	prompt := buildCoverLetterPrompt(req.Content, req.JDText, req.JobTitle, req.CompanyName, req.Tone, req.Language)
+	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
+		APIKey:    apiKey,
+		BaseURL:   cfg.BaseURL,
+		Model:     cfg.DefaultModel,
+		Prompt:    prompt,
+		TimeoutMs: cfg.TimeoutMs,
+	})
+	if err != nil {
+		log.Printf("[ai] GenerateCoverLetter failed: %v", err)
+		return nil, ErrAIRequestFailed
+	}
+
+	coverResp, err := parseCoverLetterResponse(result.Text)
+	if err != nil {
+		log.Printf("[ai] Failed to parse cover letter response: %v", err)
+		return nil, fmt.Errorf("failed to parse AI response")
+	}
+	coverResp.Model = cfg.DefaultModel
+
+	convID := uuid.New().String()
+	contextData := map[string]any{
+		"title":          coverResp.Title,
+		"coverLetter":    coverResp.CoverLetter,
+		"highlightsUsed": coverResp.HighlightsUsed,
+		"tips":           coverResp.Tips,
+		"model":          coverResp.Model,
+		"jobTitle":       req.JobTitle,
+		"companyName":    req.CompanyName,
+		"tone":           req.Tone,
+		"language":       req.Language,
+	}
+	contextJSON, _ := json.Marshal(contextData)
+	title := "求职信生成"
+	if strings.TrimSpace(req.JobTitle) != "" {
+		title = fmt.Sprintf("求职信 - %s", strings.TrimSpace(req.JobTitle))
+	}
+	conversation := &aiStorage.ConversationRecord{
+		ID:       convID,
+		UserID:   userID,
+		ResumeID: &req.ResumeID,
+		Type:     string(model.ConversationTypeCoverLetter),
+		Title:    stringPtr(title),
+		Context:  contextJSON,
+	}
+	if err := s.repo.Create(ctx, conversation); err != nil {
+		log.Printf("[ai] Failed to create cover letter conversation: %v", err)
+	}
+	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+		ID:             uuid.New().String(),
+		ConversationID: convID,
+		Role:           "user",
+		Content:        prompt,
+		Model:          &cfg.DefaultModel,
+	})
+	coverResp.ConversationID = convID
+	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+		ID:             uuid.New().String(),
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        result.Text,
+		Model:          &cfg.DefaultModel,
+	})
+
+	return coverResp, nil
+}
+
 // PartialEvaluateResult 部分评估结果（流式推送用）
 type PartialEvaluateResult struct {
 	Raw          string                    `json:"raw,omitempty"`
@@ -525,15 +823,20 @@ type PartialEvaluateResult struct {
 
 // StreamEvent 流式 SSE 事件，封装所有可能推送给前端的数据结构
 type StreamEvent struct {
-	Type         string                    `json:"type"` // "model" | "summary" | "overall_score" | "dimension_score" | "issue_item" | "action_item" | "finish"
-	Model        string                    `json:"model,omitempty"`
-	Summary      string                    `json:"summary,omitempty"`
-	OverallScore *int                      `json:"overallScore,omitempty"`
-	Level        string                    `json:"level,omitempty"`
-	Dimensions   []model.EvaluateDimension `json:"dimensions,omitempty"`
-	Issues       []model.EvaluateIssue     `json:"issues,omitempty"`
-	ActionItems  []string                  `json:"actionItems,omitempty"`
-	RawText      string                    `json:"rawText,omitempty"` // 用于 debug 的原始行文本
+	Type              string                     `json:"type"` // "model" | "summary" | "overall_score" | "dimension_score" | "issue_item" | "action_item" | "finish"
+	Model             string                     `json:"model,omitempty"`
+	Summary           string                     `json:"summary,omitempty"`
+	OverallScore      *int                       `json:"overallScore,omitempty"`
+	MatchScore        *int                       `json:"matchScore,omitempty"`
+	Level             string                     `json:"level,omitempty"`
+	Dimensions        []model.EvaluateDimension  `json:"dimensions,omitempty"`
+	Issues            []model.EvaluateIssue      `json:"issues,omitempty"`
+	KeywordMatches    []model.JDKeywordMatch     `json:"keywordMatches,omitempty"`
+	Strengths         []string                   `json:"strengths,omitempty"`
+	Gaps              []model.JDGap              `json:"gaps,omitempty"`
+	ResumeSuggestions []model.JDResumeSuggestion `json:"resumeSuggestions,omitempty"`
+	ActionItems       []string                   `json:"actionItems,omitempty"`
+	RawText           string                     `json:"rawText,omitempty"` // 用于 debug 的原始行文本
 }
 
 // tryParsePartial 从累积文本中解析部分结果，支持 NDJSON 格式
@@ -673,22 +976,22 @@ func (s *service) Suggest(ctx context.Context, userID string, req model.SuggestR
 	// 创建对话会话，context 保存润色结果
 	convID := uuid.New().String()
 	contextData := map[string]any{
-		"moduleType":        req.ModuleType,
+		"moduleType":       req.ModuleType,
 		"moduleInstanceId": req.ModuleInstanceID,
-		"fieldKey":          req.FieldKey,
+		"fieldKey":         req.FieldKey,
 		"contentHash":      req.ContentHash,
-		"suggestions":       suggestResp.Suggestions,
+		"suggestions":      suggestResp.Suggestions,
 	}
 	contextJSON, _ := json.Marshal(contextData)
 	conversation := &aiStorage.ConversationRecord{
-		ID:                convID,
-		UserID:            userID,
-		ResumeID:          &req.ResumeID,
-		Type:              string(model.ConversationTypeSuggest),
-		Title:             stringPtr(fmt.Sprintf("润色 - %s", req.ModuleType)),
-		Context:           contextJSON,
-		ModuleType:        req.ModuleType,
-		ModuleInstanceID:  req.ModuleInstanceID,
+		ID:               convID,
+		UserID:           userID,
+		ResumeID:         &req.ResumeID,
+		Type:             string(model.ConversationTypeSuggest),
+		Title:            stringPtr(fmt.Sprintf("润色 - %s", req.ModuleType)),
+		Context:          contextJSON,
+		ModuleType:       req.ModuleType,
+		ModuleInstanceID: req.ModuleInstanceID,
 	}
 	if err := s.repo.Create(ctx, conversation); err != nil {
 		log.Printf("[ai] Failed to create conversation: %v", err)
@@ -732,6 +1035,142 @@ func (s *service) AddMessage(ctx context.Context, conversationID, role, content 
 }
 
 // ============ 提示词构建 ============
+
+func sanitizeAIResumeContent(content map[string]interface{}) map[string]interface{} {
+	result := map[string]interface{}{
+		"title":  truncateString(getString(content["title"]), 200),
+		"locale": truncateString(getString(content["locale"]), 20),
+	}
+
+	modulesValue, ok := content["modules"].([]interface{})
+	if !ok {
+		return result
+	}
+
+	modules := make([]map[string]interface{}, 0, len(modulesValue))
+	for _, moduleValue := range modulesValue {
+		module, ok := moduleValue.(map[string]interface{})
+		if !ok || module["visible"] == false {
+			continue
+		}
+
+		moduleType := getString(module["type"])
+		sanitized := map[string]interface{}{
+			"type":  moduleType,
+			"title": truncateString(getString(module["title"]), 100),
+			"data":  sanitizeModuleData(moduleType, module["data"]),
+		}
+		modules = append(modules, sanitized)
+	}
+
+	result["modules"] = modules
+	return result
+}
+
+func sanitizeModuleData(moduleType string, dataValue interface{}) interface{} {
+	data, ok := dataValue.(map[string]interface{})
+	if !ok {
+		return map[string]interface{}{}
+	}
+
+	switch moduleType {
+	case "personal":
+		return pickStringFields(data, []string{"name", "targetPosition", "phone", "email", "gender", "education", "personalAccount", "city", "website", "github", "linkedin", "workYears", "politics", "age", "hometown"})
+	case "skills", "summary":
+		result := pickStringFields(data, []string{"content"})
+		if items, ok := data["items"].([]interface{}); ok {
+			result["items"] = sanitizeItems(items, []string{"name", "level"}, 80)
+		}
+		return result
+	case "custom":
+		result := pickStringFields(data, []string{"title"})
+		if items, ok := data["items"].([]interface{}); ok {
+			result["items"] = sanitizeItems(items, []string{"title", "content", "date"}, 1200)
+		}
+		return result
+	default:
+		if items, ok := data["items"].([]interface{}); ok {
+			return map[string]interface{}{"items": sanitizeItems(items, fieldsForModule(moduleType), 1200)}
+		}
+		return pickStringFields(data, fieldsForModule(moduleType))
+	}
+}
+
+func fieldsForModule(moduleType string) []string {
+	switch moduleType {
+	case "education":
+		return []string{"school", "major", "degree", "startDate", "endDate", "gpa", "honors", "schoolExperience"}
+	case "work":
+		return []string{"company", "position", "department", "startDate", "endDate", "description", "companySize"}
+	case "project":
+		return []string{"name", "role", "startDate", "endDate", "description", "link", "techStack"}
+	case "awards":
+		return []string{"name", "level", "date", "description"}
+	case "certificates":
+		return []string{"name", "date", "issuer"}
+	case "portfolio":
+		return []string{"title", "url", "description"}
+	case "languages":
+		return []string{"language", "level"}
+	default:
+		return []string{"content", "description", "title"}
+	}
+}
+
+func sanitizeItems(items []interface{}, fields []string, maxTextLength int) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(items))
+	for _, itemValue := range items {
+		item, ok := itemValue.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		result = append(result, pickFields(item, fields, maxTextLength))
+	}
+	return result
+}
+
+func pickStringFields(data map[string]interface{}, fields []string) map[string]interface{} {
+	return pickFields(data, fields, 1200)
+}
+
+func pickFields(data map[string]interface{}, fields []string, maxTextLength int) map[string]interface{} {
+	result := map[string]interface{}{}
+	for _, field := range fields {
+		value, ok := data[field]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case string:
+			if strings.TrimSpace(typed) != "" {
+				result[field] = truncateString(typed, maxTextLength)
+			}
+		case []interface{}:
+			values := make([]string, 0, len(typed))
+			for _, item := range typed {
+				text := truncateString(getString(item), 80)
+				if text != "" {
+					values = append(values, text)
+				}
+			}
+			if len(values) > 0 {
+				result[field] = values
+			}
+		case float64, bool:
+			result[field] = typed
+		}
+	}
+	return result
+}
+
+func truncateString(value string, maxLength int) string {
+	value = strings.TrimSpace(value)
+	if len([]rune(value)) <= maxLength {
+		return value
+	}
+	runes := []rune(value)
+	return string(runes[:maxLength]) + "..."
+}
 
 func buildEvaluatePrompt(content map[string]interface{}) string {
 	var sb strings.Builder
@@ -783,9 +1222,95 @@ func buildEvaluatePrompt(content map[string]interface{}) string {
 	sb.WriteString("3. issues必须按严重程度高→中→低排序输出，无对应问题则不输出该issue_item，核心模块缺失必须归为high严重程度。\n")
 
 	sb.WriteString("\n简历 JSON：\n")
-	data, _ := json.Marshal(content)
+	data, _ := json.Marshal(sanitizeAIResumeContent(content))
 	sb.WriteString(string(data))
 	return sb.String()
+}
+
+func buildJDMatchPrompt(content map[string]interface{}, jdText, targetTitle, companyName string) string {
+	resumeJSON, _ := json.Marshal(sanitizeAIResumeContent(content))
+	return fmt.Sprintf(`你是资深招聘顾问和简历优化专家，请基于候选人简历与目标岗位 JD 做匹配分析。
+
+【输出格式强制规则】
+1. 必须使用 JSON Lines 格式输出，每行一个完整 JSON 对象，每行以换行符结尾。
+2. 禁止输出 Markdown、解释性文字、代码块或任何非 JSON 内容。
+3. type 仅允许：summary、match_score、keyword_match、strength_item、gap_item、resume_suggestion、action_item、finish。
+4. 输出顺序必须固定为：summary → match_score → keyword_match → strength_item → gap_item → resume_suggestion → action_item → finish。
+5. finish 必须是最后一行。
+
+【每个 type 的 JSON 结构】
+- {"type":"summary","content":"180字以内概述候选人与岗位的匹配情况"}
+- {"type":"match_score","score":0-100整数,"level":"A/A-/B+/B/B-/C+/C/D"}
+- {"type":"keyword_match","keyword":"JD关键词","required":true/false,"matched":true/false,"evidence":"简历中的证据，未体现则写未体现"}
+- {"type":"strength_item","content":"候选人与岗位匹配的优势"}
+- {"type":"gap_item","severity":"high/medium/low","requirement":"JD要求","currentEvidence":"当前简历证据或未体现","suggestion":"补充或优化建议"}
+- {"type":"resume_suggestion","moduleType":"personal/education/work/project/skills/awards/summary/certificates/portfolio/languages/custom","title":"建议标题","suggestion":"具体修改建议"}
+- {"type":"action_item","content":"下一步可执行动作"}
+- {"type":"finish","timestamp":"毫秒级时间戳"}
+
+【分析规则】
+1. 只基于给定简历和 JD 分析，不编造候选人没有的经历。
+2. 关键词需覆盖 JD 中的核心技能、职责、业务领域、经验年限和软技能要求。
+3. 匹配分数必须体现证据充分性：简历未体现的要求不能算匹配。
+4. gaps 优先输出高影响缺口，resume_suggestion 必须能指导用户直接修改简历。
+5. 若 JD 或简历有效信息不足，必须在 summary 中明确说明，并降低匹配分数。
+
+【目标岗位】
+%s
+
+【目标公司】
+%s
+
+【岗位 JD】
+%s
+
+【简历 JSON】
+%s`, strings.TrimSpace(targetTitle), strings.TrimSpace(companyName), strings.TrimSpace(jdText), string(resumeJSON))
+}
+
+func buildCoverLetterPrompt(content map[string]interface{}, jdText, jobTitle, companyName, tone, language string) string {
+	resumeJSON, _ := json.Marshal(sanitizeAIResumeContent(content))
+	if strings.TrimSpace(tone) == "" {
+		tone = "professional"
+	}
+	if strings.TrimSpace(language) == "" {
+		language = "zh-CN"
+	}
+
+	return fmt.Sprintf(`你是资深职业顾问，请基于候选人简历和目标岗位信息生成专业求职信或投递邮件正文。
+
+【强制规则】
+1. 只返回一个 JSON 对象，禁止输出 Markdown、代码块、注释或额外说明。
+2. 不编造简历中不存在的经历、公司、奖项或数据。
+3. 求职信要自然、具体、适合直接复制使用，避免空泛套话。
+4. 如果 JD 为空，基于岗位名称和简历亮点生成通用但专业的版本。
+5. language 为 zh-CN 时使用中文；为 en-US 时使用英文。
+
+【返回格式】
+{
+  "title": "求职信 - 岗位名称",
+  "coverLetter": "完整求职信正文",
+  "highlightsUsed": ["使用到的简历亮点"],
+  "tips": ["投递前建议"]
+}
+
+【目标岗位】
+%s
+
+【目标公司】
+%s
+
+【语气风格】
+%s
+
+【语言】
+%s
+
+【岗位 JD】
+%s
+
+【简历 JSON】
+%s`, strings.TrimSpace(jobTitle), strings.TrimSpace(companyName), strings.TrimSpace(tone), strings.TrimSpace(language), strings.TrimSpace(jdText), string(resumeJSON))
 }
 
 func buildSuggestPrompt(moduleType, fieldKey, content string) string {
@@ -905,6 +1430,118 @@ func getFloat(v interface{}) float64 {
 	return 0
 }
 
+func getBool(v interface{}) bool {
+	if b, ok := v.(bool); ok {
+		return b
+	}
+	return false
+}
+
+func parseJDMatchResponse(text string) (*model.JDMatchResponse, error) {
+	resp := &model.JDMatchResponse{
+		KeywordMatches:    []model.JDKeywordMatch{},
+		Strengths:         []string{},
+		Gaps:              []model.JDGap{},
+		ResumeSuggestions: []model.JDResumeSuggestion{},
+		ActionItems:       []string{},
+		RawText:           text,
+	}
+
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "{") {
+			continue
+		}
+
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+
+		switch getString(obj["type"]) {
+		case "summary":
+			resp.Summary = getString(obj["content"])
+		case "match_score":
+			resp.MatchScore = int(getFloat(obj["score"]))
+			if resp.MatchScore == 0 {
+				resp.MatchScore = int(getFloat(obj["matchScore"]))
+			}
+			resp.Level = getString(obj["level"])
+		case "keyword_match":
+			if keyword := getString(obj["keyword"]); keyword != "" {
+				resp.KeywordMatches = append(resp.KeywordMatches, model.JDKeywordMatch{
+					Keyword:  keyword,
+					Required: getBool(obj["required"]),
+					Matched:  getBool(obj["matched"]),
+					Evidence: getString(obj["evidence"]),
+				})
+			}
+		case "strength_item":
+			if content := getString(obj["content"]); content != "" {
+				resp.Strengths = append(resp.Strengths, content)
+			}
+		case "gap_item":
+			if requirement := getString(obj["requirement"]); requirement != "" {
+				resp.Gaps = append(resp.Gaps, model.JDGap{
+					Severity:        getString(obj["severity"]),
+					Requirement:     requirement,
+					CurrentEvidence: getString(obj["currentEvidence"]),
+					Suggestion:      getString(obj["suggestion"]),
+				})
+			}
+		case "resume_suggestion":
+			if suggestion := getString(obj["suggestion"]); suggestion != "" {
+				resp.ResumeSuggestions = append(resp.ResumeSuggestions, model.JDResumeSuggestion{
+					ModuleType: getString(obj["moduleType"]),
+					Title:      getString(obj["title"]),
+					Suggestion: suggestion,
+				})
+			}
+		case "action_item":
+			if content := getString(obj["content"]); content != "" {
+				resp.ActionItems = append(resp.ActionItems, content)
+			}
+		}
+	}
+
+	if resp.Summary == "" && resp.MatchScore == 0 && len(resp.KeywordMatches) == 0 {
+		return nil, fmt.Errorf("failed to parse JD match response: no valid data found")
+	}
+
+	return resp, nil
+}
+
+func parseCoverLetterResponse(text string) (*model.CoverLetterResponse, error) {
+	firstBrace := strings.Index(text, "{")
+	lastBrace := strings.LastIndex(text, "}")
+	if firstBrace == -1 || lastBrace == -1 || lastBrace <= firstBrace {
+		return nil, fmt.Errorf("invalid JSON response")
+	}
+	jsonStr := text[firstBrace : lastBrace+1]
+
+	var resp struct {
+		Title          string   `json:"title"`
+		CoverLetter    string   `json:"coverLetter"`
+		HighlightsUsed []string `json:"highlightsUsed"`
+		Tips           []string `json:"tips"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(resp.CoverLetter) == "" {
+		return nil, fmt.Errorf("cover letter is empty")
+	}
+
+	return &model.CoverLetterResponse{
+		Title:          resp.Title,
+		CoverLetter:    resp.CoverLetter,
+		HighlightsUsed: resp.HighlightsUsed,
+		Tips:           resp.Tips,
+		RawText:        text,
+	}, nil
+}
+
 func parseSuggestResponse(text string) (*model.SuggestResponse, error) {
 	firstBrace := strings.Index(text, "{")
 	lastBrace := strings.LastIndex(text, "}")
@@ -996,7 +1633,7 @@ func (s *service) SaveSuggestRecordFull(ctx context.Context, userID string, req 
 		ModuleType:       req.ModuleType,
 		ModuleInstanceID: req.ModuleInstanceID,
 		FieldKey:         req.FieldKey,
-		OriginalContent:   req.OriginalContent,
+		OriginalContent:  req.OriginalContent,
 		OptimizedContent: &optContent,
 	}
 	return s.suggestRecordRepo.Create(ctx, record)

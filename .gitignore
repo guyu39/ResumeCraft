@@ -29,6 +29,7 @@ npm-debug.log*
 # Docker
 docker/postgres-data/
 docker/postgres-logs/
+docker/minio-data/
 
 # Misc
 .claude/

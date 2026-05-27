@@ -347,10 +347,8 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
             setSelectedHistoryId(null)
             return
         }
-        // 打开时：自动加载评估历史
+        // 打开时：加载评估历史
         setHistoryLoading(true)
-        // 用 authAtOpen 捕获此刻的登录状态，避免 Promise 异步回调中 state 已变化
-        const authAtOpen = isAuthenticated
         aiApi.getConversations({ type: 'evaluate', resumeId, pageSize: 5 }).then((res) => {
             const items = res.items || []
             setConversationHistory(items)
@@ -360,9 +358,6 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                 setSelectedHistoryId(latestId)
                 setShowHistory(false)
                 onConversationSelect?.(latestId)
-            } else if (authAtOpen) {
-                // 打开时无历史记录且已登录：自动触发评估
-                onReevaluate()
             }
         }).catch(() => {
             setConversationHistory([])

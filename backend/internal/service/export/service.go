@@ -1,6 +1,7 @@
 package export
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"resumecraft-pdf-backend/internal/service/pdf"
 	"resumecraft-pdf-backend/internal/service/resume"
 	exportStorage "resumecraft-pdf-backend/internal/storage/export"
+	"resumecraft-pdf-backend/internal/storage/object"
 )
 
 var (
@@ -19,24 +21,30 @@ var (
 type Service interface {
 	CreateTask(ctx context.Context, userID, resumeID string, req model.CreateExportRequest) (*model.ExportTask, error)
 	GetTask(ctx context.Context, taskID string) (*model.ExportTask, error)
+	GetRepo() exportStorage.Repository
 }
 
 type service struct {
-	exportRepo  exportStorage.Repository
-	resumeSvc   resume.Service
-	pdfService  pdf.Service
-	taskQueue   chan string
-	wg          sync.WaitGroup
-	stopCh      chan struct{}
+	exportRepo    exportStorage.Repository
+	resumeSvc     resume.Service
+	pdfService    pdf.Service
+	objectStorage object.ObjectStorage
+	taskQueue     chan string
+	wg            sync.WaitGroup
+	stopCh        chan struct{}
 }
 
-func NewService(exportRepo exportStorage.Repository, resumeSvc resume.Service, pdfService pdf.Service, concurrency int) Service {
+func NewService(exportRepo exportStorage.Repository, resumeSvc resume.Service, pdfService pdf.Service, concurrency int, objectStorage object.ObjectStorage) Service {
 	svc := &service{
-		exportRepo: exportRepo,
-		resumeSvc:  resumeSvc,
-		pdfService: pdfService,
-		taskQueue:  make(chan string, 100),
-		stopCh:    make(chan struct{}),
+		exportRepo:    exportRepo,
+		resumeSvc:     resumeSvc,
+		pdfService:    pdfService,
+		objectStorage: objectStorage,
+		taskQueue:     make(chan string, 100),
+		stopCh:        make(chan struct{}),
+	}
+	if objectStorage == nil {
+		svc.objectStorage = &object.NoopClient{}
 	}
 
 	// 启动 worker 池
@@ -95,10 +103,21 @@ func (s *service) processTask(taskID string) {
 
 	s.exportRepo.UpdateStatus(ctx, taskID, model.ExportStatusProcessing, 90)
 
-	// 保存成功
-	if err := s.exportRepo.UpdateSuccess(ctx, taskID, pdfBytes); err != nil {
-		log.Printf("[export] worker: update success failed: %v", err)
-		return
+	// 上传 PDF 到对象存储
+	fileKey := "exports/" + taskID + ".pdf"
+	fileURL, err := s.objectStorage.Upload(ctx, fileKey, bytes.NewReader(pdfBytes), int64(len(pdfBytes)), "application/pdf")
+	if err != nil {
+		log.Printf("[export] worker: upload pdf to storage failed: %v, falling back to memory", err)
+		// 降级到内存存储
+		if err := s.exportRepo.UpdateSuccess(ctx, taskID, pdfBytes); err != nil {
+			log.Printf("[export] worker: update success failed: %v", err)
+			return
+		}
+	} else {
+		if err := s.exportRepo.UpdateSuccessWithURL(ctx, taskID, fileURL, fileKey); err != nil {
+			log.Printf("[export] worker: update success with url failed: %v", err)
+			return
+		}
 	}
 
 	log.Printf("[export] worker: task %s completed successfully", taskID)
@@ -132,6 +151,10 @@ func (s *service) GetTask(ctx context.Context, taskID string) (*model.ExportTask
 		return nil, err
 	}
 	return exportStorage.TaskToExportTask(task), nil
+}
+
+func (s *service) GetRepo() exportStorage.Repository {
+	return s.exportRepo
 }
 
 func (s *service) Stop() {

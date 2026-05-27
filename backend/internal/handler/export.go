@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"resumecraft-pdf-backend/internal/middleware"
 	"resumecraft-pdf-backend/internal/model"
@@ -76,4 +77,57 @@ func (h *Handler) GetExportTask(c *gin.Context) {
 	}
 
 	response.JSONSuccess(c, task)
+}
+
+// DownloadExport 下载导出文件
+// GET /api/exports/:taskId/download
+func (h *Handler) DownloadExport(c *gin.Context) {
+	taskID := c.Param("taskId")
+	if taskID == "" {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "任务ID不能为空")
+		return
+	}
+
+	task, err := h.exportService.GetTask(c.Request.Context(), taskID)
+	if err != nil {
+		if errors.Is(err, export.ErrTaskNotFound) {
+			response.JSONError(c, http.StatusNotFound, "EXPORT_TASK_NOT_FOUND", "导出任务不存在")
+			return
+		}
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "获取任务失败")
+		return
+	}
+
+	if task.Status != model.ExportStatusSuccess {
+		response.JSONError(c, http.StatusBadRequest, "TASK_NOT_COMPLETED", "导出尚未完成")
+		return
+	}
+
+	fullTask, err := h.exportService.GetRepo().GetByID(c.Request.Context(), taskID)
+	if err != nil {
+		response.JSONError(c, http.StatusNotFound, "EXPORT_TASK_NOT_FOUND", "导出任务不存在")
+		return
+	}
+
+	// 如果有 FileData（noop 降级），直接返回
+	if len(fullTask.FileData) > 0 {
+		c.Data(http.StatusOK, "application/pdf", fullTask.FileData)
+		return
+	}
+
+	// 如果有 FileURL（对象存储），生成预签名 URL 并重定向
+	if fullTask.FileURL != "" {
+		if h.objectStorage != nil {
+			presignedURL, err := h.objectStorage.PresignedGetURL(c.Request.Context(), fullTask.FileKey, 15*time.Minute)
+			if err == nil {
+				c.Redirect(http.StatusFound, presignedURL)
+				return
+			}
+		}
+		// 降级：直接重定向到对象存储 URL
+		c.Redirect(http.StatusFound, fullTask.FileURL)
+		return
+	}
+
+	response.JSONError(c, http.StatusNotFound, "FILE_NOT_FOUND", "导出文件不存在")
 }

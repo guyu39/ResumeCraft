@@ -14,7 +14,7 @@
 8. **自动保存**：localStorage 防抖持久化，刷新后可恢复。
 9. **云端同步**：登录后自动同步到云端，支持跨端恢复。
 10. **A4 分页预览**：按页切片展示，减少内容截断。
-11. **AI 辅助**：简历评估、内容润色建议。
+11. **AI 辅助**：简历评估、内容润色建议、JD 匹配分析、求职信生成。
 12. **PDF 导出**：后端异步任务模式（创建任务 → 轮询状态 → 下载）。
 
 ## 技术栈
@@ -148,6 +148,8 @@ OPENAI_API_KEY=sk-...
 | GET | /api/ai/conversations/:id | 获取对话详情 |
 | DELETE | /api/ai/conversations/:id | 删除对话 |
 | POST | /api/ai/evaluate/stream | 简历评估（SSE 流式） |
+| POST | /api/ai/jd-match/stream | JD 匹配分析（SSE 流式） |
+| POST | /api/ai/cover-letter | 求职信生成 |
 | POST | /api/ai/suggest | 内容润色建议 |
 | GET | /api/ai/suggest-records | 润色记录列表 |
 | POST | /api/ai/suggest-records | 保存润色记录 |
@@ -173,6 +175,7 @@ docker run --rm -p 8787:8787 \
 
 - 需求文档：`需求文档.md`
 - 技术文档：`技术文档.md`
+- AI 功能技术方案：`AI功能-JD匹配与求职信生成技术方案.md`
 
 ## 已知限制
 

@@ -33,6 +33,7 @@ type Service interface {
 	Logout(ctx context.Context, refreshToken string) error
 	Me(ctx context.Context, userID string) (*model.AuthUser, error)
 	ParseAccessToken(token string) (string, error)
+	UpdateAvatar(ctx context.Context, userID, avatarURL string) error
 }
 
 type service struct {
@@ -195,17 +196,21 @@ func (s *service) Logout(ctx context.Context, refreshToken string) error {
 
 func (s *service) Me(ctx context.Context, userID string) (*model.AuthUser, error) {
 	var u model.AuthUser
+	var avatarURL *string
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, email, display_name
+		`SELECT id, email, display_name, avatar_url
 		 FROM users
 		 WHERE id = $1 AND deleted_at IS NULL`,
 		userID,
-	).Scan(&u.ID, &u.Email, &u.DisplayName)
+	).Scan(&u.ID, &u.Email, &u.DisplayName, &avatarURL)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrInvalidToken
 		}
 		return nil, fmt.Errorf("query me: %w", err)
+	}
+	if avatarURL != nil {
+		u.AvatarURL = *avatarURL
 	}
 	return &u, nil
 }
@@ -216,6 +221,14 @@ func (s *service) ParseAccessToken(token string) (string, error) {
 		return "", err
 	}
 	return claims.UserID, nil
+}
+
+func (s *service) UpdateAvatar(ctx context.Context, userID, avatarURL string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE users SET avatar_url = $1 WHERE id = $2 AND deleted_at IS NULL`,
+		avatarURL, userID,
+	)
+	return err
 }
 
 func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua string) (*model.AuthPayload, error) {

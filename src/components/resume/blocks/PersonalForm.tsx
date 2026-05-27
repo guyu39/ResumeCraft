@@ -9,6 +9,7 @@ import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Select } from '@/components/common/FormField'
 import { WORK_YEARS_OPTIONS } from '@/types/resume'
 import YearMonthPicker from '@/components/common/YearMonthPicker'
+import { uploadAvatar } from '@/api/upload'
 
 interface PersonalFormProps {
   moduleId: string
@@ -106,11 +107,21 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
   const hasError = (field: keyof FieldErrors) =>
     touched[field] && !!errors[field]
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
       alert('请选择图片文件')
+      return
+    }
+    // 超过 1MB 的图片上传到对象存储，小图仍用 Base64
+    if (file.size > 1 * 1024 * 1024) {
+      try {
+        const { avatarUrl } = await uploadAvatar(file)
+        update('avatar', avatarUrl)
+      } catch {
+        alert('头像上传失败，请重试')
+      }
       return
     }
     const reader = new FileReader()

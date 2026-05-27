@@ -11,11 +11,12 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig
-	DB     DBConfig
-	Auth   AuthConfig
-	PDF    PDFConfig
-	AI     AIConfig
+	Server  ServerConfig
+	DB      DBConfig
+	Auth    AuthConfig
+	PDF     PDFConfig
+	AI      AIConfig
+	Storage StorageConfig
 }
 
 type DBConfig struct {
@@ -53,6 +54,14 @@ type PDFConfig struct {
 
 type AIConfig struct {
 	EncryptionKey string
+}
+
+type StorageConfig struct {
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	UseSSL    bool
 }
 
 func Load() Config {
@@ -107,6 +116,13 @@ func Load() Config {
 		},
 		AI: AIConfig{
 			EncryptionKey: getEnv("AI_ENCRYPTION_KEY", "change-this-32-char-key!!"),
+		},
+		Storage: StorageConfig{
+			Endpoint:  getEnv("S3_ENDPOINT", ""),
+			AccessKey: getEnv("S3_ACCESS_KEY", ""),
+			SecretKey: getEnv("S3_SECRET_KEY", ""),
+			Bucket:    getEnv("S3_BUCKET", "resumecraft"),
+			UseSSL:    getEnvBool("S3_USE_SSL", false),
 		},
 	}
 }

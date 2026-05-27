@@ -26,6 +26,8 @@ type Task struct {
 	ErrorCode   string
 	ErrorMsg    string
 	FileData    []byte
+	FileURL     string
+	FileKey     string
 	CreatedAt   time.Time
 	FinishedAt  *time.Time
 	ExpiresAt   *time.Time
@@ -36,6 +38,7 @@ type Repository interface {
 	GetByID(ctx context.Context, taskID string) (*Task, error)
 	UpdateStatus(ctx context.Context, taskID string, status model.ExportStatus, progress int) error
 	UpdateSuccess(ctx context.Context, taskID string, fileData []byte) error
+	UpdateSuccessWithURL(ctx context.Context, taskID, fileURL, fileKey string) error
 	UpdateFailed(ctx context.Context, taskID string, errorCode, errorMsg string) error
 	Delete(ctx context.Context, taskID string) error
 }
@@ -106,6 +109,25 @@ func (r *inMemoryRepository) UpdateSuccess(ctx context.Context, taskID string, f
 	task.Status = model.ExportStatusSuccess
 	task.Progress = 100
 	task.FileData = fileData
+	task.FinishedAt = &now
+	expiresAt := now.Add(24 * time.Hour)
+	task.ExpiresAt = &expiresAt
+	return nil
+}
+
+func (r *inMemoryRepository) UpdateSuccessWithURL(ctx context.Context, taskID, fileURL, fileKey string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	now := time.Now()
+	task.Status = model.ExportStatusSuccess
+	task.Progress = 100
+	task.FileURL = fileURL
+	task.FileKey = fileKey
 	task.FinishedAt = &now
 	expiresAt := now.Add(24 * time.Hour)
 	task.ExpiresAt = &expiresAt

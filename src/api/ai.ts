@@ -77,6 +77,81 @@ export interface StreamPartialResult {
     model?: string
 }
 
+export interface JDKeywordMatch {
+    keyword: string
+    required: boolean
+    matched: boolean
+    evidence: string
+}
+
+export interface JDGap {
+    severity: string
+    requirement: string
+    currentEvidence: string
+    suggestion: string
+}
+
+export interface JDResumeSuggestion {
+    moduleType: string
+    title: string
+    suggestion: string
+}
+
+export interface JDMatchRequest {
+    resumeId: string
+    content: Record<string, unknown>
+    jdText: string
+    targetTitle?: string
+    companyName?: string
+}
+
+export interface JDMatchResponse {
+    matchScore: number
+    level: string
+    summary: string
+    keywordMatches: JDKeywordMatch[]
+    strengths: string[]
+    gaps: JDGap[]
+    resumeSuggestions: JDResumeSuggestion[]
+    actionItems: string[]
+    rawText?: string
+    model: string
+    conversationId: string
+}
+
+export interface JDMatchStreamPartialResult {
+    matchScore?: number
+    level?: string
+    summary?: string
+    keywordMatches?: JDKeywordMatch[]
+    strengths?: string[]
+    gaps?: JDGap[]
+    resumeSuggestions?: JDResumeSuggestion[]
+    actionItems?: string[]
+    finish?: boolean
+    model?: string
+}
+
+export interface CoverLetterRequest {
+    resumeId: string
+    content: Record<string, unknown>
+    jdText?: string
+    jobTitle: string
+    companyName?: string
+    tone?: string
+    language?: string
+}
+
+export interface CoverLetterResponse {
+    title: string
+    coverLetter: string
+    highlightsUsed: string[]
+    tips: string[]
+    rawText?: string
+    model: string
+    conversationId: string
+}
+
 export interface SuggestRequest {
     resumeId: string
     moduleType: string
@@ -97,7 +172,7 @@ export interface SuggestResponse {
 export interface ConversationItem {
     id: string
     resumeId: string | null
-    type: 'evaluate' | 'suggest'
+    type: 'evaluate' | 'suggest' | 'jd_match' | 'cover_letter'
     title: string
     createdAt: number
     updatedAt: number
@@ -122,7 +197,7 @@ export interface ConversationListResponse {
 export interface ConversationDetail {
     id: string
     resumeId: string | null
-    type: 'evaluate' | 'suggest'
+    type: 'evaluate' | 'suggest' | 'jd_match' | 'cover_letter'
     title: string
     createdAt: number
     updatedAt: number
@@ -250,6 +325,102 @@ export const aiApi = {
             xhr.send(JSON.stringify(data))
         })
     },
+
+    jdMatchStream: (
+        data: JDMatchRequest,
+        onUpdate: (partial: JDMatchStreamPartialResult) => void
+    ): Promise<JDMatchResponse> => {
+        return new Promise((resolve, reject) => {
+            const token = localStorage.getItem('accessToken')
+            if (!token) {
+                reject(new Error('请登录使用'))
+                return
+            }
+
+            const xhr = new XMLHttpRequest()
+            xhr.open('POST', '/api/ai/jd-match/stream', true)
+            xhr.setRequestHeader('Content-Type', 'application/json')
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+            let lastPos = 0
+
+            xhr.onprogress = () => {
+                const text = xhr.responseText
+                const newText = text.slice(lastPos)
+                lastPos = text.length
+
+                const lines = newText.split('\n')
+                for (const line of lines) {
+                    if (line.startsWith('event:')) continue
+                    if (!line.startsWith('data: ')) continue
+                    const content = line.slice(6).trim()
+                    if (!content) continue
+
+                    try {
+                        const evt = JSON.parse(content) as JDMatchStreamPartialResult & { type?: string }
+                        switch (evt.type) {
+                            case 'model':
+                                if (evt.model) onUpdate({ model: evt.model })
+                                break
+                            case 'summary':
+                                if (evt.summary !== undefined) onUpdate({ summary: evt.summary })
+                                break
+                            case 'match_score':
+                                onUpdate({ matchScore: evt.matchScore, level: evt.level })
+                                break
+                            case 'keyword_match':
+                                if (evt.keywordMatches?.length) onUpdate({ keywordMatches: evt.keywordMatches })
+                                break
+                            case 'strength_item':
+                                if (evt.strengths?.length) onUpdate({ strengths: evt.strengths })
+                                break
+                            case 'gap_item':
+                                if (evt.gaps?.length) onUpdate({ gaps: evt.gaps })
+                                break
+                            case 'resume_suggestion':
+                                if (evt.resumeSuggestions?.length) onUpdate({ resumeSuggestions: evt.resumeSuggestions })
+                                break
+                            case 'action_item':
+                                if (evt.actionItems?.length) onUpdate({ actionItems: evt.actionItems })
+                                break
+                            case 'finish':
+                                onUpdate({ finish: true })
+                                break
+                        }
+                    } catch {
+                        // 忽略非 JSON 的 SSE 数据行
+                    }
+                }
+            }
+
+            xhr.onload = () => {
+                const lines = xhr.responseText.split('\n')
+                for (let i = 0; i < lines.length; i += 1) {
+                    if (!lines[i].startsWith('event: done')) continue
+                    const dataLine = lines[i + 1]
+                    if (dataLine && dataLine.startsWith('data: ')) {
+                        try {
+                            resolve(JSON.parse(dataLine.slice(6)) as JDMatchResponse)
+                            return
+                        } catch {
+                            // ignore
+                        }
+                    }
+                }
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    reject(new Error('未收到 JD 匹配结果'))
+                } else {
+                    reject(new Error(`请求失败: ${xhr.status}`))
+                }
+            }
+
+            xhr.onerror = () => reject(new Error('网络错误'))
+            xhr.send(JSON.stringify(data))
+        })
+    },
+
+    generateCoverLetter: (data: CoverLetterRequest) =>
+        apiClient.post<CoverLetterResponse>('/ai/cover-letter', data, { auth: true }),
 
     suggest: (data: SuggestRequest) =>
         apiClient.post<SuggestResponse>('/ai/suggest', data, { auth: true }),

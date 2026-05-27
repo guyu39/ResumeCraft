@@ -6,6 +6,7 @@ import (
 	"resumecraft-pdf-backend/internal/service/export"
 	"resumecraft-pdf-backend/internal/service/pdf"
 	"resumecraft-pdf-backend/internal/service/resume"
+	"resumecraft-pdf-backend/internal/storage/object"
 )
 
 type Handler struct {
@@ -14,6 +15,7 @@ type Handler struct {
 	resumeService resume.Service
 	exportService export.Service
 	aiService     ai.Service
+	objectStorage object.ObjectStorage
 }
 
 func New(
@@ -22,6 +24,7 @@ func New(
 	resumeService resume.Service,
 	exportService export.Service,
 	aiService ai.Service,
+	objectStorage object.ObjectStorage,
 ) *Handler {
 	return &Handler{
 		pdfService:    pdfService,
@@ -29,6 +32,7 @@ func New(
 		resumeService: resumeService,
 		exportService: exportService,
 		aiService:     aiService,
+		objectStorage: objectStorage,
 	}
 }
 
@@ -50,4 +54,8 @@ func (h *Handler) ExportService() export.Service {
 
 func (h *Handler) AIService() ai.Service {
 	return h.aiService
+}
+
+func (h *Handler) ObjectStorage() object.ObjectStorage {
+	return h.objectStorage
 }

@@ -22,8 +22,12 @@ import {
 } from '@/ai'
 import { useSyncExport } from '@/hooks/useExportPDF'
 import { useResumeEvaluation } from '@/hooks/useResumeEvaluation'
+import { useJDMatch } from '@/hooks/useJDMatch'
+import { useCoverLetter } from '@/hooks/useCoverLetter'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
-import { aiApi } from '@/api'
+import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
+import CoverLetterPanel from '@/components/layout/ai/CoverLetterPanel'
+import { aiApi, type JDMatchResponse, type CoverLetterResponse } from '@/api'
 
 // 各模块表单
 import PersonalForm from '@/components/resume/blocks/PersonalForm'
@@ -542,6 +546,7 @@ const RightPanel: React.FC = () => {
     const [showSaved, setShowSaved] = useState(false)
     const [showSettings, setShowSettings] = useState(false)
     const [showAIEvaluation, setShowAIEvaluation] = useState(false)
+    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'cover_letter'>('evaluate')
     const [aiConfigFromServer, setAiConfigFromServer] = useState<{
         provider: string
         baseUrl: string
@@ -549,6 +554,8 @@ const RightPanel: React.FC = () => {
     } | null>(null)
     const [restoredEvaluation, setRestoredEvaluation] = useState<ResumeEvaluateOutput | null>(null)
     const [initialEvaluation, setInitialEvaluation] = useState<ResumeEvaluateOutput | null>(null)
+    const [restoredJDMatch, setRestoredJDMatch] = useState<JDMatchResponse | null>(null)
+    const [restoredCoverLetter, setRestoredCoverLetter] = useState<CoverLetterResponse | null>(null)
     const { exportPDF, exporting, error: exportError } = useSyncExport()
     const {
         loading: evaluating,
@@ -562,6 +569,23 @@ const RightPanel: React.FC = () => {
         runEvaluate,
         mode: evaluateMode,
     } = useResumeEvaluation()
+    const {
+        loading: jdMatching,
+        error: jdMatchError,
+        result: jdMatchResult,
+        modelName: jdMatchModelName,
+        lastMatchedAt,
+        runMatch,
+        resetMatch,
+    } = useJDMatch()
+    const {
+        loading: generatingCoverLetter,
+        error: coverLetterError,
+        result: coverLetterResult,
+        lastGeneratedAt,
+        generateCoverLetter,
+        resetCoverLetter,
+    } = useCoverLetter()
 
     // 打开设置时从后端加载 AI 配置
     useEffect(() => {
@@ -617,8 +641,6 @@ const RightPanel: React.FC = () => {
             } catch (err) {
                 console.error('Failed to load initial evaluation:', err)
             }
-            // 无历史记录，触发新评估
-            await runEvaluate(resume)
         }
         loadLatest()
     }, [showAIEvaluation, isAuthenticated, resume.id])
@@ -629,6 +651,44 @@ const RightPanel: React.FC = () => {
             setRestoredEvaluation(initialEvaluation)
         }
     }, [initialEvaluation])
+
+    // 切换 AI 工具标签时：加载 JD 匹配 / 求职信历史
+    useEffect(() => {
+        if (!showAIEvaluation || !isAuthenticated) return
+        if (activeAITool === 'jd_match') {
+            setRestoredJDMatch(null)
+            aiApi.getConversations({ type: 'jd_match', resumeId: resume.id, pageSize: 1 }).then((res) => {
+                const items = res.items || []
+                if (items.length > 0) {
+                    return aiApi.getConversation(items[0].id)
+                }
+                return null
+            }).then((detail) => {
+                if (detail?.context) {
+                    const ctx = detail.context as Record<string, unknown>
+                    if (ctx.matchScore !== undefined) {
+                        setRestoredJDMatch(ctx as unknown as JDMatchResponse)
+                    }
+                }
+            }).catch(() => {})
+        } else if (activeAITool === 'cover_letter') {
+            setRestoredCoverLetter(null)
+            aiApi.getConversations({ type: 'cover_letter', resumeId: resume.id, pageSize: 1 }).then((res) => {
+                const items = res.items || []
+                if (items.length > 0) {
+                    return aiApi.getConversation(items[0].id)
+                }
+                return null
+            }).then((detail) => {
+                if (detail?.context) {
+                    const ctx = detail.context as Record<string, unknown>
+                    if (ctx.coverLetter !== undefined) {
+                        setRestoredCoverLetter(ctx as unknown as CoverLetterResponse)
+                    }
+                }
+            }).catch(() => {})
+        }
+    }, [showAIEvaluation, activeAITool, isAuthenticated, resume.id])
 
     // 打开 AI 评估时也从后端加载 AI 配置（用于模型名称显示）
     useEffect(() => {
@@ -714,6 +774,14 @@ const RightPanel: React.FC = () => {
         setActiveModule(targetModule.id)
         setShowSettings(false)
         setShowAIEvaluation(false)
+    }
+
+    const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
+        await runMatch(resume, form)
+    }
+
+    const handleGenerateCoverLetter = async (form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }) => {
+        await generateCoverLetter(resume, form)
     }
 
     const handleConversationSelect = async (conversationId: string) => {
@@ -832,27 +900,82 @@ const RightPanel: React.FC = () => {
                 </div>
             ) : showAIEvaluation ? (
                 <div className="flex-1 overflow-hidden bg-white">
-                    <ResumeScoreDrawer
-                        embedded
-                        open={showAIEvaluation}
-                        result={evaluateResult}
-                        restoredResult={restoredEvaluation}
-                        loading={evaluating}
-                        streamDone={evaluateStreamDone}
-                        error={evaluateError}
-                        streamText={evaluateStreamText}
-                        modelName={evaluateModelName}
-                        currentResumeUpdatedAt={resume.updatedAt}
-                        evaluatedResumeUpdatedAt={evaluatedResumeUpdatedAt}
-                        lastEvaluatedAt={lastEvaluatedAt}
-                        modeLabel={aiModeLabel}
-                        isAuthenticated={isAuthenticated}
-                        resumeId={resume.id}
-                        onReevaluate={handleReevaluate}
-                        onRetry={handleRetryEvaluate}
-                        onJumpToModule={handleJumpToIssueModule}
-                        onConversationSelect={handleConversationSelect}
-                    />
+                    <div className="flex h-full flex-col">
+                        <div className="flex-shrink-0 border-b border-gray-100 bg-white px-4 py-3">
+                            <div className="grid grid-cols-3 gap-2 rounded-xl bg-gray-100 p-1 text-sm">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveAITool('evaluate')}
+                                    className={`rounded-lg px-3 py-2 transition-colors ${activeAITool === 'evaluate' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    简历评估
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveAITool('jd_match')}
+                                    className={`rounded-lg px-3 py-2 transition-colors ${activeAITool === 'jd_match' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    JD 匹配
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveAITool('cover_letter')}
+                                    className={`rounded-lg px-3 py-2 transition-colors ${activeAITool === 'cover_letter' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    求职信
+                                </button>
+                            </div>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-hidden">
+                            {activeAITool === 'evaluate' && (
+                                <ResumeScoreDrawer
+                                    embedded
+                                    open={showAIEvaluation}
+                                    result={evaluateResult}
+                                    restoredResult={restoredEvaluation}
+                                    loading={evaluating}
+                                    streamDone={evaluateStreamDone}
+                                    error={evaluateError}
+                                    streamText={evaluateStreamText}
+                                    modelName={evaluateModelName}
+                                    currentResumeUpdatedAt={resume.updatedAt}
+                                    evaluatedResumeUpdatedAt={evaluatedResumeUpdatedAt}
+                                    lastEvaluatedAt={lastEvaluatedAt}
+                                    modeLabel={aiModeLabel}
+                                    isAuthenticated={isAuthenticated}
+                                    resumeId={resume.id}
+                                    onReevaluate={handleReevaluate}
+                                    onRetry={handleRetryEvaluate}
+                                    onJumpToModule={handleJumpToIssueModule}
+                                    onConversationSelect={handleConversationSelect}
+                                />
+                            )}
+                            {activeAITool === 'jd_match' && (
+                                <JDMatchPanel
+                                    resume={resume}
+                                    loading={jdMatching}
+                                    error={jdMatchError}
+                                    result={jdMatchResult}
+                                    restoredResult={restoredJDMatch}
+                                    modelName={jdMatchModelName}
+                                    lastMatchedAt={lastMatchedAt}
+                                    onRunMatch={handleRunJDMatch}
+                                    onReset={resetMatch}
+                                />
+                            )}
+                            {activeAITool === 'cover_letter' && (
+                                <CoverLetterPanel
+                                    loading={generatingCoverLetter}
+                                    error={coverLetterError}
+                                    result={coverLetterResult}
+                                    restoredResult={restoredCoverLetter}
+                                    lastGeneratedAt={lastGeneratedAt}
+                                    onGenerate={handleGenerateCoverLetter}
+                                    onReset={resetCoverLetter}
+                                />
+                            )}
+                        </div>
+                    </div>
                 </div>
             ) : (
                 <>

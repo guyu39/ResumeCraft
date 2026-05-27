@@ -53,15 +53,27 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string) {
 				aiGroup.GET("/conversations/:id", h.GetAIConversation)
 				aiGroup.DELETE("/conversations/:id", h.DeleteAIConversation)
 				aiGroup.POST("/evaluate/stream", h.EvaluateResumeStream)
+				aiGroup.POST("/jd-match/stream", h.JDMatchStream)
+				aiGroup.POST("/cover-letter", h.GenerateCoverLetter)
 				aiGroup.POST("/suggest", h.SuggestContent)
 				aiGroup.GET("/suggest-records", h.ListSuggestRecords)
 				aiGroup.POST("/suggest-records", h.SaveSuggestRecord)
 			}
 		}
 
-		// 导出任务查询（独立路径）
+		// 导出任务查询和下载（独立路径）
 		if h.ExportService() != nil {
 			api.GET("/exports/:taskId", h.GetExportTask)
+			api.GET("/exports/:taskId/download", h.DownloadExport)
+		}
+
+		// 用户头像上传
+		if h.ObjectStorage() != nil && h.AuthEnabled() {
+			usersGroup := api.Group("/users")
+			usersGroup.Use(middleware.AuthRequired(h.AuthService()))
+			{
+				usersGroup.POST("/avatar", h.UploadAvatar)
+			}
 		}
 
 		pdf := api.Group("/pdf")

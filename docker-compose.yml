@@ -33,9 +33,18 @@ services:
       # AI 加密密钥
       AI_ENCRYPTION_KEY: "${AI_ENCRYPTION_KEY:-change-this-32-char-key!!}"
 
+      # 对象存储
+      S3_ENDPOINT: minio:9000
+      S3_ACCESS_KEY: "${MINIO_ROOT_USER:-minioadmin}"
+      S3_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
+      S3_BUCKET: resumecraft
+      S3_USE_SSL: "false"
+
       TZ: Asia/Shanghai
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://localhost:8787/api/pdf/export || exit 1" ]
@@ -60,6 +69,25 @@ services:
       - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U resumecraft -d resumecraft -h 127.0.0.1 -p 5432" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: oyh0mq3odt54g3vzjv.xuanyuan.run/minio/minio:latest
+    container_name: resumecraft-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
+    volumes:
+      - ./docker/minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
       interval: 10s
       timeout: 5s
       retries: 5

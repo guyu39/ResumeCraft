@@ -236,6 +236,94 @@ func (h *Handler) EvaluateResumeStream(c *gin.Context) {
 	flusher.Flush()
 }
 
+// JDMatchStream 流式分析简历与 JD 的匹配度
+// POST /api/ai/jd-match/stream
+func (h *Handler) JDMatchStream(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.JDMatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+	if len(req.JDText) > 30000 {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "JD 内容不能超过 30000 字符")
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("X-Accel-Buffering", "no")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
+		return
+	}
+
+	result, err := h.aiService.StreamJDMatch(c.Request.Context(), userID.(string), req, func(evt ai.StreamEvent) {
+		if evt.Type == "" {
+			return
+		}
+		data, _ := json.Marshal(evt)
+		c.Writer.Write([]byte("data: " + string(data) + "\n\n"))
+		flusher.Flush()
+	})
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			c.Writer.Write([]byte("event: error\ndata: 请先配置 AI 服务\n\n"))
+		} else {
+			log.Printf("[ai] JDMatchStream error: %v", err)
+			c.Writer.Write([]byte("event: error\ndata: JD 匹配分析失败\n\n"))
+		}
+		flusher.Flush()
+		return
+	}
+
+	resultJSON, _ := json.Marshal(result)
+	c.Writer.Write([]byte("event: done\ndata: " + string(resultJSON) + "\n\n"))
+	flusher.Flush()
+}
+
+// GenerateCoverLetter 生成求职信
+// POST /api/ai/cover-letter
+func (h *Handler) GenerateCoverLetter(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.CoverLetterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+	if len(req.JDText) > 30000 {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "JD 内容不能超过 30000 字符")
+		return
+	}
+
+	result, err := h.aiService.GenerateCoverLetter(c.Request.Context(), userID.(string), req)
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[ai] GenerateCoverLetter error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "生成求职信失败")
+		return
+	}
+
+	response.JSONSuccess(c, result)
+}
+
 // SuggestContent 内容润色建议
 // POST /api/ai/suggest
 func (h *Handler) SuggestContent(c *gin.Context) {
@@ -318,14 +406,14 @@ func (h *Handler) SaveSuggestRecord(c *gin.Context) {
 	}
 
 	var req struct {
-		ResumeID         string   `json:"resumeId" binding:"required"`
-		ConversationID  string   `json:"conversationId" binding:"required"`
-		ModuleType      string   `json:"moduleType" binding:"required"`
-		ModuleInstanceID string   `json:"moduleInstanceId" binding:"required"`
-		FieldKey        string   `json:"fieldKey" binding:"required"`
-		OriginalContent string   `json:"originalContent" binding:"required"`
-		OptimizedContent string  `json:"optimizedContent" binding:"required"`
-		Suggestions     []model.SuggestItem `json:"suggestions"`
+		ResumeID         string              `json:"resumeId" binding:"required"`
+		ConversationID   string              `json:"conversationId" binding:"required"`
+		ModuleType       string              `json:"moduleType" binding:"required"`
+		ModuleInstanceID string              `json:"moduleInstanceId" binding:"required"`
+		FieldKey         string              `json:"fieldKey" binding:"required"`
+		OriginalContent  string              `json:"originalContent" binding:"required"`
+		OptimizedContent string              `json:"optimizedContent" binding:"required"`
+		Suggestions      []model.SuggestItem `json:"suggestions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
@@ -333,14 +421,14 @@ func (h *Handler) SaveSuggestRecord(c *gin.Context) {
 	}
 
 	err := h.aiService.SaveSuggestRecordFull(c.Request.Context(), userID.(string), model.SaveSuggestRecordRequest{
-		ResumeID:          req.ResumeID,
-		ConversationID:    req.ConversationID,
-		ModuleType:        req.ModuleType,
-		ModuleInstanceID:  req.ModuleInstanceID,
-		FieldKey:          req.FieldKey,
-		OriginalContent:   req.OriginalContent,
-		OptimizedContent:  req.OptimizedContent,
-		Suggestions:       req.Suggestions,
+		ResumeID:         req.ResumeID,
+		ConversationID:   req.ConversationID,
+		ModuleType:       req.ModuleType,
+		ModuleInstanceID: req.ModuleInstanceID,
+		FieldKey:         req.FieldKey,
+		OriginalContent:  req.OriginalContent,
+		OptimizedContent: req.OptimizedContent,
+		Suggestions:      req.Suggestions,
 	})
 	if err != nil {
 		log.Printf("[ai] SaveSuggestRecord error: %v", err)
