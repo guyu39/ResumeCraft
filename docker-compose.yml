@@ -98,8 +98,8 @@ services:
 
   python-parser:
     build:
-      context: .
-      dockerfile: docker/python-parser/Dockerfile
+      context: ./python-parser
+      dockerfile: Dockerfile
     container_name: resumecraft-parser
     restart: unless-stopped
     ports:
@@ -107,7 +107,7 @@ services:
     environment:
       PARSER_PORT: "9002"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9002/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9002/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
