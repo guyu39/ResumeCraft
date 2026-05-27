@@ -114,6 +114,9 @@ export interface JDMatchResponse {
     gaps: JDGap[]
     resumeSuggestions: JDResumeSuggestion[]
     actionItems: string[]
+    targetTitle?: string
+    companyName?: string
+    jdText?: string
     rawText?: string
     model: string
     conversationId: string
@@ -147,6 +150,9 @@ export interface CoverLetterResponse {
     coverLetter: string
     highlightsUsed: string[]
     tips: string[]
+    jobTitle?: string
+    companyName?: string
+    jdText?: string
     rawText?: string
     model: string
     conversationId: string

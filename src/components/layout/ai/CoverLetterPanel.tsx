@@ -119,6 +119,23 @@ const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
                                     {lastGeneratedAt && (
                                         <p className="mt-1 text-xs text-gray-400">{new Date(lastGeneratedAt).toLocaleString()}</p>
                                     )}
+                                    {(displayResult.jobTitle || displayResult.companyName) && (
+                                        <div className="group relative mt-1 inline-block">
+                                            <p className="cursor-default text-xs text-gray-500">
+                                                目标岗位：{displayResult.jobTitle || '未填写'}{displayResult.companyName ? ` · ${displayResult.companyName}` : ''}
+                                            </p>
+                                            {displayResult.jdText && (
+                                                <div className="absolute bottom-full left-0 z-50 hidden pb-2 group-hover:block">
+                                                    <div className="w-72 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                                                        <p className="text-xs font-medium text-gray-500">岗位 JD</p>
+                                                        <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-600 no-scrollbar">
+                                                            {displayResult.jdText}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 </div>
                                 <button
                                     type="button"

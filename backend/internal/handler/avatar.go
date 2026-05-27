@@ -1,6 +1,10 @@
 package handler
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -32,6 +36,31 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 		return
 	}
 
+	data, err := io.ReadAll(io.LimitReader(file, maxAvatarSize+1))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "BAD_REQUEST", "message": "读取文件失败"})
+		return
+	}
+	if int64(len(data)) > maxAvatarSize {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "FILE_TOO_LARGE", "message": "文件大小不能超过 5MB"})
+		return
+	}
+
+	hashBytes := sha256.Sum256(data)
+	avatarHash := hex.EncodeToString(hashBytes[:])
+	if existingURL, existingHash, err := h.authService.GetAvatarMeta(c.Request.Context(), userID); err == nil {
+		if existingHash != "" && existingHash == avatarHash && existingURL != "" {
+			c.JSON(http.StatusOK, gin.H{
+				"code": "OK",
+				"data": model.UploadAvatarResponse{AvatarURL: existingURL},
+			})
+			return
+		}
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "QUERY_FAILED", "message": "头像校验失败"})
+		return
+	}
+
 	contentType := strings.ToLower(header.Header.Get("Content-Type"))
 	ext := filepath.Ext(strings.ToLower(header.Filename))
 	if contentType != "image/jpeg" && contentType != "image/png" {
@@ -52,13 +81,13 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 
 	key := "avatars/" + userID + "/" + uuid.New().String() + ext
 
-	avatarURL, err := h.objectStorage.Upload(c.Request.Context(), key, file, header.Size, contentType)
+	avatarURL, err := h.objectStorage.Upload(c.Request.Context(), key, bytes.NewReader(data), int64(len(data)), contentType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "UPLOAD_FAILED", "message": "头像上传失败"})
 		return
 	}
 
-	if err := h.authService.UpdateAvatar(c.Request.Context(), userID, avatarURL); err != nil {
+	if err := h.authService.UpdateAvatar(c.Request.Context(), userID, avatarURL, avatarHash); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "UPDATE_FAILED", "message": "头像保存失败"})
 		return
 	}

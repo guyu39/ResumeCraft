@@ -33,7 +33,8 @@ type Service interface {
 	Logout(ctx context.Context, refreshToken string) error
 	Me(ctx context.Context, userID string) (*model.AuthUser, error)
 	ParseAccessToken(token string) (string, error)
-	UpdateAvatar(ctx context.Context, userID, avatarURL string) error
+	GetAvatarMeta(ctx context.Context, userID string) (string, string, error)
+	UpdateAvatar(ctx context.Context, userID, avatarURL, avatarHash string) error
 }
 
 type service struct {
@@ -223,10 +224,28 @@ func (s *service) ParseAccessToken(token string) (string, error) {
 	return claims.UserID, nil
 }
 
-func (s *service) UpdateAvatar(ctx context.Context, userID, avatarURL string) error {
+func (s *service) GetAvatarMeta(ctx context.Context, userID string) (string, string, error) {
+	var avatarURL *string
+	var avatarHash *string
+	if err := s.pool.QueryRow(ctx,
+		`SELECT avatar_url, avatar_hash FROM users WHERE id = $1 AND deleted_at IS NULL`,
+		userID,
+	).Scan(&avatarURL, &avatarHash); err != nil {
+		return "", "", err
+	}
+	if avatarURL == nil {
+		return "", "", nil
+	}
+	if avatarHash == nil {
+		return *avatarURL, "", nil
+	}
+	return *avatarURL, *avatarHash, nil
+}
+
+func (s *service) UpdateAvatar(ctx context.Context, userID, avatarURL, avatarHash string) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE users SET avatar_url = $1 WHERE id = $2 AND deleted_at IS NULL`,
-		avatarURL, userID,
+		`UPDATE users SET avatar_url = $1, avatar_hash = $2 WHERE id = $3 AND deleted_at IS NULL`,
+		avatarURL, avatarHash, userID,
 	)
 	return err
 }

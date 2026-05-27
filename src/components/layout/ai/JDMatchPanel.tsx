@@ -125,6 +125,23 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                                     </span>
                                 )}
                             </div>
+                            {(displayResult.targetTitle || displayResult.companyName) && (
+                                <div className="group relative mt-2 inline-block">
+                                    <p className="cursor-default text-xs text-gray-500">
+                                        目标岗位：{displayResult.targetTitle || '未填写'}{displayResult.companyName ? ` · ${displayResult.companyName}` : ''}
+                                    </p>
+                                    {displayResult.jdText && (
+                                        <div className="absolute bottom-full left-0 z-50 hidden pb-2 group-hover:block">
+                                            <div className="w-72 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                                                <p className="text-xs font-medium text-gray-500">岗位 JD</p>
+                                                <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-600 no-scrollbar">
+                                                    {displayResult.jdText}
+                                            </p>
+                                        </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             {displayResult.summary && <p className="mt-3 text-sm leading-relaxed text-gray-700">{displayResult.summary}</p>}
                         </div>
 

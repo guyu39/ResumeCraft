@@ -373,7 +373,8 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 		if err := json.Unmarshal([]byte(line), &obj); err != nil {
 			return
 		}
-		accumulated.WriteString(line + "\n")
+		accumulated.WriteString(line)
+		accumulated.WriteByte('\n')
 
 		evtType, _ := obj["type"].(string)
 
@@ -587,7 +588,8 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		if err := json.Unmarshal([]byte(line), &obj); err != nil {
 			return
 		}
-		accumulated.WriteString(line + "\n")
+		accumulated.WriteString(line)
+		accumulated.WriteByte('\n')
 
 		evtType := getString(obj["type"])
 		if prevType != "" && evtType != prevType {
@@ -676,6 +678,9 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		return nil, fmt.Errorf("failed to parse AI response")
 	}
 	jdResp.Model = jdMatchModel
+	jdResp.TargetTitle = strings.TrimSpace(req.TargetTitle)
+	jdResp.CompanyName = strings.TrimSpace(req.CompanyName)
+	jdResp.JDText = req.JDText
 
 	convID := uuid.New().String()
 	contextData := map[string]any{
@@ -687,6 +692,7 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		"gaps":              jdResp.Gaps,
 		"resumeSuggestions": jdResp.ResumeSuggestions,
 		"actionItems":       jdResp.ActionItems,
+		"jdText":            jdResp.JDText,
 		"model":             jdResp.Model,
 		"targetTitle":       req.TargetTitle,
 		"companyName":       req.CompanyName,
@@ -759,6 +765,9 @@ func (s *service) GenerateCoverLetter(ctx context.Context, userID string, req mo
 		return nil, fmt.Errorf("failed to parse AI response")
 	}
 	coverResp.Model = cfg.DefaultModel
+	coverResp.JobTitle = strings.TrimSpace(req.JobTitle)
+	coverResp.CompanyName = strings.TrimSpace(req.CompanyName)
+	coverResp.JDText = strings.TrimSpace(req.JDText)
 
 	convID := uuid.New().String()
 	contextData := map[string]any{
@@ -769,6 +778,7 @@ func (s *service) GenerateCoverLetter(ctx context.Context, userID string, req mo
 		"model":          coverResp.Model,
 		"jobTitle":       req.JobTitle,
 		"companyName":    req.CompanyName,
+		"jdText":         req.JDText,
 		"tone":           req.Tone,
 		"language":       req.Language,
 	}

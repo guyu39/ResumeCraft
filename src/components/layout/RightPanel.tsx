@@ -777,10 +777,12 @@ const RightPanel: React.FC = () => {
     }
 
     const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
+        setRestoredJDMatch(null)
         await runMatch(resume, form)
     }
 
     const handleGenerateCoverLetter = async (form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }) => {
+        setRestoredCoverLetter(null)
         await generateCoverLetter(resume, form)
     }
 

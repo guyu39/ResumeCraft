@@ -58,13 +58,19 @@ export const useCoverLetter = () => {
                 return null
             }
 
+            const merged: CoverLetterResponse = {
+                ...output,
+                jdText: form.jdText?.trim(),
+                jobTitle: output.jobTitle || jobTitle,
+                companyName: output.companyName || form.companyName?.trim(),
+            }
             setState({
                 loading: false,
                 error: null,
-                result: output,
+                result: merged,
                 lastGeneratedAt: Date.now(),
             })
-            return output
+            return merged
         } catch (error) {
             if (requestIdRef.current !== nextRequestId) {
                 return null

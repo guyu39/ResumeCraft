@@ -75,6 +75,8 @@ export const useJDMatch = () => {
                             gaps: partial.gaps ?? prev.result?.gaps ?? [],
                             resumeSuggestions: partial.resumeSuggestions ?? prev.result?.resumeSuggestions ?? [],
                             actionItems: partial.actionItems ?? prev.result?.actionItems ?? [],
+                            targetTitle: prev.result?.targetTitle,
+                            companyName: prev.result?.companyName,
                             model: partial.model ?? prev.result?.model ?? prev.modelName ?? '',
                             conversationId: prev.result?.conversationId ?? '',
                         },
@@ -86,15 +88,21 @@ export const useJDMatch = () => {
                 return null
             }
 
+            const merged: JDMatchResponse = {
+                ...output,
+                jdText: form.jdText,
+                targetTitle: output.targetTitle || form.targetTitle?.trim(),
+                companyName: output.companyName || form.companyName?.trim(),
+            }
             setState({
                 loading: false,
                 streamDone: false,
                 error: null,
-                result: output,
+                result: merged,
                 modelName: output.model,
                 lastMatchedAt: Date.now(),
             })
-            return output
+            return merged
         } catch (error) {
             if (requestIdRef.current !== nextRequestId) {
                 return null

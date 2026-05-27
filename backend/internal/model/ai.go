@@ -153,6 +153,9 @@ type JDMatchResponse struct {
 	Gaps              []JDGap              `json:"gaps"`
 	ResumeSuggestions []JDResumeSuggestion `json:"resumeSuggestions"`
 	ActionItems       []string             `json:"actionItems"`
+	JDText            string               `json:"jdText,omitempty"`
+	TargetTitle       string               `json:"targetTitle,omitempty"`
+	CompanyName       string               `json:"companyName,omitempty"`
 	RawText           string               `json:"rawText,omitempty"`
 	Model             string               `json:"model"`
 	ConversationID    string               `json:"conversationId"`
@@ -198,6 +201,9 @@ type CoverLetterResponse struct {
 	CoverLetter    string   `json:"coverLetter"`
 	HighlightsUsed []string `json:"highlightsUsed"`
 	Tips           []string `json:"tips"`
+	JobTitle       string   `json:"jobTitle,omitempty"`
+	CompanyName    string   `json:"companyName,omitempty"`
+	JDText         string   `json:"jdText,omitempty"`
 	RawText        string   `json:"rawText,omitempty"`
 	Model          string   `json:"model"`
 	ConversationID string   `json:"conversationId"`
