@@ -33,6 +33,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string) {
 			{
 				resumeGroup.GET("", h.ListResumes)
 				resumeGroup.POST("", h.CreateResume)
+				resumeGroup.POST("/parse", h.ParseResume)
 				resumeGroup.GET("/:id", h.GetResume)
 				resumeGroup.PUT("/:id", h.UpdateResume)
 				resumeGroup.DELETE("/:id", h.DeleteResume)
@@ -49,6 +50,8 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string) {
 			{
 				aiGroup.GET("/config", h.GetAIConfig)
 				aiGroup.POST("/config", h.SaveAIConfig)
+			aiGroup.GET("/parser-config", h.GetResumeParserConfig)
+				aiGroup.POST("/parser-config", h.SaveResumeParserConfig)
 				aiGroup.GET("/conversations", h.ListAIConversations)
 				aiGroup.GET("/conversations/:id", h.GetAIConversation)
 				aiGroup.DELETE("/conversations/:id", h.DeleteAIConversation)

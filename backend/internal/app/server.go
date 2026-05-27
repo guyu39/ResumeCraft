@@ -67,7 +67,8 @@ func NewServer() *http.Server {
 				aiRepo := aiStorage.NewRepository(pool)
 				aiCfgRepo := aiStorage.NewConfigRepository(pool)
 				aiSuggestRecordRepo := aiStorage.NewSuggestRecordRepository(pool)
-				aiService = ai.NewService(aiRepo, aiCfgRepo, aiSuggestRecordRepo, cfg.AI)
+				aiParserCfgRepo := aiStorage.NewParserConfigRepository(pool)
+				aiService = ai.NewService(aiRepo, aiCfgRepo, aiSuggestRecordRepo, aiParserCfgRepo, cfg.AI)
 			}
 		}
 	}
@@ -75,7 +76,7 @@ func NewServer() *http.Server {
 	// 初始化对象存储（不依赖数据库）
 	objectStorage := object.NewObjectStorage(cfg.Storage)
 
-	h := handler.New(pdfService, authService, resumeService, exportService, aiService, objectStorage)
+	h := handler.New(pdfService, authService, resumeService, exportService, aiService, objectStorage, cfg.Parser.ServiceURL)
 	router.Register(engine, h, cfg.Server.FrontendDistDir)
 
 	server := &http.Server{

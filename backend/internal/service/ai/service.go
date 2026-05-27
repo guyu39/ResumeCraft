@@ -45,21 +45,27 @@ type Service interface {
 	// 润色记录
 	ListSuggestRecords(ctx context.Context, userID, resumeID, moduleType, moduleInstanceID string, limit int) (*model.SuggestRecordListResponse, error)
 	SaveSuggestRecordFull(ctx context.Context, userID string, req model.SaveSuggestRecordRequest) error
+	// 简历解析配置
+	GetParserConfig(ctx context.Context, userID string) (*model.ResumeParserConfig, error)
+	SaveParserConfig(ctx context.Context, userID string, req model.ResumeParserConfigRequest) error
+	ResolveParserConfig(ctx context.Context, userID string) (*aiStorage.ParserConfigRecord, error)
 }
 
 type service struct {
 	repo              aiStorage.Repository
 	cfgRepo           aiStorage.ConfigRepository
 	suggestRecordRepo aiStorage.SuggestRecordRepository
+	parserCfgRepo     aiStorage.ParserConfigRepository
 	aiProvider        AIProvider
 	encryption        *Encryption
 }
 
-func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, suggestRecordRepo aiStorage.SuggestRecordRepository, aiCfg config.AIConfig) Service {
+func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, suggestRecordRepo aiStorage.SuggestRecordRepository, parserCfgRepo aiStorage.ParserConfigRepository, aiCfg config.AIConfig) Service {
 	return &service{
 		repo:              repo,
 		cfgRepo:           cfgRepo,
 		suggestRecordRepo: suggestRecordRepo,
+		parserCfgRepo:     parserCfgRepo,
 		aiProvider:        newAIProvider(aiCfg),
 		encryption:        NewEncryption(aiCfg.EncryptionKey),
 	}
@@ -1647,4 +1653,69 @@ func (s *service) SaveSuggestRecordFull(ctx context.Context, userID string, req 
 		OptimizedContent: &optContent,
 	}
 	return s.suggestRecordRepo.Create(ctx, record)
+}
+
+// GetParserConfig 获取简历解析 AI 配置
+func (s *service) GetParserConfig(ctx context.Context, userID string) (*model.ResumeParserConfig, error) {
+	cfg, err := s.parserCfgRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, aiStorage.ErrParserConfigNotFound) {
+			return nil, ErrAIConfigNotFound
+		}
+		return nil, err
+	}
+
+	return &model.ResumeParserConfig{
+		ID:        cfg.ID,
+		UserID:    &cfg.UserID,
+		Provider:  model.AIProvider(cfg.Provider),
+		BaseURL:   cfg.BaseURL,
+		Model:     cfg.Model,
+		Enabled:   cfg.Enabled,
+		CreatedAt: cfg.CreatedAt.UnixMilli(),
+		UpdatedAt: cfg.UpdatedAt.UnixMilli(),
+	}, nil
+}
+
+// ResolveParserConfig 获取并解密简历解析配置
+func (s *service) ResolveParserConfig(ctx context.Context, userID string) (*aiStorage.ParserConfigRecord, error) {
+	cfg, err := s.parserCfgRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, aiStorage.ErrParserConfigNotFound) {
+			return nil, ErrAIConfigNotFound
+		}
+		return nil, err
+	}
+	// 解密 API Key
+	decrypted, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt api key: %w", err)
+	}
+	cfg.APIKeyEncrypted = decrypted
+	return cfg, nil
+}
+
+// SaveParserConfig 保存简历解析 AI 配置
+func (s *service) SaveParserConfig(ctx context.Context, userID string, req model.ResumeParserConfigRequest) error {
+	encryptedKey, err := s.encryption.Encrypt(req.APIKey)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt API key: %w", err)
+	}
+
+	existingID := uuid.New().String()
+	if existingCfg, err := s.parserCfgRepo.GetByUserID(ctx, userID); err == nil && existingCfg != nil {
+		existingID = existingCfg.ID
+	}
+
+	cfg := &aiStorage.ParserConfigRecord{
+		ID:              existingID,
+		UserID:          userID,
+		Provider:        string(req.Provider),
+		APIKeyEncrypted: encryptedKey,
+		BaseURL:         req.BaseURL,
+		Model:           req.Model,
+		Enabled:         true,
+	}
+
+	return s.parserCfgRepo.Upsert(ctx, cfg)
 }

@@ -439,4 +439,67 @@ func (h *Handler) SaveSuggestRecord(c *gin.Context) {
 	response.JSONSuccess(c, gin.H{"saved": true})
 }
 
-// NOTE: 需要在 handler.go 中添加 aiService 字段和相关方法
+// GetResumeParserConfig 获取简历解析 AI 配置
+// GET /api/ai/parser-config
+func (h *Handler) GetResumeParserConfig(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	cfg, err := h.aiService.GetParserConfig(c.Request.Context(), userID.(string))
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "简历解析配置不存在")
+			return
+		}
+		log.Printf("[ai] GetParserConfig error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "获取解析配置失败")
+		return
+	}
+
+	response.JSONSuccess(c, cfg)
+}
+
+// SaveResumeParserConfig 保存简历解析 AI 配置
+// POST /api/ai/parser-config
+func (h *Handler) SaveResumeParserConfig(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req struct {
+		Provider string `json:"provider" binding:"required"`
+		Model    string `json:"model" binding:"required"`
+		APIKey   string `json:"apiKey" binding:"required"`
+		BaseURL  string `json:"baseUrl"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	baseURL := req.BaseURL
+	if baseURL == "" {
+		if defaultURL, ok := model.DefaultBaseURLs[model.AIProvider(req.Provider)]; ok {
+			baseURL = defaultURL
+		}
+	}
+
+	err := h.aiService.SaveParserConfig(c.Request.Context(), userID.(string), model.ResumeParserConfigRequest{
+		Provider: model.AIProvider(req.Provider),
+		APIKey:   req.APIKey,
+		BaseURL:  baseURL,
+		Model:    req.Model,
+	})
+	if err != nil {
+		log.Printf("[ai] SaveParserConfig error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "保存解析配置失败")
+		return
+	}
+
+	response.JSONSuccess(c, gin.H{"saved": true})
+}

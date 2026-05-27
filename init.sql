@@ -391,4 +391,29 @@ create index idx_ai_suggest_records_module_instance
 create index idx_ai_suggest_records_created_at
     on ai_suggest_records (created_at desc);
 
+create table resume_parser_configs
+(
+    id               uuid                     default gen_random_uuid() not null
+        primary key,
+    user_id          uuid                                               not null
+        constraint fk_resume_parser_configs_user
+            references users
+            on delete cascade,
+    provider         varchar(64)                                        not null,
+    api_key_encrypted text                                              not null,
+    base_url         text                     default ''::text          not null,
+    model            varchar(128)                                       not null,
+    enabled          boolean                  default true              not null,
+    created_at       timestamp with time zone default now()             not null,
+    updated_at       timestamp with time zone default now()             not null,
+    constraint uq_resume_parser_configs_user
+        unique (user_id)
+);
+
+alter table resume_parser_configs
+    owner to resumecraft;
+
+create index idx_resume_parser_configs_user
+    on resume_parser_configs (user_id);
+
 

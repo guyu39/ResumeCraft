@@ -17,7 +17,7 @@ function isValidUUID(id: string): boolean {
 }
 
 const App: React.FC = () => {
-  const { initResume } = useResumeStore()
+  const { initResume, loadFromStorage } = useResumeStore()
   const { isAuthenticated, checkAuth, logout } = useAuthStore()
   const [authChecked, setAuthChecked] = useState(false)
   const [cloudResumes, setCloudResumes] = useState<any[]>([])
@@ -65,7 +65,8 @@ const App: React.FC = () => {
         const skipAutoLoad = sessionStorage.getItem('skip_auto_load')
         if (skipAutoLoad) {
           sessionStorage.removeItem('skip_auto_load')
-          console.log('[App] 跳过自动加载，等待本地简历')
+          // 新建/解析简历后：从 localStorage 加载已保存的简历数据
+          loadFromStorage()
           return
         }
 

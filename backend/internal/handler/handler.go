@@ -10,12 +10,13 @@ import (
 )
 
 type Handler struct {
-	pdfService    pdf.Service
-	authService   auth.Service
-	resumeService resume.Service
-	exportService export.Service
-	aiService     ai.Service
-	objectStorage object.ObjectStorage
+	pdfService       pdf.Service
+	authService      auth.Service
+	resumeService    resume.Service
+	exportService    export.Service
+	aiService        ai.Service
+	objectStorage    object.ObjectStorage
+	parserServiceURL string
 }
 
 func New(
@@ -25,14 +26,16 @@ func New(
 	exportService export.Service,
 	aiService ai.Service,
 	objectStorage object.ObjectStorage,
+	parserServiceURL string,
 ) *Handler {
 	return &Handler{
-		pdfService:    pdfService,
-		authService:   authService,
-		resumeService: resumeService,
-		exportService: exportService,
-		aiService:     aiService,
-		objectStorage: objectStorage,
+		pdfService:       pdfService,
+		authService:      authService,
+		resumeService:    resumeService,
+		exportService:    exportService,
+		aiService:        aiService,
+		objectStorage:    objectStorage,
+		parserServiceURL: parserServiceURL,
 	}
 }
 

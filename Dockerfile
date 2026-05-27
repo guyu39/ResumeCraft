@@ -1,4 +1,4 @@
-FROM xuanyuan.run/library/golang:1.24.13-alpine AS backend-builder
+FROM xuanyuan.run/library/golang:1.25.0-alpine AS backend-builder
 WORKDIR /app/backend
 
 COPY backend/go.mod backend/go.sum ./

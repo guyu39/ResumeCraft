@@ -468,6 +468,28 @@ export const aiApi = {
         optimizedContent: string
         suggestions: Array<{ content: string; reason: string }>
     }) => apiClient.post<{ saved: boolean }>('/ai/suggest-records', data, { auth: true }),
+
+    // 简历解析配置
+    getParserConfig: () =>
+        apiClient.get<ParserConfigResponse>('/ai/parser-config', { auth: true }),
+
+    saveParserConfig: (data: ParserConfigRequest) =>
+        apiClient.post<{ saved: boolean }>('/ai/parser-config', data, { auth: true }),
+}
+
+export interface ParserConfigRequest {
+    provider: string
+    model: string
+    apiKey: string
+    baseUrl?: string
+}
+
+export interface ParserConfigResponse {
+    id: string
+    provider: string
+    baseUrl: string
+    model: string
+    enabled: boolean
 }
 
 export interface SuggestRecord {

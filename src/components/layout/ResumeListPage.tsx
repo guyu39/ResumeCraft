@@ -2,8 +2,8 @@
 // 简历列表页面
 // ============================================================
 
-import React, { useCallback, useMemo, useState } from 'react'
-import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud } from 'lucide-react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch } from 'lucide-react'
 import {
     createDefaultResume,
     getAllResumesFromStorage,
@@ -67,6 +67,9 @@ const ResumeListPage: React.FC<ResumeListPageProps> = ({
     const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
     const [syncing, setSyncing] = useState(false)
 
+    const [showCreateMode, setShowCreateMode] = useState(false)
+    const [parseError, setParseError] = useState<string | null>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const refresh = useCallback(() => {
         setResumes(getAllResumesFromStorage())
     }, [])
@@ -140,20 +143,18 @@ const ResumeListPage: React.FC<ResumeListPageProps> = ({
                     modules: resume.modules,
                 })
                 // 使用云端返回的简历
-                selectResumeForEditingInStorage(created.id)
                 saveResumeToCollectionStorage({
                     ...resume,
                     id: created.id,
                     updatedAt: created.updatedAt,
                 } as Resume)
+                selectResumeForEditingInStorage(created.id)
                 // 通知 useCloudSync 关于云端 ID
                 ;(window as any).__cloudSyncSetCloudId?.(created.id)
                 ;(window as any).__cloudSyncMarkSynced?.()
                 // 通知父组件云端简历已创建
                 onCloudResumeCreated?.(created.id, created.title, created.updatedAt)
 
-                // 设置标记：新建简历后不要自动加载其他简历
-                sessionStorage.setItem('skip_auto_load', 'true')
                 // 导航到编辑器
                 goEditor()
                 return
@@ -169,6 +170,8 @@ const ResumeListPage: React.FC<ResumeListPageProps> = ({
             selectResumeForEditingInStorage(resume.id)
             refresh()
         }
+        // 本地/回退路径（非 UUID）：需要 skip_auto_load 让 App.tsx 走 loadFromStorage
+        sessionStorage.setItem('skip_auto_load', 'true')
         goEditor()
     }, [goEditor, isAuthenticated, onCloudResumeCreated, refresh])
 
@@ -371,6 +374,11 @@ setPendingCreateName(defaultTitle)
 }, [isAuthenticated, cloudResumes])
 
     const handleCreate = useCallback(() => {
+        setShowCreateMode(true)
+    }, [])
+
+    const handleCreateBlank = useCallback(() => {
+        setShowCreateMode(false)
         const defaultTitle = createDefaultResume().title
         const allTitles = displayResumes.map(r => r.title)
         if (allTitles.includes(defaultTitle)) {
@@ -379,6 +387,65 @@ setPendingCreateName(defaultTitle)
             doCreate(defaultTitle)
         }
     }, [displayResumes, openCreateNameDialog, doCreate])
+
+    const handleChooseParse = useCallback(() => {
+        setShowCreateMode(false)
+        setParseError(null)
+        fileInputRef.current?.click()
+    }, [])
+
+    const handleParseResume = useCallback(async (file: File) => {
+        // 读取文件为 base64，存入 sessionStorage 供编辑器后台解析
+        try {
+            const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader()
+                reader.onload = () => resolve(reader.result as string)
+                reader.onerror = () => reject(new Error('读取文件失败'))
+                reader.readAsDataURL(file)
+            })
+
+            sessionStorage.setItem('pending_parse', JSON.stringify({
+                filename: file.name,
+                fileData: base64,
+            }))
+
+            // 立即创建空白简历
+            const resume = createDefaultResume()
+            resume.title = `简历-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`
+
+            if (isAuthenticated) {
+                try {
+                    const created = await resumeApi.create({
+                        title: resume.title,
+                        locale: resume.locale,
+                        template: resume.template,
+                        themeColor: resume.themeColor,
+                        styleSettings: resume.styleSettings,
+                        modules: resume.modules,
+                    })
+                    saveResumeToCollectionStorage({ ...resume, id: created.id, updatedAt: created.updatedAt } as Resume)
+                    selectResumeForEditingInStorage(created.id)
+                    ;(window as any).__cloudSyncSetCloudId?.(created.id)
+                    ;(window as any).__cloudSyncMarkSynced?.()
+                    onCloudResumeCreated?.(created.id, created.title, created.updatedAt)
+                    goEditor()
+                    return
+                } catch (err) {
+                    console.error('[ResumeList] 云端创建失败，回退本地:', err)
+                }
+            }
+
+            // 本地回退
+            saveResumeToCollectionStorage(resume)
+            selectResumeForEditingInStorage(resume.id)
+            refresh()
+            sessionStorage.setItem('skip_auto_load', 'true')
+            goEditor()
+        } catch (err) {
+            const message = err instanceof Error ? err.message : '读取文件失败'
+            setParseError(message)
+        }
+    }, [isAuthenticated, onCloudResumeCreated, refresh, goEditor])
 
     return (
         <>
@@ -508,6 +575,91 @@ setPendingCreateName(defaultTitle)
             {deleteConfirmDialog}
             {renameDialog}
             {CreateNameDialogModal}
+
+            {/* 隐藏的文件选择器 - 简历解析导入 */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx"
+                className="hidden"
+                onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleParseResume(file)
+                    e.target.value = ''
+                }}
+            />
+
+            {/* 新建方式选择弹窗 */}
+            {showCreateMode && createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                    <div className="absolute inset-0 bg-black/35" onClick={() => setShowCreateMode(false)} />
+                    <div className="relative w-full max-w-sm rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl">
+                        <h4 className="text-base font-semibold text-gray-800">新建简历</h4>
+                        <p className="mt-1 text-sm text-gray-500">选择一种方式创建简历</p>
+
+                        <div className="mt-5 space-y-3">
+                            <button
+                                type="button"
+                                onClick={handleCreateBlank}
+                                className="flex w-full items-center gap-4 rounded-xl border border-gray-200 p-4 text-left transition hover:border-primary/40 hover:bg-primary/5"
+                            >
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+                                    <Plus className="h-5 w-5 text-slate-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-gray-800">新建空白简历</p>
+                                    <p className="text-xs text-gray-500">从零开始创建一份简历</p>
+                                </div>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleChooseParse}
+                                className="flex w-full items-center gap-4 rounded-xl border border-gray-200 p-4 text-left transition hover:border-primary/40 hover:bg-primary/5"
+                            >
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50">
+                                    <FileSearch className="h-5 w-5 text-blue-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-gray-800">解析简历导入</p>
+                                    <p className="text-xs text-gray-500">上传 PDF / Word 文件，AI 自动识别填充</p>
+                                </div>
+                            </button>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => setShowCreateMode(false)}
+                            className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-500 hover:bg-gray-50"
+                        >
+                            取消
+                        </button>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* 解析错误提示 */}
+            {parseError && createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                    <div className="absolute inset-0 bg-black/35" onClick={() => setParseError(null)} />
+                    <div className="relative w-full max-w-sm rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl text-center">
+                        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-red-50">
+                            <span className="text-xl">!</span>
+                        </div>
+                        <p className="mt-4 text-sm font-medium text-gray-800">解析失败</p>
+                        <p className="mt-1 text-xs text-red-600">{parseError}</p>
+                        <button
+                            type="button"
+                            onClick={() => setParseError(null)}
+                            className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-500 hover:bg-gray-50"
+                        >
+                            确定
+                        </button>
+                    </div>
+                </div>,
+                document.body
+            )}
         </>
     )
 }

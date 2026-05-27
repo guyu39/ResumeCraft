@@ -17,6 +17,7 @@ type Config struct {
 	PDF     PDFConfig
 	AI      AIConfig
 	Storage StorageConfig
+	Parser  ParserConfig
 }
 
 type DBConfig struct {
@@ -62,6 +63,10 @@ type StorageConfig struct {
 	SecretKey string
 	Bucket    string
 	UseSSL    bool
+}
+
+type ParserConfig struct {
+	ServiceURL string
 }
 
 func Load() Config {
@@ -123,6 +128,9 @@ func Load() Config {
 			SecretKey: getEnv("S3_SECRET_KEY", ""),
 			Bucket:    getEnv("S3_BUCKET", "resumecraft"),
 			UseSSL:    getEnvBool("S3_USE_SSL", false),
+		},
+		Parser: ParserConfig{
+			ServiceURL: getEnv("PARSER_SERVICE_URL", ""),
 		},
 	}
 }

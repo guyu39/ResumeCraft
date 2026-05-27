@@ -40,11 +40,15 @@ services:
       S3_BUCKET: resumecraft
       S3_USE_SSL: "false"
 
+      # 简历解析微服务
+      PARSER_SERVICE_URL: http://python-parser:9002
       TZ: Asia/Shanghai
     depends_on:
       postgres:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      python-parser:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://localhost:8787/api/pdf/export || exit 1" ]
@@ -91,6 +95,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  python-parser:
+    build:
+      context: .
+      dockerfile: docker/python-parser/Dockerfile
+    container_name: resumecraft-parser
+    restart: unless-stopped
+    ports:
+      - "9002:9002"
+    environment:
+      PARSER_PORT: "9002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   web:
     image: xuanyuan.run/library/nginx:alpine

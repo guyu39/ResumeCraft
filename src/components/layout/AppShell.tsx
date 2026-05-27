@@ -8,6 +8,8 @@ import LeftPanel from './LeftPanel'
 import CenterPanel from './CenterPanel'
 import RightPanel from './RightPanel.tsx'
 import { useCloudSync } from '@/hooks/useCloudSync'
+import { usePendingParse } from '@/hooks/usePendingParse'
+import { X, Loader2 } from 'lucide-react'
 
 const AppShell: React.FC = () => {
   const [左栏宽度, 设置左栏宽度] = React.useState(300)
@@ -16,6 +18,9 @@ const AppShell: React.FC = () => {
 
   // 云端同步
   const { saveStatus } = useCloudSync()
+
+  // 后台解析简历（从简历列表页传入的文件）
+  const { status: parseStatus, error: parseError, dismiss: dismissParse } = usePendingParse()
 
   // 记录保存状态供 UI 使用
   React.useEffect(() => {
@@ -61,8 +66,30 @@ const AppShell: React.FC = () => {
   }, [拖拽中, 左栏宽度, 右栏宽度])
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_20%_15%,#f7f9ff_0%,#edf2ff_35%,#e8edf5_100%)] p-3">
-      <div className="flex h-full w-full overflow-hidden gap-2">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_20%_15%,#f7f9ff_0%,#edf2ff_35%,#e8edf5_100%)] p-3">
+      {/* 后台解析进度提示 */}
+      {parseStatus !== 'idle' && (
+        <div className={`mb-2 flex items-center justify-between rounded-xl px-4 py-2.5 text-sm shadow-sm transition-colors ${
+          parseStatus === 'parsing' ? 'bg-blue-50 text-blue-700' :
+          parseStatus === 'done' ? 'bg-green-50 text-green-700' :
+          'bg-red-50 text-red-600'
+        }`}>
+          <div className="flex items-center gap-2">
+            {parseStatus === 'parsing' && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span>
+              {parseStatus === 'parsing' && '正在解析简历，请稍候...'}
+              {parseStatus === 'done' && '简历解析完成'}
+              {parseStatus === 'error' && (parseError || '简历解析失败')}
+            </span>
+          </div>
+          {(parseStatus === 'done' || parseStatus === 'error') && (
+            <button onClick={dismissParse} className="ml-3 rounded p-0.5 hover:bg-black/10">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
+      <div className="flex flex-1 w-full overflow-hidden gap-2">
         {/* 左栏 220px — 模块管理面板 */}
         <aside
           className="flex-shrink-0 flex flex-col bg-white/92 border border-white/70 rounded-2xl shadow-[0_8px_30px_rgba(16,24,40,0.08)] overflow-hidden backdrop-blur"
