@@ -1,7 +1,7 @@
 # python_parser/Dockerfile
 
 # 1. 使用官方轻量级 Python 镜像
-FROM xuanyuan.run/library/python:3.11.15
+FROM oyh0mq3odt54g3vzjv.xuanyuan.run/library/python:3.11.15
 
 # 2. 设置环境变量，防止 Python 缓冲 stdout 和 stderr，避免日志丢失
 ENV PYTHONUNBUFFERED=1
