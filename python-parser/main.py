@@ -137,7 +137,23 @@ async def extract_resume_fields(
                 "response_format": {"type": "json_object"},
             },
         )
-        resp.raise_for_status()
+        if resp.status_code == 401:
+            raise HTTPException(401, "AI 服务认证失败，请检查 API Key 是否正确")
+        if resp.status_code == 403:
+            raise HTTPException(403, "AI 服务访问被拒绝，请检查 API Key 权限")
+        if resp.status_code == 429:
+            raise HTTPException(429, "AI 服务请求过于频繁，请稍后重试")
+        if resp.status_code >= 500:
+            raise HTTPException(502, f"AI 服务内部错误 (HTTP {resp.status_code})，请稍后重试")
+        if resp.status_code >= 400:
+            detail = ""
+            try:
+                err_body = resp.json()
+                detail = err_body.get("error", {}).get("message", "")
+            except Exception:
+                detail = resp.text[:200]
+            raise HTTPException(resp.status_code, f"AI 服务请求失败: {detail}" if detail else f"AI 服务请求失败 (HTTP {resp.status_code})")
+
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
         return json.loads(content)

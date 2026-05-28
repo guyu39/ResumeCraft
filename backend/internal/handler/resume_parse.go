@@ -21,7 +21,7 @@ import (
 const maxResumeFileSize = 10 << 20 // 10MB
 
 var allowedResumeTypes = map[string]bool{
-	"application/pdf":                                                      true,
+	"application/pdf": true,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
 }
 
@@ -131,7 +131,27 @@ func callParserService(serviceURL string, fileBytes []byte, filename, contentTyp
 	}
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("parser returned %d: %s", resp.StatusCode, string(body))
+		// 尝试从 Python 服务返回的 JSON 中提取错误详情
+		detail := string(body)
+		var errResp struct {
+			Detail string `json:"detail"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.Detail != "" {
+			detail = errResp.Detail
+		}
+		// 根据上游状态码映射为用户友好的错误
+		switch resp.StatusCode {
+		case 401:
+			return nil, fmt.Errorf("AI 服务认证失败，请检查 API Key 是否正确")
+		case 403:
+			return nil, fmt.Errorf("AI 服务访问被拒绝，请检查 API Key 权限")
+		case 429:
+			return nil, fmt.Errorf("AI 服务请求过于频繁，请稍后重试")
+		case 502:
+			return nil, fmt.Errorf("AI 服务内部错误，请稍后重试")
+		default:
+			return nil, fmt.Errorf("简历解析失败: %s", detail)
+		}
 	}
 
 	var result map[string]interface{}
