@@ -184,6 +184,111 @@ type JDResumeSuggestion struct {
 	Suggestion string `json:"suggestion"`
 }
 
+// JDScoreRequest JD 深度评分请求
+type JDScoreRequest struct {
+	ResumeID    string                 `json:"resumeId" binding:"required"`
+	Content     map[string]interface{} `json:"content" binding:"required"`
+	JDText      string                 `json:"jdText" binding:"required"`
+	TargetTitle string                 `json:"targetTitle"`
+	CompanyName string                 `json:"companyName"`
+}
+
+// JDParsedResult JD 结构化抽取结果
+type JDParsedResult struct {
+	JobTitle               string                    `json:"jobTitle"`
+	Company                string                    `json:"company"`
+	SeniorityLevel         string                    `json:"seniorityLevel"`
+	EmploymentType         string                    `json:"employmentType"`
+	HardSkills             []JDSkillRequirement      `json:"hardSkills"`
+	SoftSkills             []JDSkillRequirement      `json:"softSkills"`
+	Tools                  []JDSkillRequirement      `json:"tools"`
+	Domains                []JDSkillRequirement      `json:"domains"`
+	ExperienceRequirements []JDExperienceRequirement `json:"experienceRequirements"`
+	EducationRequirement   *JDEducationRequirement   `json:"educationRequirement,omitempty"`
+	Certifications         []string                  `json:"certifications"`
+	Languages              []string                  `json:"languages"`
+	KeyPhrases             []string                  `json:"keyPhrases"`
+	Categories             []string                  `json:"categories"`
+}
+
+type JDSkillRequirement struct {
+	Name        string `json:"name"`
+	Required    bool   `json:"required"`
+	Proficiency string `json:"proficiency"`
+	Context     string `json:"context"`
+}
+
+type JDExperienceRequirement struct {
+	Field    string `json:"field"`
+	MinYears int    `json:"minYears"`
+	Required bool   `json:"required"`
+	Context  string `json:"context"`
+}
+
+type JDEducationRequirement struct {
+	Level    string   `json:"level"`
+	Majors   []string `json:"majors"`
+	Required bool     `json:"required"`
+}
+
+type JDScoreResponse struct {
+	OverallScore   int                  `json:"overallScore"`
+	Level          string               `json:"level"`
+	Summary        string               `json:"summary"`
+	JDParsed       JDParsedResult       `json:"jdParsed"`
+	Breakdown      JDScoreBreakdown     `json:"breakdown"`
+	Improvements   []JDScoreImprovement `json:"improvements"`
+	TargetTitle    string               `json:"targetTitle,omitempty"`
+	CompanyName    string               `json:"companyName,omitempty"`
+	JDText         string               `json:"jdText,omitempty"`
+	RawText        string               `json:"rawText,omitempty"`
+	Model          string               `json:"model"`
+	ConversationID string               `json:"conversationId"`
+}
+
+type JDScoreBreakdown struct {
+	ATS          JDATSScoreDetail     `json:"ats"`
+	KeywordMatch JDKeywordMatchDetail `json:"keywordMatch"`
+	SeniorityFit JDSeniorityFitDetail `json:"seniorityFit"`
+}
+
+type JDATSScoreDetail struct {
+	Score  int                 `json:"score"`
+	Checks []JDFormatCheckItem `json:"checks"`
+}
+
+type JDFormatCheckItem struct {
+	Key         string `json:"key"`
+	Passed      bool   `json:"passed"`
+	Description string `json:"description"`
+	Suggestion  string `json:"suggestion,omitempty"`
+}
+
+type JDKeywordMatchDetail struct {
+	Score           int              `json:"score"`
+	Coverage        float64          `json:"coverage"`
+	RequiredMatched int              `json:"requiredMatched"`
+	RequiredTotal   int              `json:"requiredTotal"`
+	OptionalMatched int              `json:"optionalMatched"`
+	OptionalTotal   int              `json:"optionalTotal"`
+	Keywords        []JDKeywordMatch `json:"keywords"`
+	Missing         []string         `json:"missing"`
+}
+
+type JDSeniorityFitDetail struct {
+	Score       int    `json:"score"`
+	JDSeniority string `json:"jdSeniority"`
+	ResumeYears int    `json:"resumeYears"`
+	LevelMatch  string `json:"levelMatch"`
+}
+
+type JDScoreImprovement struct {
+	Category      string `json:"category"`
+	PotentialGain int    `json:"potentialGain"`
+	Action        string `json:"action"`
+	Priority      string `json:"priority"`
+}
+
 // CoverLetterRequest 求职信生成请求
 type CoverLetterRequest struct {
 	ResumeID    string                 `json:"resumeId" binding:"required"`

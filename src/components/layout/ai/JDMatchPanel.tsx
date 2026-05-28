@@ -1,17 +1,23 @@
 import React, { useState } from 'react'
-import type { JDMatchResponse } from '@/api/ai'
+import type { JDMatchResponse, JDScoreResponse } from '@/api/ai'
 import type { Resume } from '@/types/resume'
 
 interface JDMatchPanelProps {
     resume: Resume
     loading: boolean
+    scoreLoading: boolean
     error: string | null
+    scoreError: string | null
     result: JDMatchResponse | null
+    scoreResult: JDScoreResponse | null
     restoredResult: JDMatchResponse | null
     modelName: string | null
     lastMatchedAt: number | null
+    lastScoredAt: number | null
     onRunMatch: (form: { jdText: string; targetTitle?: string; companyName?: string }) => void
+    onRunScore: (form: { jdText: string; targetTitle?: string; companyName?: string }) => void
     onReset: () => void
+    onResetScore: () => void
 }
 
 const severityTextMap: Record<string, string> = {
@@ -34,20 +40,26 @@ const scoreClass = (score: number) => {
 
 const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     loading,
+    scoreLoading,
     error,
+    scoreError,
     result,
+    scoreResult,
     restoredResult,
     modelName,
     lastMatchedAt,
+    lastScoredAt,
     onRunMatch,
+    onRunScore,
     onReset,
+    onResetScore,
 }) => {
     const displayResult = restoredResult ?? result
     const [jdText, setJdText] = useState('')
     const [targetTitle, setTargetTitle] = useState('')
     const [companyName, setCompanyName] = useState('')
 
-    const canSubmit = jdText.trim().length > 0 && jdText.length <= 20000 && !loading
+    const canSubmit = jdText.trim().length > 0 && jdText.length <= 20000 && !loading && !scoreLoading
 
     return (
         <div className="h-full overflow-y-auto bg-gray-50/80 px-4 py-4 no-scrollbar">
@@ -95,16 +107,95 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                             {modelName && <span>模型：{modelName}</span>}
                         </div>
                         {error && <p className="text-xs text-red-600">{error}</p>}
-                        <button
-                            type="button"
-                            disabled={!canSubmit}
-                            onClick={() => onRunMatch({ jdText, targetTitle, companyName })}
-                            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {loading ? '分析中...' : '开始匹配分析'}
-                        </button>
+                        {scoreError && <p className="text-xs text-red-600">{scoreError}</p>}
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                disabled={!canSubmit}
+                                onClick={() => onRunMatch({ jdText, targetTitle, companyName })}
+                                className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {loading ? '匹配中...' : '快速匹配'}
+                            </button>
+                            <button
+                                type="button"
+                                disabled={!canSubmit}
+                                onClick={() => onRunScore({ jdText, targetTitle, companyName })}
+                                className="rounded-xl border border-primary px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {scoreLoading ? '评分中...' : '深度评分'}
+                            </button>
+                        </div>
                     </div>
                 </div>
+
+                {scoreResult && (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <p className="text-xs text-gray-500">深度评分</p>
+                                    <div className="mt-1 flex items-end gap-2">
+                                        <span className={`text-4xl font-bold ${scoreClass(scoreResult.overallScore)}`}>
+                                            {scoreResult.overallScore}
+                                        </span>
+                                        <span className="pb-1 text-sm font-medium text-gray-500">{scoreResult.level}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    {lastScoredAt && <span className="text-xs text-gray-400">{new Date(lastScoredAt).toLocaleString()}</span>}
+                                    <button
+                                        type="button"
+                                        onClick={onResetScore}
+                                        className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50"
+                                    >
+                                        清空评分
+                                    </button>
+                                </div>
+                            </div>
+                            {scoreResult.summary && <p className="mt-3 text-sm leading-relaxed text-gray-700">{scoreResult.summary}</p>}
+                            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                                <div className="rounded-xl bg-gray-50 p-3">
+                                    <p className="text-xs text-gray-500">ATS</p>
+                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(scoreResult.breakdown.ats.score)}`}>{scoreResult.breakdown.ats.score}</p>
+                                </div>
+                                <div className="rounded-xl bg-gray-50 p-3">
+                                    <p className="text-xs text-gray-500">关键词</p>
+                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(scoreResult.breakdown.keywordMatch.score)}`}>{scoreResult.breakdown.keywordMatch.score}</p>
+                                </div>
+                                <div className="rounded-xl bg-gray-50 p-3">
+                                    <p className="text-xs text-gray-500">资历</p>
+                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(scoreResult.breakdown.seniorityFit.score)}`}>{scoreResult.breakdown.seniorityFit.score}</p>
+                                </div>
+                            </div>
+                            {scoreResult.breakdown.keywordMatch.missing.length > 0 && (
+                                <div className="mt-4">
+                                    <h4 className="text-sm font-semibold text-gray-900">缺失关键词</h4>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {scoreResult.breakdown.keywordMatch.missing.slice(0, 12).map((keyword) => (
+                                            <span key={keyword} className="rounded-full bg-red-50 px-2 py-1 text-xs text-red-700">{keyword}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {scoreResult.improvements.length > 0 && (
+                                <div className="mt-4">
+                                    <h4 className="text-sm font-semibold text-gray-900">提分建议</h4>
+                                    <div className="mt-2 space-y-2">
+                                        {scoreResult.improvements.map((item, index) => (
+                                            <div key={`${item.category}-${index}`} className="rounded-xl bg-gray-50 p-3">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <p className="text-sm font-medium text-gray-800">{item.action}</p>
+                                                    <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">+{item.potentialGain}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {displayResult && (
                     <div className="space-y-4">

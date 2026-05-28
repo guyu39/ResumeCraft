@@ -36,6 +36,7 @@ type Service interface {
 	EvaluateStream(ctx context.Context, userID string, req model.EvaluateRequest, onChunk func(chunk string)) (*model.EvaluateResponse, error)
 	StreamEvaluate(ctx context.Context, userID string, req model.EvaluateRequest, onEvent func(StreamEvent)) (*model.EvaluateResponse, error)
 	StreamJDMatch(ctx context.Context, userID string, req model.JDMatchRequest, onEvent func(StreamEvent)) (*model.JDMatchResponse, error)
+	ScoreResumeForJD(ctx context.Context, userID string, req model.JDScoreRequest) (*model.JDScoreResponse, error)
 	GenerateCoverLetter(ctx context.Context, userID string, req model.CoverLetterRequest) (*model.CoverLetterResponse, error)
 	Suggest(ctx context.Context, userID string, req model.SuggestRequest) (*model.SuggestResponse, error)
 
@@ -738,6 +739,110 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 	return jdResp, nil
 }
 
+// ScoreResumeForJD 基于 JD 对简历做深度评分
+func (s *service) ScoreResumeForJD(ctx context.Context, userID string, req model.JDScoreRequest) (*model.JDScoreResponse, error) {
+	cfg, err := s.cfgRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+	if !cfg.Enabled {
+		return nil, fmt.Errorf("AI 功能未启用")
+	}
+	apiKey, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt API key")
+	}
+
+	prompt := buildJDScorePrompt(req.Content, req.JDText, req.TargetTitle, req.CompanyName)
+	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
+		APIKey:    apiKey,
+		BaseURL:   cfg.BaseURL,
+		Model:     cfg.DefaultModel,
+		Prompt:    prompt,
+		TimeoutMs: cfg.TimeoutMs,
+	})
+	if err != nil {
+		log.Printf("[ai] ScoreResumeForJD failed: %v", err)
+		return nil, ErrAIRequestFailed
+	}
+
+	jdParsed, summary, improvements, err := parseJDScoreAIResponse(result.Text)
+	if err != nil {
+		log.Printf("[ai] Failed to parse JD score response: %v, text: %s", err, result.Text)
+		return nil, fmt.Errorf("failed to parse AI response")
+	}
+
+	breakdown := calculateJDScoreBreakdown(req.Content, jdParsed)
+	overallScore := clampScore(int(float64(breakdown.ATS.Score)*0.3 + float64(breakdown.KeywordMatch.Score)*0.5 + float64(breakdown.SeniorityFit.Score)*0.2))
+	if summary == "" {
+		summary = buildJDScoreSummary(overallScore, breakdown)
+	}
+	if len(improvements) == 0 {
+		improvements = buildJDScoreImprovements(breakdown)
+	}
+
+	resp := &model.JDScoreResponse{
+		OverallScore: overallScore,
+		Level:        scoreLevel(overallScore),
+		Summary:      summary,
+		JDParsed:     jdParsed,
+		Breakdown:    breakdown,
+		Improvements: improvements,
+		TargetTitle:  strings.TrimSpace(req.TargetTitle),
+		CompanyName:  strings.TrimSpace(req.CompanyName),
+		JDText:       strings.TrimSpace(req.JDText),
+		RawText:      result.Text,
+		Model:        cfg.DefaultModel,
+	}
+
+	convID := uuid.New().String()
+	contextData := map[string]any{
+		"overallScore": resp.OverallScore,
+		"level":        resp.Level,
+		"summary":      resp.Summary,
+		"jdParsed":     resp.JDParsed,
+		"breakdown":    resp.Breakdown,
+		"improvements": resp.Improvements,
+		"model":        resp.Model,
+		"targetTitle":  req.TargetTitle,
+		"companyName":  req.CompanyName,
+		"jdText":       req.JDText,
+	}
+	contextJSON, _ := json.Marshal(contextData)
+	title := "JD深度评分"
+	if strings.TrimSpace(req.TargetTitle) != "" {
+		title = fmt.Sprintf("JD评分 - %s", strings.TrimSpace(req.TargetTitle))
+	}
+	conversation := &aiStorage.ConversationRecord{
+		ID:       convID,
+		UserID:   userID,
+		ResumeID: &req.ResumeID,
+		Type:     string(model.ConversationTypeJDMatch),
+		Title:    stringPtr(title),
+		Context:  contextJSON,
+	}
+	if err := s.repo.Create(ctx, conversation); err != nil {
+		log.Printf("[ai] Failed to create JD score conversation: %v", err)
+	}
+	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+		ID:             uuid.New().String(),
+		ConversationID: convID,
+		Role:           "user",
+		Content:        prompt,
+		Model:          &cfg.DefaultModel,
+	})
+	resp.ConversationID = convID
+	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+		ID:             uuid.New().String(),
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        result.Text,
+		Model:          &cfg.DefaultModel,
+	})
+
+	return resp, nil
+}
+
 // GenerateCoverLetter 生成求职信
 func (s *service) GenerateCoverLetter(ctx context.Context, userID string, req model.CoverLetterRequest) (*model.CoverLetterResponse, error) {
 	cfg, err := s.cfgRepo.GetByUserID(ctx, userID)
@@ -1270,6 +1375,52 @@ func buildJDMatchPrompt(content map[string]interface{}, jdText, targetTitle, com
 3. 匹配分数必须体现证据充分性：简历未体现的要求不能算匹配。
 4. gaps 优先输出高影响缺口，resume_suggestion 必须能指导用户直接修改简历。
 5. 若 JD 或简历有效信息不足，必须在 summary 中明确说明，并降低匹配分数。
+
+【目标岗位】
+%s
+
+【目标公司】
+%s
+
+【岗位 JD】
+%s
+
+【简历 JSON】
+%s`, strings.TrimSpace(targetTitle), strings.TrimSpace(companyName), strings.TrimSpace(jdText), string(resumeJSON))
+}
+
+func buildJDScorePrompt(content map[string]interface{}, jdText, targetTitle, companyName string) string {
+	resumeJSON, _ := json.Marshal(sanitizeAIResumeContent(content))
+	return fmt.Sprintf(`你是资深招聘需求分析专家，请将目标岗位 JD 解析为结构化 JSON，并给出简历匹配概述。
+
+【强制规则】
+1. 只返回一个 JSON 对象，禁止 Markdown、代码块、注释或额外说明。
+2. 只基于 JD 和简历已有内容分析，不编造候选人经历。
+3. jdParsed.keyPhrases 提取 12-30 个 ATS 会识别的关键词或短语。
+4. required 必须区分必备和加分项。
+5. improvements 只输出可执行建议，最多 5 条。
+
+【返回格式】
+{
+  "summary": "180字以内匹配概述",
+  "jdParsed": {
+    "jobTitle": "岗位名称",
+    "company": "公司名称",
+    "seniorityLevel": "intern/junior/mid/senior/lead/principal/unknown",
+    "employmentType": "full-time/part-time/contract/intern/unknown",
+    "hardSkills": [{"name":"Go","required":true,"proficiency":"familiar/proficient/expert/unknown","context":"JD中的语境"}],
+    "softSkills": [],
+    "tools": [],
+    "domains": [],
+    "experienceRequirements": [{"field":"后端开发","minYears":3,"required":true,"context":"JD中的语境"}],
+    "educationRequirement": {"level":"bachelor/master/phd/any/unknown","majors":["计算机"],"required":false},
+    "certifications": [],
+    "languages": [],
+    "keyPhrases": ["Go", "微服务"],
+    "categories": ["backend"]
+  },
+  "improvements": [{"category":"keyword","potentialGain":8,"action":"在项目经历中补充 Go 和微服务关键词","priority":"high"}]
+}
 
 【目标岗位】
 %s

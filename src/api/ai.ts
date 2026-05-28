@@ -135,6 +135,90 @@ export interface JDMatchStreamPartialResult {
     model?: string
 }
 
+export type JDScoreRequest = JDMatchRequest
+
+export interface JDSkillRequirement {
+    name: string
+    required: boolean
+    proficiency: string
+    context: string
+}
+
+export interface JDExperienceRequirement {
+    field: string
+    minYears: number
+    required: boolean
+    context: string
+}
+
+export interface JDEducationRequirement {
+    level: string
+    majors: string[]
+    required: boolean
+}
+
+export interface JDParsedResult {
+    jobTitle: string
+    company: string
+    seniorityLevel: string
+    employmentType: string
+    hardSkills: JDSkillRequirement[]
+    softSkills: JDSkillRequirement[]
+    tools: JDSkillRequirement[]
+    domains: JDSkillRequirement[]
+    experienceRequirements: JDExperienceRequirement[]
+    educationRequirement?: JDEducationRequirement
+    certifications: string[]
+    languages: string[]
+    keyPhrases: string[]
+    categories: string[]
+}
+
+export interface JDFormatCheckItem {
+    key: string
+    passed: boolean
+    description: string
+    suggestion?: string
+}
+
+export interface JDScoreResponse {
+    overallScore: number
+    level: string
+    summary: string
+    jdParsed: JDParsedResult
+    breakdown: {
+        ats: { score: number; checks: JDFormatCheckItem[] }
+        keywordMatch: {
+            score: number
+            coverage: number
+            requiredMatched: number
+            requiredTotal: number
+            optionalMatched: number
+            optionalTotal: number
+            keywords: JDKeywordMatch[]
+            missing: string[]
+        }
+        seniorityFit: {
+            score: number
+            jdSeniority: string
+            resumeYears: number
+            levelMatch: string
+        }
+    }
+    improvements: Array<{
+        category: string
+        potentialGain: number
+        action: string
+        priority: string
+    }>
+    targetTitle?: string
+    companyName?: string
+    jdText?: string
+    rawText?: string
+    model: string
+    conversationId: string
+}
+
 export interface CoverLetterRequest {
     resumeId: string
     content: Record<string, unknown>
@@ -424,6 +508,9 @@ export const aiApi = {
             xhr.send(JSON.stringify(data))
         })
     },
+
+    score: (data: JDScoreRequest) =>
+        apiClient.post<JDScoreResponse>('/ai/score', data, { auth: true }),
 
     generateCoverLetter: (data: CoverLetterRequest) =>
         apiClient.post<CoverLetterResponse>('/ai/cover-letter', data, { auth: true }),

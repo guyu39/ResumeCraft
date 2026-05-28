@@ -23,6 +23,7 @@ import {
 import { useSyncExport } from '@/hooks/useExportPDF'
 import { useResumeEvaluation } from '@/hooks/useResumeEvaluation'
 import { useJDMatch } from '@/hooks/useJDMatch'
+import { useJDScore } from '@/hooks/useJDScore'
 import { useCoverLetter } from '@/hooks/useCoverLetter'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
@@ -762,6 +763,14 @@ const RightPanel: React.FC = () => {
         resetMatch,
     } = useJDMatch()
     const {
+        loading: jdScoring,
+        error: jdScoreError,
+        result: jdScoreResult,
+        lastScoredAt,
+        runScore,
+        resetScore,
+    } = useJDScore()
+    const {
         loading: generatingCoverLetter,
         error: coverLetterError,
         result: coverLetterResult,
@@ -962,6 +971,10 @@ const RightPanel: React.FC = () => {
     const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
         setRestoredJDMatch(null)
         await runMatch(resume, form)
+    }
+
+    const handleRunJDScore = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
+        await runScore(resume, form)
     }
 
     const handleGenerateCoverLetter = async (form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }) => {
@@ -1172,13 +1185,19 @@ const RightPanel: React.FC = () => {
                                 <JDMatchPanel
                                     resume={resume}
                                     loading={jdMatching}
+                                    scoreLoading={jdScoring}
                                     error={jdMatchError}
+                                    scoreError={jdScoreError}
                                     result={jdMatchResult}
+                                    scoreResult={jdScoreResult}
                                     restoredResult={restoredJDMatch}
                                     modelName={jdMatchModelName}
                                     lastMatchedAt={lastMatchedAt}
+                                    lastScoredAt={lastScoredAt}
                                     onRunMatch={handleRunJDMatch}
+                                    onRunScore={handleRunJDScore}
                                     onReset={resetMatch}
+                                    onResetScore={resetScore}
                                 />
                             )}
                             {activeAITool === 'cover_letter' && (
