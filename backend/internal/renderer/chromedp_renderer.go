@@ -11,6 +11,7 @@ import (
 
 type Renderer interface {
 	RenderPDF(html string) ([]byte, error)
+	Close()
 }
 
 type Options struct {
@@ -25,10 +26,13 @@ type Options struct {
 	PaperWidthInches      float64
 	PaperHeightInches     float64
 	PDFScale              float64
+	MaxBrowserTabs        int           // 最大并发 Tab 数（0=默认10）
+	BrowserIdleTimeout    time.Duration // 浏览器空闲超时后自动关闭（0=不自动关闭）
 }
 
 type chromedpRenderer struct {
 	options Options
+	pool    *BrowserPool
 }
 
 func NewChromedpRenderer(options Options) Renderer {
@@ -53,38 +57,50 @@ func NewChromedpRenderer(options Options) Renderer {
 	if options.PDFScale <= 0 {
 		options.PDFScale = 1
 	}
+	if options.MaxBrowserTabs <= 0 {
+		options.MaxBrowserTabs = 10
+	}
+	if options.BrowserIdleTimeout <= 0 {
+		options.BrowserIdleTimeout = 5 * time.Minute
+	}
 
-	return &chromedpRenderer{options: options}
+	allocOpts := []chromedp.ExecAllocatorOption{}
+	if options.ChromiumHeadless {
+		allocOpts = append(allocOpts, chromedp.Headless)
+	} else {
+		allocOpts = append(allocOpts, chromedp.Flag("headless", false))
+	}
+	if options.ChromiumDisableGPU {
+		allocOpts = append(allocOpts, chromedp.DisableGPU)
+	}
+	if options.ChromiumNoSandbox {
+		allocOpts = append(allocOpts, chromedp.NoSandbox)
+	}
+	if options.ChromiumDisableSetUID {
+		allocOpts = append(allocOpts, chromedp.Flag("disable-setuid-sandbox", true))
+	}
+
+	return &chromedpRenderer{
+		options: options,
+		pool:    NewBrowserPool(allocOpts, options.MaxBrowserTabs, options.BrowserIdleTimeout),
+	}
 }
 
 func (r *chromedpRenderer) RenderPDF(html string) ([]byte, error) {
-	allocOptions := []chromedp.ExecAllocatorOption{}
-	if r.options.ChromiumHeadless {
-		allocOptions = append(allocOptions, chromedp.Headless)
-	} else {
-		allocOptions = append(allocOptions, chromedp.Flag("headless", false))
-	}
-	if r.options.ChromiumDisableGPU {
-		allocOptions = append(allocOptions, chromedp.DisableGPU)
-	}
-	if r.options.ChromiumNoSandbox {
-		allocOptions = append(allocOptions, chromedp.NoSandbox)
-	}
-	if r.options.ChromiumDisableSetUID {
-		allocOptions = append(allocOptions, chromedp.Flag("disable-setuid-sandbox", true))
-	}
-
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), allocOptions...)
-	defer cancelAlloc()
-
-	ctx, cancelCtx := chromedp.NewContext(allocCtx)
-	defer cancelCtx()
-
-	ctx, cancelTimeout := context.WithTimeout(ctx, r.options.RenderTimeout)
+	ctx, cancelTimeout := context.WithTimeout(context.Background(), r.options.RenderTimeout)
 	defer cancelTimeout()
 
+	tabCtx, releaseTab := r.pool.Acquire(ctx)
+	if tabCtx == nil {
+		return nil, ctx.Err()
+	}
+	defer releaseTab()
+
+	tabCtx, cancelTab := context.WithTimeout(tabCtx, r.options.RenderTimeout)
+	defer cancelTab()
+
 	var pdf []byte
-	err := chromedp.Run(ctx,
+	err := chromedp.Run(tabCtx,
 		chromedp.Navigate("about:blank"),
 		emulation.SetDeviceMetricsOverride(int64(r.options.ViewportWidth), int64(r.options.ViewportHeight), r.options.DeviceScaleFactor, false),
 		chromedp.ActionFunc(func(ctx context.Context) error {
@@ -94,8 +110,11 @@ func (r *chromedpRenderer) RenderPDF(html string) ([]byte, error) {
 			}
 			return page.SetDocumentContent(frameTree.Frame.ID, html).Do(ctx)
 		}),
-		emulation.SetEmulatedMedia().WithMedia("print"),
 		chromedp.WaitReady("body", chromedp.ByQuery),
+		emulation.SetEmulatedMedia().WithMedia("print"),
+		// 等待字体加载完成 + 布局稳定，避免缺失字体导致排版错乱或内容截断
+		chromedp.Evaluate(`document.fonts.ready`, nil),
+		chromedp.Sleep(300*time.Millisecond),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			var err error
 			pdf, _, err = page.PrintToPDF().
@@ -117,4 +136,8 @@ func (r *chromedpRenderer) RenderPDF(html string) ([]byte, error) {
 	}
 
 	return pdf, nil
+}
+
+func (r *chromedpRenderer) Close() {
+	r.pool.Close()
 }
