@@ -161,6 +161,49 @@ export function useSyncExport() {
         await waitForFontsReady()
         await waitForImagesReady(sourceElement)
 
+        // 将所有图片转为压缩后的 base64 data URL 内嵌，消除 chromedp 端的网络请求依赖
+        // 解决：1) 冷启动时序竞争导致图片半截 2) 后台渲染节流导致图片不加载 3) MinIO 内网 URL 不可达
+        // 同时压缩图片避免请求体过大触发 413
+        const compressImageToDataUrl = (imgEl: HTMLImageElement, maxWidth = 400, quality = 0.85): Promise<string> => {
+          return new Promise((resolve) => {
+            const canvas = document.createElement('canvas')
+            const ctx = canvas.getContext('2d')
+            if (!ctx) { resolve(''); return }
+            const scale = imgEl.naturalWidth > maxWidth ? maxWidth / imgEl.naturalWidth : 1
+            canvas.width = Math.round(imgEl.naturalWidth * scale)
+            canvas.height = Math.round(imgEl.naturalHeight * scale)
+            ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height)
+            // 优先 webp（更小），不支持则回退 jpeg
+            const dataUrl = canvas.toDataURL('image/webp', quality)
+            resolve(dataUrl.startsWith('data:image/webp') ? dataUrl : canvas.toDataURL('image/jpeg', quality))
+          })
+        }
+        const images = Array.from(sourceElement.querySelectorAll('img'))
+        await Promise.all(
+          images.map(async (img) => {
+            if (!img.src || img.src.startsWith('data:')) return
+            try {
+              // 图片已加载完成则直接用 canvas 压缩转 base64
+              if (img.complete && img.naturalWidth > 0) {
+                const dataUrl = await compressImageToDataUrl(img)
+                if (dataUrl) { img.src = dataUrl; return }
+              }
+              // 图片未就绪则先 fetch 再压缩
+              const resp = await fetch(img.src)
+              if (!resp.ok) return
+              const blob = await resp.blob()
+              const dataUrl = await new Promise<string>((resolve) => {
+                const reader = new FileReader()
+                reader.onloadend = () => resolve(reader.result as string)
+                reader.readAsDataURL(blob)
+              })
+              img.src = dataUrl
+            } catch {
+              // 转换失败则保留原 src
+            }
+          })
+        )
+
         // 构建 HTML
         const styleTags = Array.from(document.querySelectorAll('style'))
           .map((node) => node.outerHTML)

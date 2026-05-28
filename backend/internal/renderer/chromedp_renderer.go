@@ -64,7 +64,15 @@ func NewChromedpRenderer(options Options) Renderer {
 		options.BrowserIdleTimeout = 5 * time.Minute
 	}
 
-	allocOpts := []chromedp.ExecAllocatorOption{}
+	// 基础启动参数：禁止后台节流，确保 headless Tab 全力渲染图片和布局
+	allocOpts := []chromedp.ExecAllocatorOption{
+		chromedp.Flag("disable-background-timer-throttling", true),
+		chromedp.Flag("disable-backgrounding-occluded-windows", true),
+		chromedp.Flag("disable-renderer-backgrounding", true),
+		chromedp.Flag("disable-features", "LazyFrameLoading,PaintHolding"),
+		chromedp.Flag("disable-extensions", true),
+		chromedp.Flag("disable-component-extensions-with-background-pages", true),
+	}
 	if options.ChromiumHeadless {
 		allocOpts = append(allocOpts, chromedp.Headless)
 	} else {
@@ -110,11 +118,22 @@ func (r *chromedpRenderer) RenderPDF(html string) ([]byte, error) {
 			}
 			return page.SetDocumentContent(frameTree.Frame.ID, html).Do(ctx)
 		}),
-		chromedp.WaitReady("body", chromedp.ByQuery),
-		emulation.SetEmulatedMedia().WithMedia("print"),
-		// 等待字体加载完成 + 布局稳定，避免缺失字体导致排版错乱或内容截断
+		// 等待 body 可见（而非仅 DOM 就绪），确保浏览器已经开始渲染
+		chromedp.WaitVisible("body", chromedp.ByQuery),
+		// 显式等待所有图片加载完成，避免图片半截或缺失导致布局塌陷
+		chromedp.Evaluate(`
+			Promise.all(
+				Array.from(document.images).map(img =>
+					img.complete ? Promise.resolve() :
+					new Promise(r => { img.onload = r; img.onerror = r; })
+				)
+			)
+		`, nil),
+		// 等待字体加载完成
 		chromedp.Evaluate(`document.fonts.ready`, nil),
-		chromedp.Sleep(300*time.Millisecond),
+		// 额外留布局稳定时间
+		chromedp.Sleep(500*time.Millisecond),
+		emulation.SetEmulatedMedia().WithMedia("print"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			var err error
 			pdf, _, err = page.PrintToPDF().
