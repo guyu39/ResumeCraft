@@ -242,6 +242,36 @@ export interface CoverLetterResponse {
     conversationId: string
 }
 
+export interface BulletRewriteRequest {
+    resumeId: string
+    moduleType: string
+    moduleInstanceId?: string
+    fieldKey: string
+    content: string
+    jdText?: string
+    targetTitle?: string
+    companyName?: string
+}
+
+export interface BulletRewriteVersion {
+    type: 'impact' | 'technical' | 'business' | string
+    text: string
+    highlights: string[]
+    confidence: number
+}
+
+export interface BulletRewriteResponse {
+    original: string
+    versions: BulletRewriteVersion[]
+    missingData: string[]
+    jdText?: string
+    targetTitle?: string
+    companyName?: string
+    rawText?: string
+    model: string
+    conversationId: string
+}
+
 export interface SuggestRequest {
     resumeId: string
     moduleType: string
@@ -262,7 +292,7 @@ export interface SuggestResponse {
 export interface ConversationItem {
     id: string
     resumeId: string | null
-    type: 'evaluate' | 'suggest' | 'jd_match' | 'cover_letter'
+    type: 'evaluate' | 'suggest' | 'rewrite' | 'jd_match' | 'cover_letter'
     title: string
     createdAt: number
     updatedAt: number
@@ -287,7 +317,7 @@ export interface ConversationListResponse {
 export interface ConversationDetail {
     id: string
     resumeId: string | null
-    type: 'evaluate' | 'suggest' | 'jd_match' | 'cover_letter'
+    type: 'evaluate' | 'suggest' | 'rewrite' | 'jd_match' | 'cover_letter'
     title: string
     createdAt: number
     updatedAt: number
@@ -514,6 +544,9 @@ export const aiApi = {
 
     generateCoverLetter: (data: CoverLetterRequest) =>
         apiClient.post<CoverLetterResponse>('/ai/cover-letter', data, { auth: true }),
+
+    rewriteBullet: (data: BulletRewriteRequest) =>
+        apiClient.post<BulletRewriteResponse>('/ai/rewrite/bullet', data, { auth: true }),
 
     suggest: (data: SuggestRequest) =>
         apiClient.post<SuggestResponse>('/ai/suggest', data, { auth: true }),

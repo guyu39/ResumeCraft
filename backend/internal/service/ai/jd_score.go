@@ -19,16 +19,62 @@ func parseJDScoreAIResponse(text string) (model.JDParsedResult, string, []model.
 
 	var resp struct {
 		Summary      string                     `json:"summary"`
-		JDParsed     model.JDParsedResult       `json:"jdParsed"`
+		JDParsed     json.RawMessage            `json:"jdParsed"`
 		Improvements []model.JDScoreImprovement `json:"improvements"`
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
 		return model.JDParsedResult{}, "", nil, err
 	}
-	if len(resp.JDParsed.KeyPhrases) == 0 && len(resp.JDParsed.HardSkills) == 0 && resp.JDParsed.JobTitle == "" {
+
+	jdParsed, err := parseFlexibleJDParsedResult(resp.JDParsed)
+	if err != nil {
+		return model.JDParsedResult{}, "", nil, err
+	}
+	if len(jdParsed.KeyPhrases) == 0 && len(jdParsed.HardSkills) == 0 && jdParsed.JobTitle == "" {
 		return model.JDParsedResult{}, "", nil, fmt.Errorf("jd parsed result is empty")
 	}
-	return resp.JDParsed, strings.TrimSpace(resp.Summary), resp.Improvements, nil
+	return jdParsed, strings.TrimSpace(resp.Summary), resp.Improvements, nil
+}
+
+func parseFlexibleJDParsedResult(raw json.RawMessage) (model.JDParsedResult, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return model.JDParsedResult{}, err
+	}
+
+	if rawDomains, ok := fields["domains"]; ok && string(rawDomains) != "null" {
+		var skillDomains []model.JDSkillRequirement
+		if err := json.Unmarshal(rawDomains, &skillDomains); err != nil {
+			var domainNames []string
+			if stringErr := json.Unmarshal(rawDomains, &domainNames); stringErr != nil {
+				return model.JDParsedResult{}, err
+			}
+			skillDomains = make([]model.JDSkillRequirement, 0, len(domainNames))
+			for _, name := range domainNames {
+				name = strings.TrimSpace(name)
+				if name == "" {
+					continue
+				}
+				skillDomains = append(skillDomains, model.JDSkillRequirement{Name: name, Proficiency: "unknown"})
+			}
+		}
+		converted, err := json.Marshal(skillDomains)
+		if err != nil {
+			return model.JDParsedResult{}, err
+		}
+		fields["domains"] = converted
+	}
+
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return model.JDParsedResult{}, err
+	}
+
+	var jdParsed model.JDParsedResult
+	if err := json.Unmarshal(normalized, &jdParsed); err != nil {
+		return model.JDParsedResult{}, err
+	}
+	return jdParsed, nil
 }
 
 func calculateJDScoreBreakdown(content map[string]interface{}, jdParsed model.JDParsedResult) model.JDScoreBreakdown {

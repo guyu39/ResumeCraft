@@ -314,6 +314,39 @@ type CoverLetterResponse struct {
 	ConversationID string   `json:"conversationId"`
 }
 
+// BulletRewriteRequest Bullet Point 重写请求
+type BulletRewriteRequest struct {
+	ResumeID         string `json:"resumeId" binding:"required"`
+	ModuleType       string `json:"moduleType" binding:"required"`
+	ModuleInstanceID string `json:"moduleInstanceId"`
+	FieldKey         string `json:"fieldKey" binding:"required"`
+	Content          string `json:"content" binding:"required"`
+	JDText           string `json:"jdText"`
+	TargetTitle      string `json:"targetTitle"`
+	CompanyName      string `json:"companyName"`
+}
+
+// BulletRewriteResponse Bullet Point 重写响应
+type BulletRewriteResponse struct {
+	Original       string                 `json:"original"`
+	Versions       []BulletRewriteVersion `json:"versions"`
+	MissingData    []string               `json:"missingData"`
+	JDText         string                 `json:"jdText,omitempty"`
+	TargetTitle    string                 `json:"targetTitle,omitempty"`
+	CompanyName    string                 `json:"companyName,omitempty"`
+	RawText        string                 `json:"rawText,omitempty"`
+	Model          string                 `json:"model"`
+	ConversationID string                 `json:"conversationId"`
+}
+
+// BulletRewriteVersion 单个重写版本
+type BulletRewriteVersion struct {
+	Type       string   `json:"type"`
+	Text       string   `json:"text"`
+	Highlights []string `json:"highlights"`
+	Confidence float64  `json:"confidence"`
+}
+
 // SuggestRequest 润色请求
 type SuggestRequest struct {
 	ResumeID         string `json:"resumeId" binding:"required"`

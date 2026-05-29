@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import type { JDMatchResponse, JDScoreResponse } from '@/api/ai'
+import { aiApi } from '@/api'
+import type { ConversationItem, JDMatchResponse, JDScoreResponse } from '@/api/ai'
 import type { Resume } from '@/types/resume'
 
 interface JDMatchPanelProps {
@@ -11,6 +12,7 @@ interface JDMatchPanelProps {
     result: JDMatchResponse | null
     scoreResult: JDScoreResponse | null
     restoredResult: JDMatchResponse | null
+    restoredScoreResult: JDScoreResponse | null
     modelName: string | null
     lastMatchedAt: number | null
     lastScoredAt: number | null
@@ -18,6 +20,8 @@ interface JDMatchPanelProps {
     onRunScore: (form: { jdText: string; targetTitle?: string; companyName?: string }) => void
     onReset: () => void
     onResetScore: () => void
+    onRestoreHistory: (result: JDMatchResponse) => void
+    onRestoreScoreHistory: (result: JDScoreResponse) => void
 }
 
 const severityTextMap: Record<string, string> = {
@@ -39,6 +43,7 @@ const scoreClass = (score: number) => {
 }
 
 const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
+    resume,
     loading,
     scoreLoading,
     error,
@@ -46,6 +51,7 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     result,
     scoreResult,
     restoredResult,
+    restoredScoreResult,
     modelName,
     lastMatchedAt,
     lastScoredAt,
@@ -53,13 +59,55 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     onRunScore,
     onReset,
     onResetScore,
+    onRestoreHistory,
+    onRestoreScoreHistory,
 }) => {
     const displayResult = restoredResult ?? result
+    const displayScoreResult = restoredScoreResult ?? scoreResult
     const [jdText, setJdText] = useState('')
     const [targetTitle, setTargetTitle] = useState('')
     const [companyName, setCompanyName] = useState('')
+    const [showHistory, setShowHistory] = useState(false)
+    const [historyLoading, setHistoryLoading] = useState(false)
+    const [historyItems, setHistoryItems] = useState<ConversationItem[]>([])
+    const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
 
     const canSubmit = jdText.trim().length > 0 && jdText.length <= 20000 && !loading && !scoreLoading
+
+    const loadHistory = async () => {
+        setHistoryLoading(true)
+        try {
+            const res = await aiApi.getConversations({ type: 'jd_match', resumeId: resume.id, pageSize: 5 })
+            setHistoryItems(res.items || [])
+        } catch {
+            setHistoryItems([])
+        } finally {
+            setHistoryLoading(false)
+        }
+    }
+
+    const toggleHistory = async () => {
+        const next = !showHistory
+        setShowHistory(next)
+        if (next && historyItems.length === 0) {
+            await loadHistory()
+        }
+    }
+
+    const restoreHistory = async (conversationId: string) => {
+        setSelectedHistoryId(conversationId)
+        const detail = await aiApi.getConversation(conversationId)
+        const ctx = detail.context as Record<string, unknown> | undefined
+        if (ctx?.matchScore !== undefined) {
+            onRestoreHistory(ctx as unknown as JDMatchResponse)
+            setShowHistory(false)
+            return
+        }
+        if (ctx?.overallScore !== undefined && ctx?.breakdown !== undefined) {
+            onRestoreScoreHistory(ctx as unknown as JDScoreResponse)
+            setShowHistory(false)
+        }
+    }
 
     return (
         <div className="h-full overflow-y-auto bg-gray-50/80 px-4 py-4 no-scrollbar">
@@ -72,15 +120,24 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                                 粘贴目标岗位 JD，AI 会对比当前简历并输出匹配分、关键词、缺口和修改建议。
                             </p>
                         </div>
-                        {displayResult && (
+                        <div className="flex shrink-0 items-center gap-2">
                             <button
                                 type="button"
-                                onClick={onReset}
-                                className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50"
+                                onClick={toggleHistory}
+                                className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50"
                             >
-                                清空
+                                {showHistory ? '收起历史' : '查看历史'}
                             </button>
-                        )}
+                            {displayResult && (
+                                <button
+                                    type="button"
+                                    onClick={onReset}
+                                    className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50"
+                                >
+                                    清空
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     <div className="mt-4 space-y-3">
@@ -129,17 +186,57 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                     </div>
                 </div>
 
-                {scoreResult && (
+                {showHistory && (
+                    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                        <h4 className="text-sm font-semibold text-gray-900">匹配历史<span className="text-xs font-normal text-gray-500">（仅显示5条匹配记录）</span></h4>
+                        {historyLoading ? (
+                            <p className="mt-3 text-xs text-gray-500">加载中...</p>
+                        ) : historyItems.length === 0 ? (
+                            <p className="mt-3 text-xs text-gray-500">暂无匹配记录</p>
+                        ) : (
+                            <div className="mt-3 space-y-2">
+                                {historyItems.map((item) => {
+                                    const ctx = (item.context ?? {}) as Record<string, unknown>
+                                    const matchScore = typeof ctx.matchScore === 'number' ? ctx.matchScore : undefined
+                                    const overallScore = typeof ctx.overallScore === 'number' ? ctx.overallScore : undefined
+                                    const score = matchScore ?? overallScore
+                                    const recordType = matchScore !== undefined ? '快速匹配' : overallScore !== undefined ? '深度评分' : 'JD 记录'
+                                    const target = typeof ctx.targetTitle === 'string' && ctx.targetTitle ? ctx.targetTitle : '未填写岗位'
+                                    const company = typeof ctx.companyName === 'string' && ctx.companyName ? ` · ${ctx.companyName}` : ''
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            type="button"
+                                            onClick={() => restoreHistory(item.id)}
+                                            className={`w-full rounded-xl border px-3 py-2 text-left ${selectedHistoryId === item.id
+                                                ? 'border-primary bg-primary/5'
+                                                : 'border-gray-100 bg-gray-50 hover:bg-gray-100'
+                                                }`}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="truncate text-sm font-medium text-gray-800">{recordType} · {target}{company}</span>
+                                                {score !== undefined && <span className={`text-sm font-semibold ${scoreClass(score)}`}>{score}</span>}
+                                            </div>
+                                            <p className="mt-1 text-xs text-gray-400">{new Date(item.createdAt).toLocaleString()}</p>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {displayScoreResult && (
                     <div className="space-y-4">
                         <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
                             <div className="flex items-center justify-between gap-4">
                                 <div>
                                     <p className="text-xs text-gray-500">深度评分</p>
                                     <div className="mt-1 flex items-end gap-2">
-                                        <span className={`text-4xl font-bold ${scoreClass(scoreResult.overallScore)}`}>
-                                            {scoreResult.overallScore}
+                                        <span className={`text-4xl font-bold ${scoreClass(displayScoreResult.overallScore)}`}>
+                                            {displayScoreResult.overallScore}
                                         </span>
-                                        <span className="pb-1 text-sm font-medium text-gray-500">{scoreResult.level}</span>
+                                        <span className="pb-1 text-sm font-medium text-gray-500">{displayScoreResult.level}</span>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -153,36 +250,53 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                                     </button>
                                 </div>
                             </div>
-                            {scoreResult.summary && <p className="mt-3 text-sm leading-relaxed text-gray-700">{scoreResult.summary}</p>}
+                            {(displayScoreResult.targetTitle || displayScoreResult.companyName) && (
+                                <div className="group relative mt-2 inline-block">
+                                    <p className="cursor-default text-xs text-gray-500">
+                                        目标岗位：{displayScoreResult.targetTitle || '未填写'}{displayScoreResult.companyName ? ` · ${displayScoreResult.companyName}` : ''}
+                                    </p>
+                                    {displayScoreResult.jdText && (
+                                        <div className="absolute bottom-full left-0 z-50 hidden pb-2 group-hover:block">
+                                            <div className="w-72 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                                                <p className="text-xs font-medium text-gray-500">岗位 JD</p>
+                                                <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-600 no-scrollbar">
+                                                    {displayScoreResult.jdText}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {displayScoreResult.summary && <p className="mt-3 text-sm leading-relaxed text-gray-700">{displayScoreResult.summary}</p>}
                             <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                                 <div className="rounded-xl bg-gray-50 p-3">
                                     <p className="text-xs text-gray-500">ATS</p>
-                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(scoreResult.breakdown.ats.score)}`}>{scoreResult.breakdown.ats.score}</p>
+                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(displayScoreResult.breakdown.ats.score)}`}>{displayScoreResult.breakdown.ats.score}</p>
                                 </div>
                                 <div className="rounded-xl bg-gray-50 p-3">
                                     <p className="text-xs text-gray-500">关键词</p>
-                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(scoreResult.breakdown.keywordMatch.score)}`}>{scoreResult.breakdown.keywordMatch.score}</p>
+                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(displayScoreResult.breakdown.keywordMatch.score)}`}>{displayScoreResult.breakdown.keywordMatch.score}</p>
                                 </div>
                                 <div className="rounded-xl bg-gray-50 p-3">
                                     <p className="text-xs text-gray-500">资历</p>
-                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(scoreResult.breakdown.seniorityFit.score)}`}>{scoreResult.breakdown.seniorityFit.score}</p>
+                                    <p className={`mt-1 text-lg font-semibold ${scoreClass(displayScoreResult.breakdown.seniorityFit.score)}`}>{displayScoreResult.breakdown.seniorityFit.score}</p>
                                 </div>
                             </div>
-                            {scoreResult.breakdown.keywordMatch.missing.length > 0 && (
+                            {displayScoreResult.breakdown.keywordMatch.missing.length > 0 && (
                                 <div className="mt-4">
                                     <h4 className="text-sm font-semibold text-gray-900">缺失关键词</h4>
                                     <div className="mt-2 flex flex-wrap gap-2">
-                                        {scoreResult.breakdown.keywordMatch.missing.slice(0, 12).map((keyword) => (
+                                        {displayScoreResult.breakdown.keywordMatch.missing.slice(0, 12).map((keyword) => (
                                             <span key={keyword} className="rounded-full bg-red-50 px-2 py-1 text-xs text-red-700">{keyword}</span>
                                         ))}
                                     </div>
                                 </div>
                             )}
-                            {scoreResult.improvements.length > 0 && (
+                            {displayScoreResult.improvements.length > 0 && (
                                 <div className="mt-4">
                                     <h4 className="text-sm font-semibold text-gray-900">提分建议</h4>
                                     <div className="mt-2 space-y-2">
-                                        {scoreResult.improvements.map((item, index) => (
+                                        {displayScoreResult.improvements.map((item, index) => (
                                             <div key={`${item.category}-${index}`} className="rounded-xl bg-gray-50 p-3">
                                                 <div className="flex items-center justify-between gap-2">
                                                     <p className="text-sm font-medium text-gray-800">{item.action}</p>

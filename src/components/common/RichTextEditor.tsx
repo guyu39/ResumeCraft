@@ -15,6 +15,7 @@ import type { ModuleType } from '@/types/resume'
 import AISuggestionPanel from '@/components/common/ai/AISuggestionPanel'
 import { getProviderPresetById, readAIUserConfig } from '@/ai'
 import { useAISuggest } from '@/hooks/useAISuggest'
+import { useBulletRewrite } from '@/hooks/useBulletRewrite'
 import { getAutoFixEnabled, inspectClipboardText } from '@/utils/textGuard'
 
 interface RichTextEditorProps {
@@ -63,8 +64,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const [链接弹窗显示, set链接弹窗显示] = useState(false)
     const [链接输入值, set链接输入值] = useState('https://')
     const [AI建议面板显示, setAI建议面板显示] = useState(false)
+    const [Bullet重写面板显示, setBullet重写面板显示] = useState(false)
+    const [Bullet重写JD, setBullet重写JD] = useState('')
+    const [Bullet重写目标岗位, setBullet重写目标岗位] = useState('')
+    const [Bullet重写公司, setBullet重写公司] = useState('')
     const [剪贴板提示, set剪贴板提示] = useState<string | null>(null)
     const 提示定时器引用 = useRef<number | null>(null)
+    const Bullet重写选区引用 = useRef<{ from: number; to: number } | null>(null)
+    const [上次Bullet重写输入, set上次Bullet重写输入] = useState<{
+        fullText: string
+        selectedText: string
+    } | null>(null)
     const [上次建议输入, set上次建议输入] = useState<{
         fullText: string
         selectedText?: string
@@ -72,6 +82,13 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         targetPosition?: string
     } | null>(null)
     const { loading: AI建议加载中, error: AI建议错误, data: AI建议结果, fromCache, runSuggest, mode } = useAISuggest()
+    const {
+        loading: Bullet重写加载中,
+        error: Bullet重写错误,
+        data: Bullet重写结果,
+        runRewrite,
+        resetRewrite,
+    } = useBulletRewrite()
     const { isAuthenticated } = useAuthStore()
     const 编辑器高度 = Math.max(8, minRows) * 28
     const AI模式文案 = (() => {
@@ -261,6 +278,55 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         setAI建议面板显示(false)
     }
 
+    const 打开Bullet重写 = () => {
+        if (!editor) return
+
+        const { fullText, selectedText } = 获取编辑器文本()
+        if (!fullText) {
+            return
+        }
+
+        const { from, to } = editor.state.selection
+        Bullet重写选区引用.current = { from, to }
+        set上次Bullet重写输入({ fullText, selectedText })
+        setBullet重写面板显示(true)
+    }
+
+    const 生成Bullet重写 = async () => {
+        if (!isAuthenticated || !上次Bullet重写输入 || Bullet重写加载中) return
+
+        const content = 上次Bullet重写输入.selectedText || 上次Bullet重写输入.fullText
+        await runRewrite({
+            resumeId,
+            moduleType: aiContext?.moduleType ?? 'custom',
+            moduleInstanceId: aiContext?.moduleInstanceId ?? '',
+            fieldKey: aiContext?.targetPosition ?? 'content',
+            content,
+            jdText: Bullet重写JD,
+            targetTitle: Bullet重写目标岗位,
+            companyName: Bullet重写公司,
+        })
+    }
+
+    const 应用Bullet重写 = (rewrite: string) => {
+        if (!editor) return
+        const selection = Bullet重写选区引用.current
+        const chain = editor.chain().focus()
+
+        if (selection && selection.from !== selection.to) {
+            chain.setTextSelection(selection).insertContent(rewrite).run()
+        } else {
+            chain.setContent(转为编辑器HTML(rewrite)).run()
+        }
+
+        setBullet重写面板显示(false)
+    }
+
+    const 关闭Bullet重写 = () => {
+        setBullet重写面板显示(false)
+        resetRewrite()
+    }
+
     const 重试AI建议 = async () => {
         if (!isAuthenticated || !上次建议输入 || AI建议加载中) return
         await runSuggest({
@@ -289,6 +355,15 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                         active: AI建议面板显示,
                         onClick: 触发AI建议,
                         disabled: AI建议加载中,
+                    },
+                    {
+                        key: 'bullet-rewrite',
+                        title: 'Bullet 重写',
+                        label: Bullet重写加载中 ? '重写中...' : '重写',
+                        icon: Sparkles,
+                        active: Bullet重写面板显示,
+                        onClick: 打开Bullet重写,
+                        disabled: Bullet重写加载中,
                     },
                 ]
                 : []),
@@ -341,7 +416,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 onClick: () => editor?.chain().focus().toggleOrderedList().run(),
             },
         ],
-        [editor, 工具栏版本, enableAISuggest, AI建议加载中]
+        [editor, 工具栏版本, enableAISuggest, AI建议加载中, AI建议面板显示, Bullet重写加载中, Bullet重写面板显示]
     )
 
     return (
@@ -421,6 +496,110 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                                 确认
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {Bullet重写面板显示 && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 px-4">
+                    <div className="max-h-[86vh] w-full max-w-2xl overflow-y-auto no-scrollbar rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <h4 className="text-sm font-semibold text-gray-800">Bullet 重写</h4>
+                                <p className="mt-1 text-xs text-gray-500">
+                                    {上次Bullet重写输入?.selectedText ? '将重写当前选中文本' : '未选择文本，将重写整个字段'}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={关闭Bullet重写}
+                                className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50"
+                            >
+                                关闭
+                            </button>
+                        </div>
+
+                        <div className="mt-3 rounded-lg bg-gray-50 p-3">
+                            <p className="text-xs font-medium text-gray-500">待重写内容</p>
+                            <p className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-700 no-scrollbar">
+                                {上次Bullet重写输入?.selectedText || 上次Bullet重写输入?.fullText}
+                            </p>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                            <input
+                                value={Bullet重写目标岗位}
+                                onChange={(event) => setBullet重写目标岗位(event.target.value)}
+                                placeholder="目标岗位，可选"
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-primary/30"
+                            />
+                            <input
+                                value={Bullet重写公司}
+                                onChange={(event) => setBullet重写公司(event.target.value)}
+                                placeholder="公司名称，可选"
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-primary/30"
+                            />
+                        </div>
+                        <textarea
+                            value={Bullet重写JD}
+                            onChange={(event) => setBullet重写JD(event.target.value)}
+                            placeholder="粘贴岗位 JD，可选；填写后会优先贴合岗位关键词"
+                            className="mt-2 min-h-24 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-800 outline-none focus:ring-2 focus:ring-primary/30 no-scrollbar"
+                        />
+                        <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
+                            <span>{Bullet重写JD.length}/30000</span>
+                            {Bullet重写结果?.model && <span>模型：{Bullet重写结果.model}</span>}
+                        </div>
+
+                        {Bullet重写错误 && <p className="mt-2 text-xs text-red-600">{Bullet重写错误}</p>}
+                        {!isAuthenticated && <p className="mt-2 text-xs text-amber-600">请先登录并配置 AI 服务后再使用 Bullet 重写。</p>}
+
+                        <button
+                            type="button"
+                            disabled={!isAuthenticated || Bullet重写加载中 || Bullet重写JD.length > 30000}
+                            onClick={生成Bullet重写}
+                            className="mt-3 w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {Bullet重写加载中 ? '生成中...' : '生成 3 个版本'}
+                        </button>
+
+                        {Bullet重写结果 && (
+                            <div className="mt-4 space-y-3">
+                                {Bullet重写结果.versions.map((version, index) => (
+                                    <div key={`${version.type}-${index}`} className="rounded-xl border border-gray-100 p-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-semibold text-gray-800">
+                                                    {version.type === 'impact' ? '成果导向' : version.type === 'technical' ? '技术深度' : version.type === 'business' ? '业务价值' : version.type}
+                                                </p>
+                                                <p className="mt-1 text-sm leading-relaxed text-gray-700">{version.text}</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => 应用Bullet重写(version.text)}
+                                                className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                                            >
+                                                采用
+                                            </button>
+                                        </div>
+                                        {version.highlights.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                {version.highlights.map((highlight) => (
+                                                    <span key={highlight} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                                                        {highlight}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                                {Bullet重写结果.missingData.length > 0 && (
+                                    <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-700">
+                                        建议补充：{Bullet重写结果.missingData.join('、')}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

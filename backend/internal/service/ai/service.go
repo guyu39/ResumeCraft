@@ -38,6 +38,7 @@ type Service interface {
 	StreamJDMatch(ctx context.Context, userID string, req model.JDMatchRequest, onEvent func(StreamEvent)) (*model.JDMatchResponse, error)
 	ScoreResumeForJD(ctx context.Context, userID string, req model.JDScoreRequest) (*model.JDScoreResponse, error)
 	GenerateCoverLetter(ctx context.Context, userID string, req model.CoverLetterRequest) (*model.CoverLetterResponse, error)
+	RewriteBullet(ctx context.Context, userID string, req model.BulletRewriteRequest) (*model.BulletRewriteResponse, error)
 	Suggest(ctx context.Context, userID string, req model.SuggestRequest) (*model.SuggestResponse, error)
 
 	// 对话消息

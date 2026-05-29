@@ -28,7 +28,7 @@ import { useCoverLetter } from '@/hooks/useCoverLetter'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
 import CoverLetterPanel from '@/components/layout/ai/CoverLetterPanel'
-import { aiApi, type JDMatchResponse, type CoverLetterResponse } from '@/api'
+import { aiApi, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse } from '@/api'
 
 // 各模块表单
 import PersonalForm from '@/components/resume/blocks/PersonalForm'
@@ -739,6 +739,7 @@ const RightPanel: React.FC = () => {
     const [restoredEvaluation, setRestoredEvaluation] = useState<ResumeEvaluateOutput | null>(null)
     const [initialEvaluation, setInitialEvaluation] = useState<ResumeEvaluateOutput | null>(null)
     const [restoredJDMatch, setRestoredJDMatch] = useState<JDMatchResponse | null>(null)
+    const [restoredJDScore, setRestoredJDScore] = useState<JDScoreResponse | null>(null)
     const [restoredCoverLetter, setRestoredCoverLetter] = useState<CoverLetterResponse | null>(null)
     const { exportPDF, exporting, error: exportError } = useSyncExport()
     const {
@@ -970,11 +971,24 @@ const RightPanel: React.FC = () => {
 
     const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
         setRestoredJDMatch(null)
+        setRestoredJDScore(null)
         await runMatch(resume, form)
     }
 
+    const handleRestoreJDMatch = (result: JDMatchResponse) => {
+        setRestoredJDMatch(result)
+        setRestoredJDScore(null)
+    }
+
     const handleRunJDScore = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
+        setRestoredJDMatch(null)
+        setRestoredJDScore(null)
         await runScore(resume, form)
+    }
+
+    const handleRestoreJDScore = (result: JDScoreResponse) => {
+        setRestoredJDScore(result)
+        setRestoredJDMatch(null)
     }
 
     const handleGenerateCoverLetter = async (form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }) => {
@@ -1191,6 +1205,7 @@ const RightPanel: React.FC = () => {
                                     result={jdMatchResult}
                                     scoreResult={jdScoreResult}
                                     restoredResult={restoredJDMatch}
+                                    restoredScoreResult={restoredJDScore}
                                     modelName={jdMatchModelName}
                                     lastMatchedAt={lastMatchedAt}
                                     lastScoredAt={lastScoredAt}
@@ -1198,6 +1213,8 @@ const RightPanel: React.FC = () => {
                                     onRunScore={handleRunJDScore}
                                     onReset={resetMatch}
                                     onResetScore={resetScore}
+                                    onRestoreHistory={handleRestoreJDMatch}
+                                    onRestoreScoreHistory={handleRestoreJDScore}
                                 />
                             )}
                             {activeAITool === 'cover_letter' && (

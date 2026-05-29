@@ -58,6 +58,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string) {
 				aiGroup.POST("/evaluate/stream", h.EvaluateResumeStream)
 				aiGroup.POST("/jd-match/stream", h.JDMatchStream)
 				aiGroup.POST("/score", h.ScoreResumeForJD)
+				aiGroup.POST("/rewrite/bullet", h.RewriteBullet)
 				aiGroup.POST("/cover-letter", h.GenerateCoverLetter)
 				aiGroup.POST("/suggest", h.SuggestContent)
 				aiGroup.GET("/suggest-records", h.ListSuggestRecords)
