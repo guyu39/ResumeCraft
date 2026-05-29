@@ -84,6 +84,36 @@ export const MODULE_META_LIST: ModuleMeta[] = [
   { type: 'custom', label: '自定义模块', icon: '✨', maxCount: 0, category: 'special' },
 ]
 
+/** 模块标题多语言映射：根据 locale 获取模块默认标题 */
+export const MODULE_TITLES_BY_LOCALE: Record<ResumeLocale, Record<ModuleType, string>> = {
+  'zh-CN': {
+    personal: '个人信息',
+    education: '教育经历',
+    work: '工作经历',
+    project: '项目经历',
+    skills: '专业技能',
+    summary: '自我评价',
+    languages: '语言能力',
+    awards: '荣誉奖项',
+    certificates: '证书资质',
+    portfolio: '作品链接',
+    custom: '自定义模块',
+  },
+  'en-US': {
+    personal: 'Personal Information',
+    education: 'Education',
+    work: 'Work Experience',
+    project: 'Projects',
+    skills: 'Skills',
+    summary: 'Summary',
+    languages: 'Languages',
+    awards: 'Awards & Honors',
+    certificates: 'Certifications',
+    portfolio: 'Portfolio',
+    custom: 'Custom',
+  },
+}
+
 // ---------- 各模块数据结构 ----------
 
 export interface PersonalData {

@@ -10,6 +10,7 @@ import FormField, { TextInput, Select } from '@/components/common/FormField'
 import { WORK_YEARS_OPTIONS } from '@/types/resume'
 import YearMonthPicker from '@/components/common/YearMonthPicker'
 import { uploadAvatar } from '@/api/upload'
+import { useI18n } from '@/hooks/useI18n'
 
 interface PersonalFormProps {
   moduleId: string
@@ -26,45 +27,47 @@ interface FieldErrors {
   hometown?: string
 }
 
-const POLITICS_OPTIONS = [
-  { label: '请选择', value: '' },
-  { label: '群众', value: '群众' },
-  { label: '共青团员', value: '共青团员' },
-  { label: '中共党员', value: '中共党员' },
-  { label: '中共预备党员', value: '中共预备党员' },
-  { label: '民主党派', value: '民主党派' },
-]
-
-const GENDER_OPTIONS = [
-  { label: '请选择（选填）', value: '' },
-  { label: '男', value: '男' },
-  { label: '女', value: '女' },
-]
-
-const EDUCATION_OPTIONS = [
-  { label: '请选择（选填）', value: '' },
-  { label: '初中', value: '初中' },
-  { label: '中专', value: '中专' },
-  { label: '高中', value: '高中' },
-  { label: '大专', value: '大专' },
-  { label: '本科', value: '本科' },
-  { label: '硕士', value: '硕士' },
-  { label: '博士', value: '博士' },
-]
-
-const validateEmail = (v: string) =>
-  !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : '请输入有效的邮箱地址'
-
-const validatePhone = (v: string) =>
-  !v || /^1[3-9]\d{9}$/.test(v.replace(/\s|-/g, '')) ? null : '请输入有效的手机号'
-
 const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
   const { updateModuleData } = useResumeStore()
+  const { t, te } = useI18n()
   const [errors, setErrors] = useState<FieldErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const 当前年份 = new Date().getFullYear()
+  const currentYear = new Date().getFullYear()
   const avatarShape = data.avatarShape ?? 'circle'
+
+  // i18n 下拉选项
+  const POLITICS_OPTIONS = [
+    { label: t('personal.selectPlaceholder'), value: '' },
+    { label: t('enum.masses'), value: '群众' },
+    { label: t('enum.leagueMember'), value: '共青团员' },
+    { label: t('enum.partyMember'), value: '中共党员' },
+    { label: t('enum.probationaryMember'), value: '中共预备党员' },
+    { label: t('enum.democraticParty'), value: '民主党派' },
+  ]
+
+  const GENDER_OPTIONS = [
+    { label: t('personal.selectOptional'), value: '' },
+    { label: t('enum.male'), value: '男' },
+    { label: t('enum.female'), value: '女' },
+  ]
+
+  const EDUCATION_OPTIONS = [
+    { label: t('personal.selectOptional'), value: '' },
+    { label: t('enum.juniorHigh'), value: '初中' },
+    { label: t('enum.secondaryVocational'), value: '中专' },
+    { label: t('enum.highSchool'), value: '高中' },
+    { label: t('enum.associate'), value: '大专' },
+    { label: t('enum.bachelor'), value: '本科' },
+    { label: t('enum.master'), value: '硕士' },
+    { label: t('enum.doctorate'), value: '博士' },
+  ]
+
+  const validateEmail = (v: string) =>
+    !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : t('personal.invalidEmail')
+
+  const validatePhone = (v: string) =>
+    !v || /^1[3-9]\d{9}$/.test(v.replace(/\s|-/g, '')) ? null : t('personal.invalidPhone')
 
   const update = <K extends keyof PersonalData>(key: K, value: PersonalData[K]) => {
     updateModuleData(moduleId, { [key]: value } as Partial<PersonalData>)
@@ -111,16 +114,15 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      alert('请选择图片文件')
+      alert(t('personal.selectImageFile'))
       return
     }
-    // 超过 1MB 的图片上传到对象存储，小图仍用 Base64
     if (file.size > 1 * 1024 * 1024) {
       try {
         const { avatarUrl } = await uploadAvatar(file)
         update('avatar', avatarUrl)
       } catch {
-        alert('头像上传失败，请重试')
+        alert(t('personal.avatarUploadFailed'))
       }
       return
     }
@@ -140,7 +142,7 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
           {data.avatar ? (
             <img
               src={data.avatar}
-              alt="头像"
+              alt={t('personal.avatar')}
               className={`w-24 h-24 object-cover border-2 border-gray-200 ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
             />
           ) : (
@@ -166,22 +168,22 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
           )}
         </div>
         <div>
-          <p className="text-sm font-medium text-gray-700">个人头像</p>
-          <p className="text-xs text-gray-400 mt-0.5">点击按钮上传，支持 JPG/PNG</p>
+          <p className="text-sm font-medium text-gray-700">{t('personal.personalAvatar')}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{t('personal.avatarUploadHint')}</p>
           <div className="mt-2 inline-flex rounded-lg border border-gray-200 p-0.5 bg-white">
             <button
               type="button"
               onClick={() => update('avatarShape', 'circle')}
               className={`px-2.5 py-1 text-xs rounded-md transition-colors ${avatarShape === 'circle' ? 'bg-primary/10 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
             >
-              圆形
+              {t('personal.circle')}
             </button>
             <button
               type="button"
               onClick={() => update('avatarShape', 'square')}
               className={`px-2.5 py-1 text-xs rounded-md transition-colors ${avatarShape === 'square' ? 'bg-primary/10 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
             >
-              方形
+              {t('personal.square')}
             </button>
           </div>
         </div>
@@ -190,98 +192,84 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
 
       {/* 基本信息 */}
       <div className="space-y-4">
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">基本信息</h4>
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('personal.basicInfo')}</h4>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="姓名" required error={hasError('name')}>
-            <TextInput value={data.name} onChange={(v) => update('name', v)} onBlur={() => handleBlur('name')} placeholder="张三" error={hasError('name')} maxLength={50} />
+          <FormField label={t('personal.name')} required error={hasError('name')}>
+            <TextInput value={data.name} onChange={(v) => update('name', v)} onBlur={() => handleBlur('name')} placeholder={t('personal.namePlaceholder')} error={hasError('name')} maxLength={50} />
           </FormField>
-          <FormField label="求职意向" required error={hasError('targetPosition')}>
-            <TextInput value={data.targetPosition} onChange={(v) => update('targetPosition', v)} onBlur={() => handleBlur('targetPosition')} placeholder="前端开发工程师" error={hasError('targetPosition')} maxLength={100} />
+          <FormField label={t('personal.jobIntention')} required error={hasError('targetPosition')}>
+            <TextInput value={data.targetPosition} onChange={(v) => update('targetPosition', v)} onBlur={() => handleBlur('targetPosition')} placeholder={t('personal.jobIntentionPlaceholder')} error={hasError('targetPosition')} maxLength={100} />
           </FormField>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="出生年月" required error={hasError('age')}>
+          <FormField label={t('personal.birthDate')} required error={hasError('age')}>
             <div onBlur={() => handleBlur('age')}>
               <YearMonthPicker
                 value={data.age}
                 onChange={(v) => update('age', v)}
-                placeholder="选择出生年月"
-                maxYear={当前年份}
+                placeholder={t('personal.birthDatePlaceholder')}
+                maxYear={currentYear}
                 minYear={1900}
               />
             </div>
           </FormField>
-          <FormField label="籍贯" required error={hasError('hometown')}>
-            <TextInput value={data.hometown} onChange={(v) => update('hometown', v)} onBlur={() => handleBlur('hometown')} placeholder="北京市海淀区" error={hasError('hometown')} />
+          <FormField label={t('personal.hometown')} required error={hasError('hometown')}>
+            <TextInput value={data.hometown} onChange={(v) => update('hometown', v)} onBlur={() => handleBlur('hometown')} placeholder={t('personal.hometownPlaceholder')} error={hasError('hometown')} />
           </FormField>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="性别">
+          <FormField label={t('personal.gender')}>
             <Select value={data.gender ?? ''} onChange={(v) => update('gender', v)} options={GENDER_OPTIONS} />
           </FormField>
-          <FormField label="学历">
+          <FormField label={t('personal.education')}>
             <Select value={data.education ?? ''} onChange={(v) => update('education', v)} options={EDUCATION_OPTIONS} />
           </FormField>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="政治面貌">
+          <FormField label={t('personal.politics')}>
             <Select value={data.politics} onChange={(v) => update('politics', v)} options={POLITICS_OPTIONS} />
           </FormField>
-          <FormField label="工作年限">
-            <Select value={data.workYears} onChange={(v) => update('workYears', v)} options={[{ label: '请选择（选填）', value: '' }, ...WORK_YEARS_OPTIONS.map((v) => ({ label: v, value: v }))]} />
+          <FormField label={t('personal.workYears')}>
+            <Select value={data.workYears} onChange={(v) => update('workYears', v)} options={[{ label: t('personal.selectOptional'), value: '' }, ...WORK_YEARS_OPTIONS.map((v) => ({ label: te(v), value: v }))]} />
           </FormField>
         </div>
       </div>
 
       {/* 联系方式 */}
       <div className="space-y-4">
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">联系方式</h4>
-        <FormField label="手机号" required error={hasError('phone')}>
-          <TextInput value={data.phone} onChange={(v) => update('phone', v)} onBlur={() => handleBlur('phone')} placeholder="138-0000-0000" error={hasError('phone')} type="tel" />
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('personal.contactInfo')}</h4>
+        <FormField label={t('personal.phone')} required error={hasError('phone')}>
+          <TextInput value={data.phone} onChange={(v) => update('phone', v)} onBlur={() => handleBlur('phone')} placeholder={t('personal.phonePlaceholder')} error={hasError('phone')} type="tel" />
         </FormField>
-        <FormField label="邮箱" required error={hasError('email')}>
+        <FormField label={t('personal.email')} required error={hasError('email')}>
           <TextInput value={data.email} onChange={(v) => update('email', v)} onBlur={() => handleBlur('email')} placeholder="example@email.com" error={hasError('email')} type="email" />
         </FormField>
-        <FormField label="个人账号（选填）">
-          <TextInput value={data.personalAccount ?? ''} onChange={(v) => update('personalAccount', v)} placeholder="GitHub / Gitee / 个人主页账号" />
+        <FormField label={t('personal.personalAccount')}>
+          <TextInput value={data.personalAccount ?? ''} onChange={(v) => update('personalAccount', v)} placeholder={t('personal.personalAccountPlaceholder')} />
         </FormField>
-        <FormField label="所在城市（选填）">
-          <TextInput value={data.city} onChange={(v) => update('city', v)} placeholder="北京市" />
+        <FormField label={t('personal.city')}>
+          <TextInput value={data.city} onChange={(v) => update('city', v)} placeholder={t('personal.cityPlaceholder')} />
         </FormField>
       </div>
 
-      {/* 个人链接 */}
-      {/* <div className="space-y-4">
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">个人链接（选填）</h4>
-        <FormField label="个人网站">
-          <TextInput value={data.website} onChange={(v) => update('website', v)} placeholder="https://yoursite.com" type="url" />
-        </FormField>
-        <FormField label="GitHub">
-          <TextInput value={data.github} onChange={(v) => update('github', v)} placeholder="https://github.com/username" type="url" />
-        </FormField>
-        <FormField label="LinkedIn">
-          <TextInput value={data.linkedin} onChange={(v) => update('linkedin', v)} placeholder="https://linkedin.com/in/username" type="url" />
-        </FormField>
-      </div> */}
-
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">补充其他信息（标题：值）</h4>
+          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('personal.otherInfo')}</h4>
           <button
             type="button"
             onClick={addExtraInfo}
             className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
           >
-            <Plus className="w-3.5 h-3.5" /> 添加
+            <Plus className="w-3.5 h-3.5" /> {t('personal.add')}
           </button>
         </div>
 
         {extraInfos.length === 0 ? (
-          <p className="text-xs text-gray-400">暂无补充信息，可添加如：期望薪资、到岗时间、婚姻状况等</p>
+          <p className="text-xs text-gray-400">{t('personal.noOtherInfo')}</p>
         ) : (
           <div className="space-y-3">
             {extraInfos.map((item) => (
@@ -289,18 +277,18 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
                 <TextInput
                   value={item.title}
                   onChange={(v) => updateExtraInfo(item.id, { title: v })}
-                  placeholder="标题，如：期望薪资"
+                  placeholder={t('personal.otherTitlePlaceholder')}
                 />
                 <TextInput
                   value={item.value}
                   onChange={(v) => updateExtraInfo(item.id, { value: v })}
-                  placeholder="值，如：20k-30k"
+                  placeholder={t('personal.otherValuePlaceholder')}
                 />
                 <button
                   type="button"
                   onClick={() => removeExtraInfo(item.id)}
                   className="h-9 w-9 rounded-md border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200"
-                  title="删除"
+                  title={t('common.delete')}
                 >
                   <Trash2 className="w-4 h-4 mx-auto" />
                 </button>
@@ -312,7 +300,7 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
 
       {Object.values(errors).some(Boolean) && (
         <div className="rounded-lg bg-red-50 border border-red-100 p-3">
-          <p className="text-xs text-red-500 font-medium mb-1">请修正以下问题：</p>
+          <p className="text-xs text-red-500 font-medium mb-1">{t('personal.fixErrors')}</p>
           {Object.entries(errors).filter(([, v]) => v).map(([k]) => (
             <p key={k} className="text-xs text-red-400">· {errors[k as keyof FieldErrors]}</p>
           ))}

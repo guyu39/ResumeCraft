@@ -39,56 +39,68 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
   const styleSettings = resume.styleSettings ?? DEFAULT_RESUME_STYLE_SETTINGS
   const visibleModules = modules.filter((m) => m.visible)
   const personalData = modules.find((m) => m.type === 'personal')?.data as PersonalData | undefined
+  const isEn = resume.locale === 'en-US'
+
+  // i18n 辅助
+  const sep = isEn ? ': ' : '：'
+  const labelMap: Record<string, string> = isEn
+    ? { birthDate: 'DOB', hometown: 'Hometown', email: 'Email', phone: 'Phone', city: 'City', gender: 'Gender', education: 'Education', politics: 'Political Status', workYears: 'Exp.', personalAccount: 'Account' }
+    : { birthDate: '出生年月', hometown: '籍贯', email: '邮箱', phone: '电话', city: '城市', gender: '性别', education: '学历', politics: '政治面貌', workYears: '工作年限', personalAccount: '个人账号' }
+
+  const enumMap: Record<string, string> = isEn
+    ? { '男': 'Male', '女': 'Female', '初中': 'Junior High', '中专': 'Vocational', '高中': 'High School', '大专': 'Associate', '本科': "Bachelor's", '硕士': "Master's", '博士': 'Doctorate', '群众': 'Non-partisan', '共青团员': 'CYL Member', '中共党员': 'CPC Member', '中共预备党员': 'Probationary CPC Member', '民主党派': 'Democratic Party', '应届毕业生': 'Fresh Graduate', '1年以下': '< 1 year', '1-3年': '1-3 years', '3-5年': '3-5 years', '5-10年': '5-10 years', '10年以上': '10+ years' }
+    : {}
+  const te = (v: string) => enumMap[v] ?? v
 
   const birthText = (() => {
     if (!personalData?.age) return ''
     if (/^\d{4}-\d{2}$/.test(personalData.age)) {
       const [year, month] = personalData.age.split('-')
-      return `${year}年${month}月`
+      return isEn ? `${month}/${year}` : `${year}年${month}月`
     }
     return personalData.age
   })()
 
   const personalLines = personalData
     ? [
-      ...(birthText ? [`出生年月：${birthText}`] : []),
-      ...(personalData.hometown ? [`籍贯：${personalData.hometown}`] : []),
-      ...(personalData.email ? [`邮箱：${personalData.email}`] : []),
-      ...(personalData.phone ? [`电话：${personalData.phone}`] : []),
-      ...(personalData.city ? [`城市：${personalData.city}`] : []),
-      ...(personalData.gender ? [`性别：${personalData.gender}`] : []),
-      ...(personalData.education ? [`学历：${personalData.education}`] : []),
-      ...(personalData.politics ? [`政治面貌：${personalData.politics}`] : []),
-      ...(personalData.workYears ? [`工作年限：${personalData.workYears}`] : []),
-      ...(personalData.personalAccount ? [`个人账号：${personalData.personalAccount}`] : []),
+      ...(birthText ? [`${labelMap.birthDate}${sep}${birthText}`] : []),
+      ...(personalData.hometown ? [`${labelMap.hometown}${sep}${personalData.hometown}`] : []),
+      ...(personalData.email ? [`${labelMap.email}${sep}${personalData.email}`] : []),
+      ...(personalData.phone ? [`${labelMap.phone}${sep}${personalData.phone}`] : []),
+      ...(personalData.city ? [`${labelMap.city}${sep}${personalData.city}`] : []),
+      ...(personalData.gender ? [`${labelMap.gender}${sep}${te(personalData.gender)}`] : []),
+      ...(personalData.education ? [`${labelMap.education}${sep}${te(personalData.education)}`] : []),
+      ...(personalData.politics ? [`${labelMap.politics}${sep}${te(personalData.politics)}`] : []),
+      ...(personalData.workYears ? [`${labelMap.workYears}${sep}${te(personalData.workYears)}`] : []),
+      ...(personalData.personalAccount ? [`${labelMap.personalAccount}${sep}${personalData.personalAccount}`] : []),
       ...((personalData.extraInfos ?? [])
         .filter((item) => item.title && item.value)
-        .map((item) => `${item.title}：${item.value}`)),
+        .map((item) => `${item.title}${sep}${item.value}`)),
     ]
     : []
 
   const renderModule = (m: typeof modules[number]) => {
     switch (m.type) {
       case 'education':
-        return <EducationPreview key={m.id} items={(m.data as { items: EducationItem[] }).items} themeColor={themeColor} />
+        return <EducationPreview key={m.id} items={(m.data as { items: EducationItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'work':
         return <WorkPreview key={m.id} items={(m.data as { items: WorkItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'project':
-        return <ProjectPreview key={m.id} items={(m.data as { items: ProjectItem[] }).items} themeColor={themeColor} />
+        return <ProjectPreview key={m.id} items={(m.data as { items: ProjectItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'skills':
-        return <SkillsPreview key={m.id} data={m.data as SkillsData} themeColor={themeColor} />
+        return <SkillsPreview key={m.id} data={m.data as SkillsData} themeColor={themeColor} title={m.title} />
       case 'awards':
-        return <AwardsPreview key={m.id} items={(m.data as { items: AwardItem[] }).items} themeColor={themeColor} />
+        return <AwardsPreview key={m.id} items={(m.data as { items: AwardItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'summary':
-        return <SummaryPreview key={m.id} data={m.data as SummaryData} themeColor={themeColor} />
+        return <SummaryPreview key={m.id} data={m.data as SummaryData} themeColor={themeColor} title={m.title} />
       case 'certificates':
-        return <CertificatesPreview key={m.id} items={(m.data as { items: CertificateItem[] }).items} themeColor={themeColor} />
+        return <CertificatesPreview key={m.id} items={(m.data as { items: CertificateItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'portfolio':
-        return <PortfolioPreview key={m.id} items={(m.data as { items: PortfolioItem[] }).items} themeColor={themeColor} />
+        return <PortfolioPreview key={m.id} items={(m.data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'languages':
-        return <LanguagesPreview key={m.id} items={(m.data as { items: LanguageItem[] }).items} themeColor={themeColor} />
+        return <LanguagesPreview key={m.id} items={(m.data as { items: LanguageItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'custom':
-        return <CustomPreview key={m.id} data={m.data as CustomData} themeColor={themeColor} />
+        return <CustomPreview key={m.id} data={m.data as CustomData} themeColor={themeColor} title={m.title} />
       default:
         return null
     }
@@ -120,7 +132,7 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
       <div className="relative mb-1 pr-[92px]">
         <div className="min-w-0">
           <h1 className="text-[22pt] font-extrabold tracking-tight leading-tight" style={{ color: themeColor }}>
-            {personalData?.name || '你的姓名'}
+            {personalData?.name || (isEn ? 'Your Name' : '你的姓名')}
           </h1>
           {personalData?.targetPosition && (
             <p className="mt-0.5 text-[8.8pt] text-gray-500 leading-tight">{personalData.targetPosition}</p>
@@ -129,7 +141,7 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
         {personalData?.avatar && (
           <img
             src={personalData.avatar}
-            alt="头像"
+            alt={isEn ? 'Avatar' : '头像'}
             className={`absolute right-0 top-0 object-cover border-2 ${personalData.avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
             style={personalData.avatarShape === 'square' ? { width: '75px', height: '103.54px', borderColor: `${themeColor}40` } : { width: '75px', aspectRatio: '1/1', borderColor: `${themeColor}40` }}
           />

@@ -10,26 +10,33 @@ import FormField, { TextInput, Select, Button } from '@/components/common/FormFi
 import YearMonthRangePicker from '@/components/common/YearMonthRangePicker'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
+import { useI18n } from '@/hooks/useI18n'
 
 interface EducationFormProps {
   moduleId: string
   items: EducationItem[]
 }
 
-const EDUCATION_HONOR_OPTIONS = [
-  { label: '请选择（选填）', value: '' },
-  { label: '院级', value: '院级' },
-  { label: '校级', value: '校级' },
-  { label: '市级', value: '市级' },
-  { label: '省级', value: '省级' },
-  { label: '国家级', value: '国家级' },
-  { label: '国际级', value: '国际级' },
-  { label: '其他', value: '其他' },
-]
-
 const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
   const { updateModuleData } = useResumeStore()
   const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
+  const { t, te } = useI18n()
+
+  const EDUCATION_HONOR_OPTIONS = [
+    { label: t('personal.selectOptional'), value: '' },
+    { label: t('enum.collegeLevel'), value: '院级' },
+    { label: t('enum.universityLevel'), value: '校级' },
+    { label: t('enum.cityLevel'), value: '市级' },
+    { label: t('enum.provincialLevel'), value: '省级' },
+    { label: t('enum.nationalLevel'), value: '国家级' },
+    { label: t('enum.internationalLevel'), value: '国际级' },
+    { label: t('enum.otherLevel'), value: '其他' },
+  ]
+
+  const DEGREE_SELECT_OPTIONS = DEGREE_OPTIONS.map((d) => {
+    const key = `enum.${d}`
+    return { label: te(key) ? t(key) : d, value: d }
+  })
 
   const update = (newItems: EducationItem[]) => {
     updateModuleData(moduleId, { items: newItems } as unknown as Partial<{ items: EducationItem[] }>)
@@ -72,7 +79,7 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
       {items.map((item, index) => (
         <div key={item.id} className="editor-block-card rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-400">第 {index + 1} 条</span>
+            <span className="text-xs font-medium text-gray-400">{t('common.itemN', { n: index + 1 })}</span>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -81,7 +88,7 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
                 disabled={index === 0}
               >
                 <ArrowUp className="w-3.5 h-3.5" />
-                上移
+                {t('common.moveUp')}
               </Button>
               <Button
                 variant="ghost"
@@ -90,12 +97,12 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
                 disabled={index === items.length - 1}
               >
                 <ArrowDown className="w-3.5 h-3.5" />
-                下移
+                {t('common.moveDown')}
               </Button>
               {items.length > 1 && (
                 <Button variant="danger" size="sm" onClick={() => removeItem(item.id)}>
                   <Trash2 className="w-3.5 h-3.5" />
-                  删除
+                  {t('common.delete')}
                 </Button>
               )}
             </div>
@@ -103,19 +110,19 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
 
           {/* 学校 - 专业 - 学历同一行 */}
           <div className="grid grid-cols-3 gap-x-4">
-            <FormField label="学校名称" required>
-              <TextInput value={item.school} onChange={(v) => updateItem(item.id, { school: v })} placeholder="清华大学" />
+            <FormField label={t('education.schoolName')} required>
+              <TextInput value={item.school} onChange={(v) => updateItem(item.id, { school: v })} placeholder={t('education.schoolNamePlaceholder')} />
             </FormField>
-            <FormField label="专业" required>
-              <TextInput value={item.major} onChange={(v) => updateItem(item.id, { major: v })} placeholder="计算机科学与技术" />
+            <FormField label={t('education.major')} required>
+              <TextInput value={item.major} onChange={(v) => updateItem(item.id, { major: v })} placeholder={t('education.majorPlaceholder')} />
             </FormField>
-            <FormField label="学历" required>
-              <Select value={item.degree} onChange={(v) => updateItem(item.id, { degree: v as typeof item.degree })} options={DEGREE_OPTIONS.map((d) => ({ label: d, value: d }))} />
+            <FormField label={t('education.degree')} required>
+              <Select value={item.degree} onChange={(v) => updateItem(item.id, { degree: v as typeof item.degree })} options={DEGREE_SELECT_OPTIONS} />
             </FormField>
           </div>
 
           {/* 时间范围选择 */}
-          <FormField label="在校时间" required>
+          <FormField label={t('education.schoolTime')} required>
             <YearMonthRangePicker
               startDate={item.startDate}
               endDate={item.endDate}
@@ -126,10 +133,10 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
 
           {/* GPA / 荣誉 */}
           <div className="grid grid-cols-2 gap-x-4">
-            <FormField label="GPA / 排名">
+            <FormField label={t('education.gpaRank')}>
               <TextInput value={item.gpa} onChange={(v) => updateItem(item.id, { gpa: v })} placeholder="3.8/4.0" />
             </FormField>
-            <FormField label="荣誉 / 奖项">
+            <FormField label={t('education.honors')}>
               <Select
                 value={item.honors}
                 onChange={(v) => updateItem(item.id, { honors: v })}
@@ -138,12 +145,12 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
             </FormField>
           </div>
 
-          <FormField label="在校经历" hint="可填写学生组织、科研、竞赛、社会实践等经历">
+          <FormField label={t('education.schoolExp')} hint={t('education.schoolExpHint')}>
             <RichTextEditor
               value={item.schoolExperience || ''}
               onChange={(v) => updateItem(item.id, { schoolExperience: v })}
-              aiContext={{ moduleType: 'education', targetPosition: '在校经历', moduleInstanceId: item.id }}
-              placeholder="例如：学生会技术部部长，组织校级活动 3 场，参与导师课题，负责数据清洗与分析"
+              aiContext={{ moduleType: 'education', targetPosition: t('education.schoolExp'), moduleInstanceId: item.id }}
+              placeholder={t('education.schoolExpPlaceholder')}
               minRows={4}
             />
           </FormField>
@@ -152,7 +159,7 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
 
       <Button variant="secondary" onClick={addItem} className="w-full">
         <Plus className="w-4 h-4" />
-        添加教育经历
+        {t('education.addEducation')}
       </Button>
 
       {deleteConfirmDialog}

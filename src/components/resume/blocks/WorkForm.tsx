@@ -10,17 +10,7 @@ import FormField, { TextInput, Select, Button } from '@/components/common/FormFi
 import YearMonthRangePicker from '@/components/common/YearMonthRangePicker'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
-
-const COMPANY_SIZE_OPTIONS = [
-  { label: '请选择（选填）', value: '' },
-  { label: '少于15人', value: '少于15人' },
-  { label: '15-50人', value: '15-50人' },
-  { label: '50-150人', value: '50-150人' },
-  { label: '150-500人', value: '150-500人' },
-  { label: '500-2000人', value: '500-2000人' },
-  { label: '2000-10000人', value: '2000-10000人' },
-  { label: '10000人以上', value: '10000人以上' },
-]
+import { useI18n } from '@/hooks/useI18n'
 
 interface WorkFormProps {
   moduleId: string
@@ -29,9 +19,24 @@ interface WorkFormProps {
 
 const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
   const { resume, updateModuleData, updateModuleTitle } = useResumeStore()
+  const { t } = useI18n()
   const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
   const currentModule = resume.modules.find((module) => module.id === moduleId)
-  const currentTitle = currentModule?.title === '实习经历' ? '实习经历' : '工作经历'
+  const isEn = resume.locale === 'en-US'
+  const titleWork = isEn ? 'Work Experience' : '工作经历'
+  const titleIntern = isEn ? 'Internship' : '实习经历'
+  const currentTitle = currentModule?.title === titleIntern ? titleIntern : titleWork
+
+  const COMPANY_SIZE_OPTIONS = [
+    { label: t('personal.selectOptional'), value: '' },
+    { label: t('enum.under15'), value: '少于15人' },
+    { label: t('enum.15to50'), value: '15-50人' },
+    { label: t('enum.50to150'), value: '50-150人' },
+    { label: t('enum.150to500'), value: '150-500人' },
+    { label: t('enum.500to2000'), value: '500-2000人' },
+    { label: t('enum.2000to10000'), value: '2000-10000人' },
+    { label: t('enum.over10000'), value: '10000人以上' },
+  ]
 
   const update = (newItems: WorkItem[]) => {
     updateModuleData(moduleId, { items: newItems } as unknown as Partial<{ items: WorkItem[] }>)
@@ -71,23 +76,23 @@ const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
 
   return (
     <div className="editor-form-root space-y-5">
-      <FormField label="模块名称">
+      <FormField label={t('common.moduleName')}>
         <div className="flex items-center gap-2">
           <Button
             type="button"
-            variant={currentTitle === '工作经历' ? 'primary' : 'ghost'}
+            variant={currentTitle === titleWork ? 'primary' : 'ghost'}
             size="sm"
-            onClick={() => updateModuleTitle(moduleId, '工作经历')}
+            onClick={() => updateModuleTitle(moduleId, titleWork)}
           >
-            工作经历
+            {titleWork}
           </Button>
           <Button
             type="button"
-            variant={currentTitle === '实习经历' ? 'primary' : 'ghost'}
+            variant={currentTitle === titleIntern ? 'primary' : 'ghost'}
             size="sm"
-            onClick={() => updateModuleTitle(moduleId, '实习经历')}
+            onClick={() => updateModuleTitle(moduleId, titleIntern)}
           >
-            实习经历
+            {titleIntern}
           </Button>
         </div>
       </FormField>
@@ -95,7 +100,7 @@ const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
       {items.map((item, index) => (
         <div key={item.id} className="editor-block-card rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-400">第 {index + 1} 条</span>
+            <span className="text-xs font-medium text-gray-400">{t('common.itemN', { n: index + 1 })}</span>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -104,7 +109,7 @@ const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
                 disabled={index === 0}
               >
                 <ArrowUp className="w-3.5 h-3.5" />
-                上移
+                {t('common.moveUp')}
               </Button>
               <Button
                 variant="ghost"
@@ -113,40 +118,40 @@ const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
                 disabled={index === items.length - 1}
               >
                 <ArrowDown className="w-3.5 h-3.5" />
-                下移
+                {t('common.moveDown')}
               </Button>
               {items.length > 1 && (
                 <Button variant="danger" size="sm" onClick={() => removeItem(item.id)}>
                   <Trash2 className="w-3.5 h-3.5" />
-                  删除
+                  {t('common.delete')}
                 </Button>
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-x-4">
-            <FormField label="公司名称" required>
-              <TextInput value={item.company} onChange={(v) => updateItem(item.id, { company: v })} placeholder="腾讯科技" />
+            <FormField label={t('work.companyName')} required>
+              <TextInput value={item.company} onChange={(v) => updateItem(item.id, { company: v })} placeholder={t('work.companyNamePlaceholder')} />
             </FormField>
-            <FormField label="职位名称" required>
-              <TextInput value={item.position} onChange={(v) => updateItem(item.id, { position: v })} placeholder="高级前端开发工程师" />
+            <FormField label={t('work.positionName')} required>
+              <TextInput value={item.position} onChange={(v) => updateItem(item.id, { position: v })} placeholder={t('work.positionPlaceholder')} />
             </FormField>
           </div>
 
           <div className="grid grid-cols-2 gap-x-4">
-            <FormField label="公司规模">
+            <FormField label={t('work.companySize')}>
               <Select
                 value={item.companySize}
                 onChange={(v) => updateItem(item.id, { companySize: v })}
                 options={COMPANY_SIZE_OPTIONS}
               />
             </FormField>
-            <FormField label="部门名称">
-              <TextInput value={item.department ?? ''} onChange={(v) => updateItem(item.id, { department: v })} placeholder="技术研发部（选填）" />
+            <FormField label={t('work.department')}>
+              <TextInput value={item.department ?? ''} onChange={(v) => updateItem(item.id, { department: v })} placeholder={t('work.departmentPlaceholder')} />
             </FormField>
           </div>
 
-          <FormField label="工作时间" required>
+          <FormField label={t('work.workTime')} required>
             <YearMonthRangePicker
               startDate={item.startDate}
               endDate={item.endDate}
@@ -154,12 +159,12 @@ const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
             />
           </FormField>
 
-          <FormField label="工作描述" required hint="请简要描述你的工作内容、职责和成就，建议使用项目符号分点描述">
+          <FormField label={t('work.description')} required hint={t('work.descriptionHint')}>
             <RichTextEditor
               value={item.description}
               onChange={(v) => updateItem(item.id, { description: v })}
-              aiContext={{ moduleType: 'work', targetPosition: '工作描述', moduleInstanceId: item.id }}
-              placeholder="负责公司核心产品的前端架构设计与开发"
+              aiContext={{ moduleType: 'work', targetPosition: t('work.description'), moduleInstanceId: item.id }}
+              placeholder={t('work.descriptionPlaceholder')}
               minRows={5}
             />
           </FormField>
@@ -168,7 +173,7 @@ const WorkForm: React.FC<WorkFormProps> = ({ moduleId, items }) => {
 
       <Button variant="secondary" onClick={addItem} className="w-full">
         <Plus className="w-4 h-4" />
-        添加一条{currentTitle}
+        {t('work.addItem')}{currentTitle}
       </Button>
 
       {deleteConfirmDialog}

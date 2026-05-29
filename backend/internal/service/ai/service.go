@@ -51,6 +51,9 @@ type Service interface {
 	GetParserConfig(ctx context.Context, userID string) (*model.ResumeParserConfig, error)
 	SaveParserConfig(ctx context.Context, userID string, req model.ResumeParserConfigRequest) error
 	ResolveParserConfig(ctx context.Context, userID string) (*aiStorage.ParserConfigRecord, error)
+
+	// 简历翻译
+	Translate(ctx context.Context, userID string, req model.TranslateRequest, resumeContent map[string]interface{}) (*model.TranslateResponse, error)
 }
 
 type service struct {
@@ -1178,8 +1181,16 @@ func sanitizeAIResumeContent(content map[string]interface{}) map[string]interfac
 		"locale": truncateString(getString(content["locale"]), 20),
 	}
 
-	modulesValue, ok := content["modules"].([]interface{})
-	if !ok {
+	// 兼容两种类型：[]map[string]interface{}（来自 ResumeDetail.Modules）或 []interface{}
+	var modulesValue []interface{}
+	switch v := content["modules"].(type) {
+	case []map[string]interface{}:
+		for _, m := range v {
+			modulesValue = append(modulesValue, m)
+		}
+	case []interface{}:
+		modulesValue = v
+	default:
 		return result
 	}
 

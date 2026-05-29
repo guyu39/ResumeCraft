@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { PersonalData } from '@/types/resume'
+import { useI18n } from '@/hooks/useI18n'
 
 interface PersonalPreviewProps {
   data: PersonalData
@@ -12,6 +13,8 @@ interface PersonalPreviewProps {
 }
 
 const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) => {
+  const { t, te, locale } = useI18n()
+
   const {
     name,
     targetPosition,
@@ -30,32 +33,37 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) =
     extraInfos,
   } = data
 
-  const 出生年月展示 = (() => {
+  const birthDateDisplay = (() => {
     if (!age) return ''
     if (/^\d{4}-\d{2}$/.test(age)) {
-      const [年, 月] = age.split('-')
-      return `${年}年${月}月`
+      const [y, m] = age.split('-')
+      return locale === 'en-US' ? `${m}/${y}` : `${y}年${m}月`
     }
     return age
   })()
 
+  // 翻译枚举值（性别、学历、政治面貌、工作年限等）
+  const genderDisplay = gender ? te(gender) : ''
+  const educationDisplay = education ? te(education) : ''
+  const politicsDisplay = politics ? te(politics) : ''
+  const workYearsDisplay = workYears ? te(workYears) : ''
+
+  const sep = locale === 'en-US' ? ': ' : '：'
+
   const contacts = [
-    ...(出生年月展示 ? [{ value: `出生年月：${出生年月展示}` }] : []),
-    ...(hometown ? [{ value: `籍贯：${hometown}` }] : []),
-    ...(email ? [{ value: `邮箱：${email}` }] : []),
-    ...(phone ? [{ value: `电话：${phone}` }] : []),
-    ...(city ? [{ value: `城市：${city}` }] : []),
-    ...(gender ? [{ value: `性别：${gender}` }] : []),
-    ...(education ? [{ value: `学历：${education}` }] : []),
-    ...(politics ? [{ value: `政治面貌：${politics}` }] : []),
-    ...(workYears ? [{ value: `工作年限：${workYears}` }] : []),
-    ...(personalAccount ? [{ value: `个人账号：${personalAccount}` }] : []),
+    ...(birthDateDisplay ? [{ value: `${t('label.birthDate')}${sep}${birthDateDisplay}` }] : []),
+    ...(hometown ? [{ value: `${t('label.hometown')}${sep}${hometown}` }] : []),
+    ...(email ? [{ value: `${t('label.email')}${sep}${email}` }] : []),
+    ...(phone ? [{ value: `${t('label.phone')}${sep}${phone}` }] : []),
+    ...(city ? [{ value: `${t('label.city')}${sep}${city}` }] : []),
+    ...(genderDisplay ? [{ value: `${t('label.gender')}${sep}${genderDisplay}` }] : []),
+    ...(educationDisplay ? [{ value: `${t('label.education')}${sep}${educationDisplay}` }] : []),
+    ...(politicsDisplay ? [{ value: `${t('label.politics')}${sep}${politicsDisplay}` }] : []),
+    ...(workYearsDisplay ? [{ value: `${t('label.workYears')}${sep}${workYearsDisplay}` }] : []),
+    ...(personalAccount ? [{ value: `${t('label.personalAccount')}${sep}${personalAccount}` }] : []),
     ...((extraInfos ?? [])
       .filter((item) => item.title && item.value)
-      .map((item) => ({ value: `${item.title}：${item.value}` }))),
-    // ...(website ? [{ value: `网站：${website}` }] : []),
-    // ...(github ? [{ value: `GitHub：${github}` }] : []),
-    // ...(linkedin ? [{ value: `LinkedIn：${linkedin}` }] : []),
+      .map((item) => ({ value: `${item.title}${sep}${item.value}` }))),
   ]
 
   return (
@@ -63,7 +71,7 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) =
       {/* 左侧：姓名 + 求职意向 + 联系方式 */}
       <div className="flex-1 min-w-0">
         <h1 className="text-[22pt] font-bold mb-0.5" style={{ color: themeColor }}>
-          {name || '你的姓名'}
+          {name || t('personal.yourName')}
         </h1>
         {targetPosition && <p className="text-[10pt] text-gray-500 mb-3">{targetPosition}</p>}
         {contacts.length > 0 && (
@@ -81,7 +89,7 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) =
       {avatar && (
         <img
           src={avatar}
-          alt="头像"
+          alt={t('personal.avatar')}
           className={`flex-shrink-0 object-cover border-2 ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
           style={avatarShape === 'square' ? { width: '75px', height: '103.54px', borderColor: `${themeColor}40` } : { width: '75px', aspectRatio: '1/1', borderColor: `${themeColor}40` }}
         />

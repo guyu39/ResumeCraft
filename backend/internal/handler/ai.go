@@ -569,3 +569,52 @@ func (h *Handler) SaveResumeParserConfig(c *gin.Context) {
 
 	response.JSONSuccess(c, gin.H{"saved": true})
 }
+
+// TranslateResume 翻译简历
+// POST /api/ai/translate
+func (h *Handler) TranslateResume(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.TranslateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	// handler 层获取源简历，将内容传入 service
+	resumeDetail, err := h.resumeService.GetByID(c.Request.Context(), userID.(string), req.ResumeID)
+	if err != nil {
+		response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "源简历不存在")
+		return
+	}
+
+	// 构建翻译请求的简历内容
+	content := map[string]interface{}{
+		"title":         resumeDetail.Title,
+		"locale":        resumeDetail.Locale,
+		"modules":       resumeDetail.Modules,
+		"styleSettings": resumeDetail.StyleSettings,
+	}
+
+	// 默认 fontFallback = true
+	if !req.Options.FontFallback {
+		req.Options.FontFallback = true
+	}
+
+	result, err := h.aiService.Translate(c.Request.Context(), userID.(string), req, content)
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[ai] TranslateResume error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "翻译失败")
+		return
+	}
+
+	response.JSONSuccess(c, result)
+}

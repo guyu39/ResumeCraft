@@ -26,6 +26,7 @@ import {
   LanguageItem,
   CustomData,
   MODULE_META_LIST,
+  MODULE_TITLES_BY_LOCALE,
   INDUSTRY_TEMPLATE_PRESETS,
   DEFAULT_RESUME_STYLE_SETTINGS,
   FIXED_MODULE_TYPES,
@@ -450,9 +451,31 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   // ---------- setLocale ----------
   setLocale: (locale) => {
     set((state) => {
+      const oldLocale = state.resume.locale
+      const oldTitles = MODULE_TITLES_BY_LOCALE[oldLocale]
+      const newTitles = MODULE_TITLES_BY_LOCALE[locale]
+      // 特殊标题映射（如 work 模块的"实习经历"↔"Internship"）
+      const workTitleMap: Record<ResumeLocale, Record<string, string>> = {
+        'zh-CN': { 'Work Experience': '工作经历', 'Internship': '实习经历' },
+        'en-US': { '工作经历': 'Work Experience', '实习经历': 'Internship' },
+      }
+      // 更新所有模块标题：仅替换与旧 locale 默认标题一致的标题（用户自定义过的标题保留）
+      const modules = state.resume.modules.map((m) => {
+        const oldDefault = oldTitles[m.type]
+        // 如果标题是旧 locale 的默认标题（或 custom 的"自定义模块"），则替换为新 locale 的默认标题
+        if (m.title === oldDefault || (m.type === 'custom' && m.title === '自定义模块')) {
+          return { ...m, title: newTitles[m.type] }
+        }
+        // 处理 work 模块的特殊标题（实习经历 ↔ Internship）
+        if (m.type === 'work' && workTitleMap[locale]?.[m.title]) {
+          return { ...m, title: workTitleMap[locale][m.title] }
+        }
+        return m
+      })
       const next = {
         ...state.resume,
         locale,
+        modules,
         updatedAt: Date.now(),
       }
       debouncedSave(next)
@@ -592,6 +615,11 @@ export const useResumeStore = create<ResumeStore>((set) => ({
       }
 
       const newModule = createModule(type)
+      // 使用当前 locale 的标题
+      const localeTitles = MODULE_TITLES_BY_LOCALE[state.resume.locale]
+      if (localeTitles && localeTitles[type]) {
+        newModule.title = localeTitles[type]
+      }
       const modules = [...state.resume.modules, newModule]
       const next = {
         ...state.resume,

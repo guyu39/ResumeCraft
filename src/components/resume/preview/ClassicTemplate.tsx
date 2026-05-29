@@ -45,25 +45,25 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({ resume }) => {
     const { type, id, data, title } = module
     switch (type) {
       case 'education':
-        return <EducationPreview key={id} items={(data as { items: EducationItem[] }).items} themeColor={themeColor} />
+        return <EducationPreview key={id} items={(data as { items: EducationItem[] }).items} themeColor={themeColor} title={title} />
       case 'work':
         return <WorkPreview key={id} items={(data as { items: WorkItem[] }).items} themeColor={themeColor} title={title} />
       case 'project':
-        return <ProjectPreview key={id} items={(data as { items: ProjectItem[] }).items} themeColor={themeColor} />
+        return <ProjectPreview key={id} items={(data as { items: ProjectItem[] }).items} themeColor={themeColor} title={title} />
       case 'skills':
-        return <SkillsPreview key={id} data={data as SkillsData} themeColor={themeColor} />
+        return <SkillsPreview key={id} data={data as SkillsData} themeColor={themeColor} title={title} />
       case 'awards':
-        return <AwardsPreview key={id} items={(data as { items: AwardItem[] }).items} themeColor={themeColor} />
+        return <AwardsPreview key={id} items={(data as { items: AwardItem[] }).items} themeColor={themeColor} title={title} />
       case 'summary':
-        return <SummaryPreview key={id} data={data as SummaryData} themeColor={themeColor} />
+        return <SummaryPreview key={id} data={data as SummaryData} themeColor={themeColor} title={title} />
       case 'certificates':
-        return <CertificatesPreview key={id} items={(data as { items: CertificateItem[] }).items} themeColor={themeColor} />
+        return <CertificatesPreview key={id} items={(data as { items: CertificateItem[] }).items} themeColor={themeColor} title={title} />
       case 'portfolio':
-        return <PortfolioPreview key={id} items={(data as { items: PortfolioItem[] }).items} themeColor={themeColor} />
+        return <PortfolioPreview key={id} items={(data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={title} />
       case 'languages':
-        return <LanguagesPreview key={id} items={(data as { items: LanguageItem[] }).items} themeColor={themeColor} />
+        return <LanguagesPreview key={id} items={(data as { items: LanguageItem[] }).items} themeColor={themeColor} title={title} />
       case 'custom':
-        return <CustomPreview key={id} data={data as CustomData} themeColor={themeColor} />
+        return <CustomPreview key={id} data={data as CustomData} themeColor={themeColor} title={title} />
       default:
         return null
     }

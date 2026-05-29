@@ -5,19 +5,22 @@
 import React from 'react'
 import { AwardItem } from '@/types/resume'
 import ModuleSection from './ModuleSection'
+import { useI18n } from '@/hooks/useI18n'
 
 interface AwardsPreviewProps {
   items: AwardItem[]
   themeColor: string
+  title?: string
 }
 
-const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor }) => {
+const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor, title = '荣誉奖项' }) => {
+  const { t, te } = useI18n()
   const validItems = items.filter((item) => item.name)
 
   return (
-    <ModuleSection title="荣誉奖项" themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor}>
       {validItems.length === 0 ? (
-        <p className="text-[9pt] text-gray-300 italic">请填写荣誉奖项</p>
+        <p className="text-[9pt] text-gray-300 italic">{t('awards.fillAwards')}</p>
       ) : (
         <div className="space-y-2">
           {validItems.map((item) => (
@@ -27,7 +30,7 @@ const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor }) => {
                 <span className="font-medium">🏆 </span>
                 {item.name}
                 {item.level && (
-                  <span className="ml-1 text-[9pt] text-gray-500">（{item.level}）</span>
+                  <span className="ml-1 text-[9pt] text-gray-500">（{te(item.level)}）</span>
                 )}
               </div>
               {/* 日期 */}

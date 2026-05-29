@@ -6,33 +6,36 @@ import React from 'react'
 import { ProjectItem } from '@/types/resume'
 import ModuleSection from './ModuleSection'
 import RichTextPreview from '../../common/RichTextPreview'
+import { useI18n } from '@/hooks/useI18n'
 
 interface ProjectPreviewProps {
   items: ProjectItem[]
   themeColor: string
+  title?: string
 }
 
-const formatDate = (date: string) => {
-  if (!date) return ''
-  if (date === '至今') return '至今'
-  const [year, month] = date.split('-')
-  return `${year}.${month}`
-}
-
-const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor }) => {
+const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor, title = '项目经历' }) => {
+  const { t } = useI18n()
   const validItems = items.filter((item) => item.name || item.role)
+
+  const formatDate = (date: string) => {
+    if (!date) return ''
+    if (date === '至今') return t('enum.present')
+    const [year, month] = date.split('-')
+    return `${year}.${month}`
+  }
 
   const renderRange = (startDate: string, endDate: string) => {
     const start = formatDate(startDate)
     if (!start) return ''
-    const end = formatDate(endDate) || '至今'
+    const end = formatDate(endDate) || t('enum.present')
     return `${start} — ${end}`
   }
 
   return (
-    <ModuleSection title="项目经历" themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor}>
       {validItems.length === 0 ? (
-        <p className="text-[9pt] text-gray-300 italic">请填写项目经历</p>
+        <p className="text-[9pt] text-gray-300 italic">{t('project.fillProject')}</p>
       ) : (
         <div className="space-y-2">
           {validItems.map((item) => (
@@ -46,7 +49,7 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor }) =>
 
               {/* 项目名 + 角色 */}
               <p className="text-[10pt] font-semibold text-gray-800 pr-[90px]">
-                {item.name || '项目名称'}
+                {item.name || t('project.projectNamePreview')}
                 {item.role && (
                   <span className="font-normal text-gray-600"> / {item.role}</span>
                 )}
@@ -60,7 +63,7 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor }) =>
                       className="inline-flex items-center rounded px-1.5 py-[1px] text-[8.5pt] font-medium no-underline"
                       style={{ color: themeColor, backgroundColor: `${themeColor}14`, textDecoration: 'none' }}
                     >
-                      项目链接
+                      {t('label.projectLink')}
                     </a>
                   </>
                 )}
@@ -69,7 +72,7 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor }) =>
               {/* 技术栈 */}
               {item.techStack && item.techStack.length > 0 && (
                 <p className="text-[8.8pt] text-gray-900 font-semibold mt-0.5">
-                  技术栈：{item.techStack.join(' + ')}
+                  {t('label.techStack')}：{item.techStack.join(' + ')}
                 </p>
               )}
 

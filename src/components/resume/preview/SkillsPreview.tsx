@@ -7,13 +7,16 @@ import React from 'react'
 import { SkillsData } from '@/types/resume'
 import ModuleSection from './ModuleSection'
 import RichTextPreview from '../../common/RichTextPreview'
+import { useI18n } from '@/hooks/useI18n'
 
 interface SkillsPreviewProps {
   data: SkillsData
   themeColor: string
+  title?: string
 }
 
-const SkillsPreview: React.FC<SkillsPreviewProps> = ({ data, themeColor }) => {
+const SkillsPreview: React.FC<SkillsPreviewProps> = ({ data, themeColor, title = '专业技能' }) => {
+  const { t } = useI18n()
   const content = data.content?.trim() ?? ''
   const fallbackItems = data.items ?? []
   const fallbackText = fallbackItems.map((item) => `- ${item.name}`).join('\n')
@@ -21,14 +24,14 @@ const SkillsPreview: React.FC<SkillsPreviewProps> = ({ data, themeColor }) => {
 
   if (!renderText) {
     return (
-      <ModuleSection title="专业技能" themeColor={themeColor}>
-        <p className="text-[9pt] text-gray-300 italic">请填写专业技能</p>
+      <ModuleSection title={title} themeColor={themeColor}>
+        <p className="text-[9pt] text-gray-300 italic">{t('skills.fillSkills')}</p>
       </ModuleSection>
     )
   }
 
   return (
-    <ModuleSection title="专业技能" themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor}>
       <RichTextPreview text={renderText} className="text-[9.5pt] text-gray-700" />
     </ModuleSection>
   )

@@ -5,19 +5,22 @@
 import React from 'react'
 import { PortfolioItem } from '@/types/resume'
 import ModuleSection from './ModuleSection'
+import { useI18n } from '@/hooks/useI18n'
 
 interface PortfolioPreviewProps {
   items: PortfolioItem[]
   themeColor: string
+  title?: string
 }
 
-const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({ items, themeColor }) => {
+const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({ items, themeColor, title = '作品' }) => {
+  const { t } = useI18n()
   const validItems = items.filter((item) => item.title || item.url)
 
   return (
-    <ModuleSection title="作品" themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor}>
       {validItems.length === 0 ? (
-        <p className="text-[9pt] text-gray-300 italic">请添加作品链接</p>
+        <p className="text-[9pt] text-gray-300 italic">{t('portfolio.fillPortfolio')}</p>
       ) : (
         <div className="space-y-1.5">
           {validItems.map((item) => (
@@ -31,7 +34,7 @@ const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({ items, themeColor }
                   className="inline-flex items-center rounded px-1.5 py-[1px] text-[8pt] font-medium flex-shrink-0 no-underline"
                   style={{ color: themeColor, backgroundColor: `${themeColor}14`, textDecoration: 'none' }}
                 >
-                  访问 ↗
+                  {t('common.visitLink')}
                 </a>
               )}
             </div>

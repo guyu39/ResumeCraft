@@ -10,6 +10,7 @@ import FormField, { TextInput, Button } from '@/components/common/FormField'
 import YearMonthRangePicker from '@/components/common/YearMonthRangePicker'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
+import { useI18n } from '@/hooks/useI18n'
 
 interface ProjectFormProps {
   moduleId: string
@@ -19,6 +20,7 @@ interface ProjectFormProps {
 const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
   const { updateModuleData } = useResumeStore()
   const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
+  const { t } = useI18n()
 
   const update = (newItems: ProjectItem[]) => {
     updateModuleData(moduleId, { items: newItems } as unknown as Partial<{ items: ProjectItem[] }>)
@@ -67,7 +69,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
       {items.map((item, index) => (
         <div key={item.id} className="editor-block-card rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-400">第 {index + 1} 条</span>
+            <span className="text-xs font-medium text-gray-400">{t('common.itemN', { n: index + 1 })}</span>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -76,7 +78,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
                 disabled={index === 0}
               >
                 <ArrowUp className="w-3.5 h-3.5" />
-                上移
+                {t('common.moveUp')}
               </Button>
               <Button
                 variant="ghost"
@@ -85,27 +87,27 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
                 disabled={index === items.length - 1}
               >
                 <ArrowDown className="w-3.5 h-3.5" />
-                下移
+                {t('common.moveDown')}
               </Button>
               {items.length > 1 && (
                 <Button variant="danger" size="sm" onClick={() => removeItem(item.id)}>
                   <Trash2 className="w-3.5 h-3.5" />
-                  删除
+                  {t('common.delete')}
                 </Button>
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-x-4">
-            <FormField label="项目名称" required>
-              <TextInput value={item.name} onChange={(v) => updateItem(item.id, { name: v })} placeholder="企业内部管理系统" />
+            <FormField label={t('project.projectName')} required>
+              <TextInput value={item.name} onChange={(v) => updateItem(item.id, { name: v })} placeholder={t('project.projectNamePlaceholder')} />
             </FormField>
-            <FormField label="担任角色" required>
-              <TextInput value={item.role} onChange={(v) => updateItem(item.id, { role: v })} placeholder="前端负责人" />
+            <FormField label={t('project.role')} required>
+              <TextInput value={item.role} onChange={(v) => updateItem(item.id, { role: v })} placeholder={t('project.rolePlaceholder')} />
             </FormField>
           </div>
 
-          <FormField label="项目时间" required>
+          <FormField label={t('project.projectTime')} required>
             <YearMonthRangePicker
               startDate={item.startDate}
               endDate={item.endDate}
@@ -113,21 +115,21 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
             />
           </FormField>
 
-          <FormField label="项目链接">
+          <FormField label={t('project.projectLink')}>
             <TextInput value={item.link} onChange={(v) => updateItem(item.id, { link: v })} placeholder="https://github.com/..." type="url" />
           </FormField>
 
-          <FormField label="项目描述" required hint="请简要描述项目背景、你的职责和取得的成果">
+          <FormField label={t('project.description')} required hint={t('project.descriptionHint')}>
             <RichTextEditor
               value={item.description}
               onChange={(v) => updateItem(item.id, { description: v })}
-              aiContext={{ moduleType: 'project', targetPosition: '项目描述', moduleInstanceId: item.id }}
-              placeholder="描述项目背景、你的职责和取得的成果"
+              aiContext={{ moduleType: 'project', targetPosition: t('project.description'), moduleInstanceId: item.id }}
+              placeholder={t('project.descriptionPlaceholder')}
               minRows={4}
             />
           </FormField>
 
-          <FormField label="技术栈" hint="使用 + 分隔，如：React + TypeScript + Vite">
+          <FormField label={t('project.techStack')} hint={t('project.techStackHint')}>
             <TextInput
               value={(item.techStack ?? []).join(' + ')}
               onChange={(v) => updateItem(item.id, { techStack: parseTechStack(v) })}
@@ -139,7 +141,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ moduleId, items }) => {
 
       <Button variant="secondary" onClick={addItem} className="w-full">
         <Plus className="w-4 h-4" />
-        添加一个项目
+        {t('project.addProject')}
       </Button>
 
       {deleteConfirmDialog}

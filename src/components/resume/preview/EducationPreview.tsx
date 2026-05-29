@@ -6,36 +6,37 @@ import React from 'react'
 import { EducationItem } from '@/types/resume'
 import ModuleSection from './ModuleSection'
 import RichTextPreview from '../../common/RichTextPreview'
+import { useI18n } from '@/hooks/useI18n'
 
 interface EducationPreviewProps {
   items: EducationItem[]
   themeColor: string
   compact?: boolean
+  title?: string
 }
 
-const formatDate = (date: string) => {
-  if (!date) return ''
-  if (date === '至今') return '至今'
-  // YYYY-MM → YYYY.MM
-  const [year, month] = date.split('-')
-  return `${year}.${month}`
-}
-
-const EducationPreview: React.FC<EducationPreviewProps> = ({ items, themeColor, compact = false }) => {
+const EducationPreview: React.FC<EducationPreviewProps> = ({ items, themeColor, compact = false, title = '教育经历' }) => {
+  const { t, te } = useI18n()
   const validItems = items.filter((item) => item.school || item.major || item.schoolExperience)
+
+  const formatDate = (date: string) => {
+    if (!date) return ''
+    if (date === '至今') return t('enum.present')
+    const [year, month] = date.split('-')
+    return `${year}.${month}`
+  }
 
   const renderRange = (startDate: string, endDate: string) => {
     const start = formatDate(startDate)
-    const end = formatDate(endDate || '至今')
+    const end = formatDate(endDate) || (endDate ? '' : t('enum.present'))
     if (start) return `${start} — ${end}`
-    if (endDate || endDate === '') return end
     return ''
   }
 
   return (
-    <ModuleSection title="教育经历" themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor}>
       {validItems.length === 0 ? (
-        <p className="text-[9pt] text-gray-300 italic">请填写教育经历</p>
+        <p className="text-[9pt] text-gray-300 italic">{t('education.fillEducation')}</p>
       ) : (
         <div className={`space-y-2 ${compact ? '' : ''}`}>
           {validItems.map((item) => (
@@ -47,12 +48,12 @@ const EducationPreview: React.FC<EducationPreviewProps> = ({ items, themeColor, 
 
               {/* 学校名 + 专业 + 学历（同一行） */}
               <p className="text-[10pt] font-semibold text-gray-800 pr-[80px]">
-                {item.school || '学校名称'}
+                {item.school || t('education.schoolNamePreview')}
                 {item.major && (
                   <span className="font-normal text-gray-600 ml-2">/ {item.major}</span>
                 )}
                 {item.degree && (
-                  <span className="font-normal text-gray-500 ml-2">· {item.degree}</span>
+                  <span className="font-normal text-gray-500 ml-2">· {te(item.degree)}</span>
                 )}
               </p>
 

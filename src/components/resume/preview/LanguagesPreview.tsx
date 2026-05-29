@@ -5,19 +5,22 @@
 import React from 'react'
 import { LanguageItem } from '@/types/resume'
 import ModuleSection from './ModuleSection'
+import { useI18n } from '@/hooks/useI18n'
 
 interface LanguagesPreviewProps {
   items: LanguageItem[]
   themeColor: string
+  title?: string
 }
 
-const LanguagesPreview: React.FC<LanguagesPreviewProps> = ({ items, themeColor }) => {
+const LanguagesPreview: React.FC<LanguagesPreviewProps> = ({ items, themeColor, title = '语言能力' }) => {
+  const { t, te } = useI18n()
   const validItems = items.filter((item) => item.language)
 
   return (
-    <ModuleSection title="语言能力" themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor}>
       {validItems.length === 0 ? (
-        <p className="text-[9pt] text-gray-300 italic">请填写语言能力</p>
+        <p className="text-[9pt] text-gray-300 italic">{t('languages.fillLanguages')}</p>
       ) : (
         <div className="space-y-1.5">
           {validItems.map((item) => (
@@ -28,7 +31,7 @@ const LanguagesPreview: React.FC<LanguagesPreviewProps> = ({ items, themeColor }
                   className="text-[9pt] px-2 py-0.5 rounded"
                   style={{ backgroundColor: `${themeColor}18`, color: themeColor }}
                 >
-                  {item.level}
+                  {te(item.level)}
                 </span>
               )}
             </div>

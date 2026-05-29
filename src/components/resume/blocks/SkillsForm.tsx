@@ -7,6 +7,7 @@ import { SkillsData } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField from '@/components/common/FormField'
 import RichTextEditor from '@/components/common/RichTextEditor'
+import { useI18n } from '@/hooks/useI18n'
 
 interface SkillsFormProps {
   moduleId: string
@@ -15,6 +16,7 @@ interface SkillsFormProps {
 
 const SkillsForm: React.FC<SkillsFormProps> = ({ moduleId, data }) => {
   const { updateModuleData } = useResumeStore()
+  const { t } = useI18n()
   const content = data.content ?? ''
 
   const updateContent = (next: string) => {
@@ -24,15 +26,15 @@ const SkillsForm: React.FC<SkillsFormProps> = ({ moduleId, data }) => {
   return (
     <div className="editor-form-root space-y-5">
       <FormField
-        label="专业技能"
+        label={t('skills.fillSkills')}
         required
-        hint="可输入技术栈、熟练方向和能力亮点"
+        hint={t('skills.fillSkillsHint')}
       >
         <RichTextEditor
           value={content}
           onChange={updateContent}
-          aiContext={{ moduleType: 'skills', targetPosition: '专业技能', moduleInstanceId: moduleId }}
-          placeholder="例如：熟练掌握 React、TypeScript、Vite，熟悉组件化、状态管理、工程化配置，具备性能优化与复杂页面开发经验"
+          aiContext={{ moduleType: 'skills', targetPosition: t('skills.fillSkills'), moduleInstanceId: moduleId }}
+          placeholder={t('skills.placeholder')}
           minRows={5}
           maxLength={1500}
         />

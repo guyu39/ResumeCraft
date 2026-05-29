@@ -293,7 +293,7 @@ export interface SuggestResponse {
 export interface ConversationItem {
     id: string
     resumeId: string | null
-    type: 'evaluate' | 'suggest' | 'rewrite' | 'jd_match' | 'cover_letter'
+    type: 'evaluate' | 'suggest' | 'rewrite' | 'jd_match' | 'cover_letter' | 'translate'
     title: string
     createdAt: number
     updatedAt: number
@@ -318,7 +318,7 @@ export interface ConversationListResponse {
 export interface ConversationDetail {
     id: string
     resumeId: string | null
-    type: 'evaluate' | 'suggest' | 'rewrite' | 'jd_match' | 'cover_letter'
+    type: 'evaluate' | 'suggest' | 'rewrite' | 'jd_match' | 'cover_letter' | 'translate'
     title: string
     createdAt: number
     updatedAt: number
@@ -596,6 +596,10 @@ export const aiApi = {
 
     saveParserConfig: (data: ParserConfigRequest) =>
         apiClient.post<{ saved: boolean }>('/ai/parser-config', data, { auth: true }),
+
+    // 简历翻译
+    translate: (data: TranslateRequest) =>
+        apiClient.post<TranslateResponse>('/ai/translate', data, { auth: true }),
 }
 
 export interface ParserConfigRequest {
@@ -628,4 +632,39 @@ export interface SuggestRecord {
 
 export interface SuggestRecordListResponse {
     items: SuggestRecord[]
+}
+
+// ============================================================
+// 翻译 API
+// ============================================================
+
+export interface TranslateRequest {
+    resumeId: string
+    targetLocale: 'zh-CN' | 'en-US'
+    options?: {
+        keepChineseFields?: boolean
+        fontFallback?: boolean
+    }
+}
+
+export interface TranslateResponse {
+    translatedModules: unknown[]
+    translatedTitle: string
+    targetLocale: string
+    suggestedStyleSettings?: {
+        fontFamily?: string
+        fontSize?: number
+        textColor?: string
+        lineHeight?: number
+        pagePaddingHorizontal?: number
+        pagePaddingVertical?: number
+        moduleSpacing?: number
+        paragraphSpacing?: number
+        moduleTitleLinePosition?: string
+        moduleTitleMarkerStyle?: string
+        moduleTitleMarkerVisible?: boolean
+    }
+    conversationId: string
+    model: string
+    warnings: string[]
 }

@@ -9,6 +9,7 @@ import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Button } from '@/components/common/FormField'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
+import { useI18n } from '@/hooks/useI18n'
 
 interface CustomFormProps {
   moduleId: string
@@ -18,6 +19,7 @@ interface CustomFormProps {
 const CustomForm: React.FC<CustomFormProps> = ({ moduleId, data }) => {
   const { updateModuleData, updateModuleTitle } = useResumeStore()
   const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
+  const { t } = useI18n()
 
   const buildCustomModuleTitle = (name: string) => name.trim() || '自定义模块'
 
@@ -46,29 +48,29 @@ const CustomForm: React.FC<CustomFormProps> = ({ moduleId, data }) => {
 
   return (
     <div className="editor-form-root space-y-5">
-      <FormField label="模块名称" hint="将显示在简历中，如「开源贡献」「志愿服务」等">
-        <TextInput value={data.title} onChange={(v) => updateData({ title: v })} placeholder="自定义模块名称" />
+      <FormField label={t('common.moduleName')} hint={t('custom.moduleNameHint')}>
+        <TextInput value={data.title} onChange={(v) => updateData({ title: v })} placeholder={t('custom.moduleNamePlaceholder')} />
       </FormField>
 
       {data.items.map((item, index) => (
         <div key={item.id} className="editor-block-card rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-400">第 {index + 1} 条</span>
+            <span className="text-xs font-medium text-gray-400">{t('common.itemN', { n: index + 1 })}</span>
             {data.items.length > 1 && (
               <Button variant="danger" size="sm" onClick={() => removeItem(item.id)}>
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             )}
           </div>
-          <FormField label="标题">
-            <TextInput value={item.title} onChange={(v) => updateItem(item.id, { title: v })} placeholder="条目标题" />
+          <FormField label={t('custom.itemTitle')}>
+            <TextInput value={item.title} onChange={(v) => updateItem(item.id, { title: v })} placeholder={t('custom.itemTitlePlaceholder')} />
           </FormField>
-          <FormField label="内容" hint="请简要描述该条目的相关信息，建议控制在 50-200 字之间">
+          <FormField label={t('custom.content')} hint={t('custom.contentHint')}>
             <RichTextEditor
               value={item.content}
               onChange={(v) => updateItem(item.id, { content: v })}
-              aiContext={{ moduleType: 'custom', targetPosition: '自定义内容', moduleInstanceId: item.id }}
-              placeholder="详细描述..."
+              aiContext={{ moduleType: 'custom', targetPosition: t('custom.content'), moduleInstanceId: item.id }}
+              placeholder={t('custom.contentPlaceholder')}
               minRows={3}
             />
           </FormField>
@@ -77,7 +79,7 @@ const CustomForm: React.FC<CustomFormProps> = ({ moduleId, data }) => {
 
       <Button variant="secondary" onClick={addItem} className="w-full">
         <Plus className="w-4 h-4" />
-        添加条目
+        {t('custom.addItem')}
       </Button>
 
       {deleteConfirmDialog}

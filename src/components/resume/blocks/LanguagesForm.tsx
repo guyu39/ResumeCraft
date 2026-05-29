@@ -8,6 +8,7 @@ import { LanguageItem } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import FormField, { TextInput, Button } from '@/components/common/FormField'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
+import { useI18n } from '@/hooks/useI18n'
 
 interface LanguagesFormProps {
   moduleId: string
@@ -16,9 +17,25 @@ interface LanguagesFormProps {
 
 const COMMON_LEVELS = ['CET-4', 'CET-6', '雅思 6.0', '雅思 6.5', '雅思 7.0+', '托福 80+', '托福 100+', 'TEM-4', 'TEM-8', '口语流畅', '口语良好', '口语一般']
 
+const LEVEL_I18N_KEYS: Record<string, string> = {
+  'CET-4': 'enum.cet4',
+  'CET-6': 'enum.cet6',
+  '雅思 6.0': 'enum.ielts60',
+  '雅思 6.5': 'enum.ielts65',
+  '雅思 7.0+': 'enum.ielts70',
+  '托福 80+': 'enum.toefl80',
+  '托福 100+': 'enum.toefl100',
+  'TEM-4': 'enum.tem4',
+  'TEM-8': 'enum.tem8',
+  '口语流畅': 'enum.fluent',
+  '口语良好': 'enum.good',
+  '口语一般': 'enum.average',
+}
+
 const LanguagesForm: React.FC<LanguagesFormProps> = ({ moduleId, items }) => {
   const { updateModuleData } = useResumeStore()
   const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
+  const { t, te } = useI18n()
 
   const update = (newItems: LanguageItem[]) => {
     updateModuleData(moduleId, { items: newItems } as unknown as Partial<{ items: LanguageItem[] }>)
@@ -44,7 +61,7 @@ const LanguagesForm: React.FC<LanguagesFormProps> = ({ moduleId, items }) => {
       {items.map((item, index) => (
         <div key={item.id} className="editor-block-card rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-400">第 {index + 1} 条</span>
+            <span className="text-xs font-medium text-gray-400">{t('common.itemN', { n: index + 1 })}</span>
             {items.length > 1 && (
               <Button variant="danger" size="sm" onClick={() => removeItem(item.id)}>
                 <Trash2 className="w-3.5 h-3.5" />
@@ -52,10 +69,10 @@ const LanguagesForm: React.FC<LanguagesFormProps> = ({ moduleId, items }) => {
             )}
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="语言" required>
-              <TextInput value={item.language} onChange={(v) => updateItem(item.id, { language: v })} placeholder="英语" />
+            <FormField label={t('languages.language')} required>
+              <TextInput value={item.language} onChange={(v) => updateItem(item.id, { language: v })} placeholder={t('languages.languagePlaceholder')} />
             </FormField>
-            <FormField label="熟练度" required>
+            <FormField label={t('languages.proficiency')} required>
               <TextInput value={item.level} onChange={(v) => updateItem(item.id, { level: v })} placeholder="CET-6" />
             </FormField>
           </div>
@@ -68,7 +85,7 @@ const LanguagesForm: React.FC<LanguagesFormProps> = ({ moduleId, items }) => {
                 className={`px-2 py-0.5 text-xs rounded border transition-colors ${item.level === l ? 'border-primary bg-primary/10 text-primary' : 'border-gray-200 text-gray-500 hover:border-gray-300'
                   }`}
               >
-                {l}
+                {te(LEVEL_I18N_KEYS[l]) ? t(LEVEL_I18N_KEYS[l]) : l}
               </button>
             ))}
           </div>
@@ -76,7 +93,7 @@ const LanguagesForm: React.FC<LanguagesFormProps> = ({ moduleId, items }) => {
       ))}
       <Button variant="secondary" onClick={addItem} className="w-full">
         <Plus className="w-4 h-4" />
-        添加语言
+        {t('languages.addLanguage')}
       </Button>
 
       {deleteConfirmDialog}

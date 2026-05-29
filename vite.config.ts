@@ -6,15 +6,16 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:8787',
-        changeOrigin: true,
-      },
       '/api/ark': {
         target: 'https://ark.cn-beijing.volces.com',
         changeOrigin: true,
         secure: true,
         rewrite: (path) => path.replace(/^\/api\/ark/, '/api/v3'),
+      },
+      '/api': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+        timeout: 300000, // 5 minutes — AI 翻译/评估等长请求需要较长时间
       },
     },
   },

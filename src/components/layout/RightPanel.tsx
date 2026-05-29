@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Download, Settings, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Download, Globe, Settings, Sparkles, X } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
@@ -28,7 +28,7 @@ import { useCoverLetter } from '@/hooks/useCoverLetter'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
 import CoverLetterPanel from '@/components/layout/ai/CoverLetterPanel'
-import { aiApi, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse } from '@/api'
+import { aiApi, resumeApi, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse } from '@/api'
 
 // 各模块表单
 import PersonalForm from '@/components/resume/blocks/PersonalForm'
@@ -46,6 +46,7 @@ import CustomForm from '@/components/resume/blocks/CustomForm'
 // 设置面板组件
 import ThemeColorPicker from '@/components/common/ThemeColorPicker'
 import TemplateSwitcher from '@/components/common/TemplateSwitcher'
+import TranslateDialog from '@/components/resume/TranslateDialog'
 
 const FONT_OPTIONS = [
     { label: '思源黑体', value: 'Source Han Sans' },
@@ -171,7 +172,7 @@ interface SettingsPanelProps {
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig }) => {
-    const { resume, setThemeColor, setTemplate, setStyleSettings } = useResumeStore()
+    const { resume, setThemeColor, setTemplate, setStyleSettings, setLocale } = useResumeStore()
     const { styleSettings } = resume
     const { isAuthenticated } = useAuthStore()
     const [autoFixEnabled, setAutoFixEnabledState] = useState(getAutoFixEnabled())
@@ -199,6 +200,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
     const [parserStatus, setParserStatus] = useState<string | null>(null)
     const [parserError, setParserError] = useState<string | null>(null)
     const [parserHasApiKey, setParserHasApiKey] = useState(false)
+
+    // 翻译弹窗
+    const [showTranslateDialog, setShowTranslateDialog] = useState(false)
 
     // 加载简历解析配置
     useEffect(() => {
@@ -345,12 +349,66 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 onChange={setTemplate}
             />
 
+            {/* 模块标题语言 */}
+            <div className="border-t border-gray-100 pt-4">
+                <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">模块标题语言</label>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setLocale('zh-CN')}
+                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${
+                                resume.locale === 'zh-CN'
+                                    ? 'border-primary bg-primary/5 text-primary font-medium'
+                                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                            }`}
+                        >
+                            中文
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setLocale('en-US')}
+                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${
+                                resume.locale === 'en-US'
+                                    ? 'border-primary bg-primary/5 text-primary font-medium'
+                                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                            }`}
+                        >
+                            English
+                        </button>
+                    </div>
+                    <p className="text-[12px] text-gray-400">
+                        切换模块标题的语言显示，如「教育经历」↔「Education」
+                    </p>
+                </div>
+            </div>
+
             <div className="border-t border-gray-100 pt-4">
                 <ThemeColorPicker
                     value={resume.themeColor}
                     onChange={setThemeColor}
                 />
             </div>
+
+            {/* 翻译简历 */}
+            {isAuthenticated && (
+                <div className="border-t border-gray-100 pt-4">
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">多语言翻译</label>
+                        <button
+                            type="button"
+                            onClick={() => setShowTranslateDialog(true)}
+                            className="flex items-center gap-2 w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-colors"
+                        >
+                            <Globe className="w-4 h-4" />
+                            <span>{resume.locale === 'en-US' ? '翻译为中文' : '翻译为英文'}</span>
+                        </button>
+                        <p className="text-[12px] text-gray-400">
+                            AI 驱动翻译，生成一份新的简历副本，保留原排版。
+                        </p>
+                    </div>
+                </div>
+            )}
 
             <div className="border-t border-gray-100 pt-4 space-y-4">
                 <div className="space-y-1.5">
@@ -713,6 +771,36 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 )}
                 </div>
             </div>
+
+            {/* 翻译弹窗 */}
+            <TranslateDialog
+                open={showTranslateDialog}
+                onClose={() => setShowTranslateDialog(false)}
+                sourceLocale={resume.locale || 'zh-CN'}
+                resumeId={resume.id || ''}
+                onCreated={(translateResult) => {
+                    setShowTranslateDialog(false)
+                    // 创建翻译后的简历副本
+                    // 合并样式：保留原设置，仅覆盖建议的字体
+                    const newStyleSettings = { ...resume.styleSettings }
+                    if (translateResult.suggestedStyleSettings?.fontFamily) {
+                        newStyleSettings.fontFamily = translateResult.suggestedStyleSettings.fontFamily
+                        newStyleSettings.moduleTitleFontFamily = translateResult.suggestedStyleSettings.fontFamily
+                    }
+                    resumeApi.create({
+                        title: translateResult.translatedTitle,
+                        locale: translateResult.targetLocale,
+                        template: resume.template,
+                        themeColor: resume.themeColor,
+                        styleSettings: newStyleSettings,
+                        modules: translateResult.translatedModules,
+                    }).then((newResume) => {
+                        window.location.hash = `#/resume/${newResume.id}`
+                    }).catch((err: Error) => {
+                        console.error('创建翻译副本失败:', err)
+                    })
+                }}
+            />
         </div>
     )
 }

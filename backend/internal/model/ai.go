@@ -68,6 +68,7 @@ const (
 	ConversationTypeRewrite     ConversationType = "rewrite"
 	ConversationTypeJDMatch     ConversationType = "jd_match"
 	ConversationTypeCoverLetter ConversationType = "cover_letter"
+	ConversationTypeTranslate   ConversationType = "translate"
 )
 
 // AIConversation AI 对话会话
@@ -410,4 +411,28 @@ type SaveSuggestRecordRequest struct {
 	OriginalContent  string
 	OptimizedContent string
 	Suggestions      []SuggestItem
+}
+
+// TranslateRequest 简历翻译请求
+type TranslateRequest struct {
+	ResumeID     string           `json:"resumeId" binding:"required"`
+	TargetLocale string           `json:"targetLocale" binding:"required,oneof=zh-CN en-US"`
+	Options      TranslateOptions `json:"options"`
+}
+
+// TranslateOptions 翻译选项
+type TranslateOptions struct {
+	KeepChineseFields bool `json:"keepChineseFields"`
+	FontFallback      bool `json:"fontFallback"`
+}
+
+// TranslateResponse 简历翻译响应
+type TranslateResponse struct {
+	TranslatedModules      []map[string]interface{} `json:"translatedModules"`
+	TranslatedTitle        string                   `json:"translatedTitle"`
+	TargetLocale           string                   `json:"targetLocale"`
+	SuggestedStyleSettings *ResumeStyleSettings     `json:"suggestedStyleSettings,omitempty"`
+	ConversationID         string                   `json:"conversationId"`
+	Model                  string                   `json:"model"`
+	Warnings               []string                 `json:"warnings"`
 }

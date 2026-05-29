@@ -5,19 +5,22 @@
 import React from 'react'
 import { CertificateItem } from '@/types/resume'
 import ModuleSection from './ModuleSection'
+import { useI18n } from '@/hooks/useI18n'
 
 interface CertificatesPreviewProps {
   items: CertificateItem[]
   themeColor: string
+  title?: string
 }
 
-const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeColor }) => {
+const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeColor, title = '证书资质' }) => {
+  const { t } = useI18n()
   const validItems = items.filter((item) => item.name)
 
   return (
-    <ModuleSection title="证书资质" themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor}>
       {validItems.length === 0 ? (
-        <p className="text-[9pt] text-gray-300 italic">请填写证书资质</p>
+        <p className="text-[9pt] text-gray-300 italic">{t('certificates.fillCerts')}</p>
       ) : (
         <div className="space-y-2">
           {validItems.map((item) => (

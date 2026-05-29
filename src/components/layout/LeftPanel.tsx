@@ -49,7 +49,7 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
   const isFixed = FIXED_MODULE_TYPES.includes(module.type)
   const displayTitle =
     module.type === 'custom' && module.title.startsWith('自定义-')
-      ? module.title.replace(/^自定义-/, '') || '自定义模块'
+      ? module.title.replace(/^自定义-/, '') || module.title
       : module.title
 
   // 固定模块：仍可拖拽（仅不可删除）

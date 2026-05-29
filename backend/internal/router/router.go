@@ -63,6 +63,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string) {
 				aiGroup.POST("/suggest", h.SuggestContent)
 				aiGroup.GET("/suggest-records", h.ListSuggestRecords)
 				aiGroup.POST("/suggest-records", h.SaveSuggestRecord)
+				aiGroup.POST("/translate", h.TranslateResume)
 			}
 		}
 

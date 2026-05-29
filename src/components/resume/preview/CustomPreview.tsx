@@ -6,20 +6,24 @@ import React from 'react'
 import { CustomData } from '@/types/resume'
 import ModuleSection from './ModuleSection'
 import RichTextPreview from '../../common/RichTextPreview'
+import { useI18n } from '@/hooks/useI18n'
 
 interface CustomPreviewProps {
   data: CustomData
   themeColor: string
+  title?: string
 }
 
-const CustomPreview: React.FC<CustomPreviewProps> = ({ data, themeColor }) => {
-  const { title, items } = data
+const CustomPreview: React.FC<CustomPreviewProps> = ({ data, themeColor, title: moduleTitle }) => {
+  const { t } = useI18n()
+  const { title: dataTitle, items } = data
+  const displayTitle = moduleTitle || dataTitle || t('custom.fillCustom').replace('请添加内容', 'Custom')
   const validItems = items.filter((item) => item.title || item.content)
 
   return (
-    <ModuleSection title={title || '自定义模块'} themeColor={themeColor}>
+    <ModuleSection title={displayTitle} themeColor={themeColor}>
       {validItems.length === 0 ? (
-        <p className="text-[9pt] text-gray-300 italic">请添加内容</p>
+        <p className="text-[9pt] text-gray-300 italic">{t('custom.fillCustom')}</p>
       ) : (
         <div className="space-y-3">
           {validItems.map((item) => (
