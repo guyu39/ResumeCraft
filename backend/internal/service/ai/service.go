@@ -89,6 +89,7 @@ func (s *service) GetConfig(ctx context.Context, userID string) (*model.AIConfig
 		Provider:     model.AIProvider(cfg.Provider),
 		BaseURL:      cfg.BaseURL,
 		DefaultModel: cfg.DefaultModel,
+		HasAPIKey:    cfg.APIKeyEncrypted != "",
 		Enabled:      cfg.Enabled,
 		IsGlobal:     cfg.IsGlobal,
 		CreatedAt:    cfg.CreatedAt.UnixMilli(),
@@ -99,12 +100,6 @@ func (s *service) GetConfig(ctx context.Context, userID string) (*model.AIConfig
 
 // SaveConfig 保存用户 AI 配置
 func (s *service) SaveConfig(ctx context.Context, userID string, req model.AIConfigRequest) error {
-	// 加密 API Key
-	encryptedKey, err := s.encryption.Encrypt(req.APIKey)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt API key: %w", err)
-	}
-
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -115,9 +110,28 @@ func (s *service) SaveConfig(ctx context.Context, userID string, req model.AICon
 		isGlobal = *req.IsGlobal
 	}
 
-	// 先查询已有配置的 ID（用于 upsert）
+	// 查询已有配置
+	var existingCfg *aiStorage.AIConfigRecord
+	if cfg, err := s.cfgRepo.GetByUserID(ctx, userID); err == nil && cfg != nil {
+		existingCfg = cfg
+	}
+
+	// 确定 API Key：新 key 优先，否则复用旧 key，都没有才报错
+	var encryptedKey string
+	if strings.TrimSpace(req.APIKey) != "" {
+		enc, err := s.encryption.Encrypt(req.APIKey)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt API key: %w", err)
+		}
+		encryptedKey = enc
+	} else if existingCfg != nil && existingCfg.APIKeyEncrypted != "" {
+		encryptedKey = existingCfg.APIKeyEncrypted
+	} else {
+		return fmt.Errorf("API Key 不能为空：首次配置必须提供密钥")
+	}
+
 	existingID := uuid.New().String()
-	if existingCfg, err := s.cfgRepo.GetByUserID(ctx, userID); err == nil && existingCfg != nil {
+	if existingCfg != nil {
 		existingID = existingCfg.ID
 	}
 
@@ -128,7 +142,7 @@ func (s *service) SaveConfig(ctx context.Context, userID string, req model.AICon
 		APIKeyEncrypted: encryptedKey,
 		BaseURL:         req.BaseURL,
 		DefaultModel:    req.DefaultModel,
-		TimeoutMs:       900000, // Default timeout 2min
+		TimeoutMs:       900000, // Default timeout 15min
 		Enabled:         enabled,
 		IsGlobal:        isGlobal,
 	}
@@ -1823,6 +1837,7 @@ func (s *service) GetParserConfig(ctx context.Context, userID string) (*model.Re
 		Provider:  model.AIProvider(cfg.Provider),
 		BaseURL:   cfg.BaseURL,
 		Model:     cfg.Model,
+		HasAPIKey: cfg.APIKeyEncrypted != "",
 		Enabled:   cfg.Enabled,
 		CreatedAt: cfg.CreatedAt.UnixMilli(),
 		UpdatedAt: cfg.UpdatedAt.UnixMilli(),
@@ -1849,13 +1864,28 @@ func (s *service) ResolveParserConfig(ctx context.Context, userID string) (*aiSt
 
 // SaveParserConfig 保存简历解析 AI 配置
 func (s *service) SaveParserConfig(ctx context.Context, userID string, req model.ResumeParserConfigRequest) error {
-	encryptedKey, err := s.encryption.Encrypt(req.APIKey)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt API key: %w", err)
+	// 查询已有配置
+	var existingCfg *aiStorage.ParserConfigRecord
+	if cfg, err := s.parserCfgRepo.GetByUserID(ctx, userID); err == nil && cfg != nil {
+		existingCfg = cfg
+	}
+
+	// 确定 API Key：新 key 优先，否则复用旧 key，都没有才报错
+	var encryptedKey string
+	if strings.TrimSpace(req.APIKey) != "" {
+		enc, err := s.encryption.Encrypt(req.APIKey)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt API key: %w", err)
+		}
+		encryptedKey = enc
+	} else if existingCfg != nil && existingCfg.APIKeyEncrypted != "" {
+		encryptedKey = existingCfg.APIKeyEncrypted
+	} else {
+		return fmt.Errorf("API Key 不能为空：首次配置必须提供密钥")
 	}
 
 	existingID := uuid.New().String()
-	if existingCfg, err := s.parserCfgRepo.GetByUserID(ctx, userID); err == nil && existingCfg != nil {
+	if existingCfg != nil {
 		existingID = existingCfg.ID
 	}
 

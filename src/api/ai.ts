@@ -7,7 +7,7 @@ import { apiClient } from './client'
 export interface AIConfigRequest {
     provider: string
     model: string
-    apiKey: string
+    apiKey?: string
     baseUrl?: string
     enabled?: boolean
     isGlobal?: boolean
@@ -18,6 +18,7 @@ export interface AIConfigResponse {
     provider: string
     baseUrl: string
     defaultModel: string
+    hasApiKey: boolean
     enabled: boolean
     isGlobal: boolean
     createdAt: number
@@ -600,7 +601,7 @@ export const aiApi = {
 export interface ParserConfigRequest {
     provider: string
     model: string
-    apiKey: string
+    apiKey?: string
     baseUrl?: string
 }
 
@@ -609,6 +610,7 @@ export interface ParserConfigResponse {
     provider: string
     baseUrl: string
     model: string
+    hasApiKey: boolean
     enabled: boolean
 }
 

@@ -7,6 +7,7 @@ type ResumeParserConfig struct {
 	Provider  AIProvider `json:"provider"`
 	BaseURL   string     `json:"baseUrl"`
 	Model     string     `json:"model"`
+	HasAPIKey bool       `json:"hasApiKey"`
 	Enabled   bool       `json:"enabled"`
 	CreatedAt int64      `json:"createdAt"`
 	UpdatedAt int64      `json:"updatedAt"`
@@ -15,7 +16,7 @@ type ResumeParserConfig struct {
 // ResumeParserConfigRequest 保存简历解析配置请求
 type ResumeParserConfigRequest struct {
 	Provider AIProvider `json:"provider" binding:"required"`
-	APIKey   string     `json:"apiKey" binding:"required"`
+	APIKey   string     `json:"apiKey"`
 	BaseURL  string     `json:"baseUrl"`
 	Model    string     `json:"model" binding:"required"`
 }

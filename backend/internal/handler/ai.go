@@ -49,7 +49,7 @@ func (h *Handler) SaveAIConfig(c *gin.Context) {
 	var req struct {
 		Provider string `json:"provider" binding:"required"`
 		Model    string `json:"model" binding:"required"`
-		APIKey   string `json:"apiKey" binding:"required"`
+		APIKey   string `json:"apiKey"`
 		BaseURL  string `json:"baseUrl"`
 		Enabled  *bool  `json:"enabled"`
 		IsGlobal *bool  `json:"isGlobal"`
@@ -540,7 +540,7 @@ func (h *Handler) SaveResumeParserConfig(c *gin.Context) {
 	var req struct {
 		Provider string `json:"provider" binding:"required"`
 		Model    string `json:"model" binding:"required"`
-		APIKey   string `json:"apiKey" binding:"required"`
+		APIKey   string `json:"apiKey"`
 		BaseURL  string `json:"baseUrl"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

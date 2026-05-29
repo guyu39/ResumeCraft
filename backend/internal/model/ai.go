@@ -42,6 +42,7 @@ type AIConfig struct {
 	Provider     AIProvider `json:"provider"`
 	BaseURL      string     `json:"baseUrl"`
 	DefaultModel string     `json:"defaultModel"`
+	HasAPIKey    bool       `json:"hasApiKey"`
 	Enabled      bool       `json:"enabled"`
 	IsGlobal     bool       `json:"isGlobal"`
 	CreatedAt    int64      `json:"createdAt"`
@@ -51,7 +52,7 @@ type AIConfig struct {
 // AIConfigRequest 保存 AI 配置请求
 type AIConfigRequest struct {
 	Provider     AIProvider `json:"provider" binding:"required"`
-	APIKey       string     `json:"apiKey" binding:"required"`
+	APIKey       string     `json:"apiKey"`
 	BaseURL      string     `json:"baseUrl"`
 	DefaultModel string     `json:"defaultModel" binding:"required"`
 	Enabled      *bool      `json:"enabled"`

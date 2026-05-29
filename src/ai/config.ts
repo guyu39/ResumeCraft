@@ -26,7 +26,7 @@ export const getAIConfigFromEnv = (): AIConfig => {
     }
 }
 
-export const validateAIConfig = (config: AIConfig, providerPreset?: string): string[] => {
+export const validateAIConfig = (config: AIConfig, providerPreset?: string, hasApiKey?: boolean): string[] => {
     const errors: string[] = []
 
     if (config.mode === 'openai-compatible') {
@@ -39,7 +39,7 @@ export const validateAIConfig = (config: AIConfig, providerPreset?: string): str
         if (!config.model) {
             errors.push('请填写模型名称')
         }
-        if (!config.apiKey) {
+        if (!config.apiKey && !hasApiKey) {
             errors.push('请填写 API Key')
         }
     }

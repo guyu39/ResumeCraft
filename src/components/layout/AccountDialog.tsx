@@ -51,11 +51,13 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
     const [aiForm, setAiForm] = useState<AIConfigForm>(createAIFormFromStorage)
     const [aiStatus, setAiStatus] = useState<string | null>(null)
     const [aiError, setAiError] = useState<string | null>(null)
+    const [aiHasApiKey, setAiHasApiKey] = useState(false)
 
     // 简历解析配置
     const [parserForm, setParserForm] = useState({ provider: 'openai', model: '', apiKey: '', baseUrl: '' })
     const [parserStatus, setParserStatus] = useState<string | null>(null)
     const [parserError, setParserError] = useState<string | null>(null)
+    const [parserHasApiKey, setParserHasApiKey] = useState(false)
 
     // 弹窗打开时加载后端配置
     useEffect(() => {
@@ -68,6 +70,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                 model: config.defaultModel || '',
                 apiKey: '',
             })
+            setAiHasApiKey(config.hasApiKey ?? false)
         }).catch(() => { })
 
         aiApi.getParserConfig().then((cfg) => {
@@ -77,6 +80,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                 apiKey: '',
                 baseUrl: cfg.baseUrl || '',
             })
+            setParserHasApiKey(cfg.hasApiKey ?? false)
         }).catch(() => { })
     }, [open, isAuthenticated])
 
@@ -128,7 +132,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
             model: model || undefined,
             apiKey: apiKey || undefined,
         }
-        const errors = validateAIConfig(resolveAIConfig(toAIConfigOverride(testConfig)), aiForm.providerPreset)
+        const errors = validateAIConfig(resolveAIConfig(toAIConfigOverride(testConfig)), aiForm.providerPreset, aiHasApiKey)
         if (errors.length > 0) {
             setAiError(errors.join('；'))
             setAiStatus(null)
@@ -139,7 +143,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
             await aiApi.saveConfig({
                 provider: aiForm.providerPreset,
                 model,
-                apiKey,
+                apiKey: apiKey || undefined,
                 baseUrl: baseUrl || undefined,
             })
             saveAIUserConfig({
@@ -149,6 +153,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                 model: model || undefined,
                 apiKey: apiKey || undefined,
             })
+            setAiHasApiKey(true)
             setAiError(null)
             setAiStatus('AI 配置已保存')
         } catch (err) {
@@ -156,7 +161,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
             setAiError('保存失败，请重试')
             setAiStatus(null)
         }
-    }, [aiForm])
+    }, [aiForm, aiHasApiKey])
 
     const clearAIConfig = useCallback(() => {
         clearAIUserConfig()
@@ -167,8 +172,13 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
 
     const saveParserConfig = useCallback(async () => {
         const { provider, model, apiKey } = parserForm
-        if (!provider.trim() || !model.trim() || !apiKey.trim()) {
-            setParserError('请填写完整的解析配置')
+        if (!provider.trim() || !model.trim()) {
+            setParserError('请填写模型供应商和模型名称')
+            setParserStatus(null)
+            return
+        }
+        if (!apiKey.trim() && !parserHasApiKey) {
+            setParserError('请填写 API Key')
             setParserStatus(null)
             return
         }
@@ -176,9 +186,10 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
             await aiApi.saveParserConfig({
                 provider: provider.trim(),
                 model: model.trim(),
-                apiKey: apiKey.trim(),
+                apiKey: apiKey.trim() || undefined,
                 baseUrl: parserForm.baseUrl.trim() || undefined,
             })
+            setParserHasApiKey(true)
             setParserError(null)
             setParserStatus('解析配置已保存')
         } catch (err) {
@@ -186,7 +197,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
             setParserError('保存失败，请重试')
             setParserStatus(null)
         }
-    }, [parserForm])
+    }, [parserForm, parserHasApiKey])
 
     if (!open) return null
 
@@ -261,8 +272,11 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                                     value={aiForm.apiKey}
                                     onChange={(e) => updateAIForm('apiKey', e.target.value)}
                                     className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                    placeholder="输入可用 API Key"
+                                    placeholder={aiHasApiKey ? '已保存密钥，留空则继续使用' : '输入可用 API Key'}
                                 />
+                                {aiHasApiKey && !aiForm.apiKey && (
+                                    <p className="text-[11px] text-green-600">✓ 已保存密钥</p>
+                                )}
                             </div>
 
                             <div className="flex items-center gap-2 pt-1">
@@ -346,8 +360,11 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                                         value={parserForm.apiKey}
                                         onChange={(e) => setParserForm((prev) => ({ ...prev, apiKey: e.target.value }))}
                                         className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                        placeholder="输入 API Key"
+                                        placeholder={parserHasApiKey ? '已保存密钥，留空则继续使用' : '输入 API Key'}
                                     />
+                                    {parserHasApiKey && !parserForm.apiKey && (
+                                        <p className="text-[11px] text-green-600">✓ 已保存密钥</p>
+                                    )}
                                 </div>
 
                                 <div className="flex items-center gap-2 pt-1">
