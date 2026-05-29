@@ -34,3 +34,6 @@ docker/minio-data/
 # Misc
 .claude/
 *.local
+
+# workbuddy
+workbuddy/
