@@ -34,7 +34,7 @@ const createAIFormFromStorage = (): AIConfigForm => {
         providerPreset,
         baseUrl: (stored?.baseUrl ?? preset.baseUrl) ?? '',
         model: stored?.model ?? '',
-        apiKey: stored?.apiKey ?? '',
+        apiKey: '', // apiKey 不再从 localStorage 读取，由后端管理
     }
 }
 
@@ -151,7 +151,6 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                 mode: 'openai-compatible',
                 baseUrl: baseUrl || undefined,
                 model: model || undefined,
-                apiKey: apiKey || undefined,
             })
             setAiHasApiKey(true)
             setAiError(null)
@@ -167,7 +166,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
         clearAIUserConfig()
         setAiForm(createAIFormFromStorage())
         setAiError(null)
-        setAiStatus('AI 配置已清空')
+        setAiStatus('本地偏好已清空（服务端密钥不受影响）')
     }, [])
 
     const saveParserConfig = useCallback(async () => {

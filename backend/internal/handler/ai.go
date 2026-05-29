@@ -76,6 +76,10 @@ func (h *Handler) SaveAIConfig(c *gin.Context) {
 		IsGlobal:     req.IsGlobal,
 	})
 	if err != nil {
+		if err == ai.ErrAPIKeyRequired {
+			response.JSONError(c, http.StatusBadRequest, "API_KEY_REQUIRED", "首次配置必须提供 API Key")
+			return
+		}
 		log.Printf("[ai] SaveConfig error: %v", err)
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "保存 AI 配置失败")
 		return
@@ -562,6 +566,10 @@ func (h *Handler) SaveResumeParserConfig(c *gin.Context) {
 		Model:    req.Model,
 	})
 	if err != nil {
+		if err == ai.ErrAPIKeyRequired {
+			response.JSONError(c, http.StatusBadRequest, "API_KEY_REQUIRED", "首次配置必须提供 API Key")
+			return
+		}
 		log.Printf("[ai] SaveParserConfig error: %v", err)
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "保存解析配置失败")
 		return

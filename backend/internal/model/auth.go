@@ -17,6 +17,7 @@ type RefreshRequest struct {
 
 type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required"`
+	AccessToken  string `json:"accessToken"` // 用于即时撤销 access token
 }
 
 type AuthTokens struct {

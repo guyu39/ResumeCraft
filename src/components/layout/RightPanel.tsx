@@ -92,7 +92,7 @@ const createAIFormFromStorage = (): AIConfigForm => {
         providerPreset,
         baseUrl: (stored?.baseUrl ?? preset.baseUrl) ?? '',
         model: stored?.model ?? '',
-        apiKey: stored?.apiKey ?? '',
+        apiKey: '', // apiKey 不再从 localStorage 读取，由后端管理
     }
 }
 
@@ -292,21 +292,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
             return
         }
 
-        // 保存到后端和本地缓存
+        // 保存到后端和本地偏好
         try {
             await aiApi.saveConfig({
                 provider: aiForm.providerPreset,
                 model: model,
-                apiKey: apiKey || undefined,
+                apiKey: apiKey || undefined, // 仅在用户输入新 key 时提交
                 baseUrl: baseUrl || undefined,
             })
-            // 同步到本地缓存，确保 AI 评估页能读取到最新模型名
+            // 本地偏好不再包含 apiKey，仅保存 provider/model/baseUrl
             saveAIUserConfig({
                 providerPreset: aiForm.providerPreset,
                 mode: 'openai-compatible',
                 baseUrl: baseUrl || undefined,
                 model: model || undefined,
-                apiKey: apiKey || undefined,
             })
             setAiHasApiKey(true)
             setAiError(null)
@@ -322,7 +321,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
         clearAIUserConfig()
         setAiForm(createAIFormFromStorage())
         setAiError(null)
-        setAiStatus('AI 配置已清空')
+        setAiStatus('本地偏好已清空（服务端密钥不受影响）')
     }
 
     useEffect(() => {
@@ -673,7 +672,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                                 onClick={clearAIConfig}
                                 className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
                             >
-                                清空配置
+                                清除本地偏好
                             </button>
                         </div>
 

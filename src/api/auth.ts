@@ -2,7 +2,7 @@
 // 认证 API
 // ============================================================
 
-import { apiClient, setTokens, clearTokens } from './client'
+import { apiClient, setTokens, clearTokens, getToken } from './client'
 import type {
   LoginRequest,
   RegisterRequest,
@@ -37,10 +37,11 @@ export const authApi = {
   },
 
   logout: async (refreshToken: string) => {
+    const accessToken = getToken()
     clearTokens()
     return apiClient.post<{ loggedOut: boolean }>(
       '/auth/logout',
-      { refreshToken } as LogoutRequest
+      { refreshToken, accessToken } as LogoutRequest
     )
   },
 

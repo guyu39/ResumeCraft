@@ -11,13 +11,15 @@ import (
 )
 
 type Config struct {
-	Server  ServerConfig
-	DB      DBConfig
-	Auth    AuthConfig
-	PDF     PDFConfig
-	AI      AIConfig
-	Storage StorageConfig
-	Parser  ParserConfig
+	Server    ServerConfig
+	DB        DBConfig
+	Auth      AuthConfig
+	PDF       PDFConfig
+	AI        AIConfig
+	Storage   StorageConfig
+	Parser    ParserConfig
+	Redis     RedisConfig
+	RateLimit RateLimitConfig
 }
 
 type DBConfig struct {
@@ -69,6 +71,27 @@ type ParserConfig struct {
 	ServiceURL string
 }
 
+type RedisConfig struct {
+	Enabled      bool
+	Addr         string
+	Password     string
+	DB           int
+	DialTimeout  time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
+type RateLimitConfig struct {
+	Enabled        bool
+	FailOpen       bool
+	AuthCapacity   int
+	AuthRefill     float64
+	AICapacity     int
+	AIRefill       float64
+	GlobalCapacity int
+	GlobalRefill   float64
+}
+
 func Load() Config {
 	// 尝试从多个位置加载 .env 文件
 	dirs := []string{
@@ -89,6 +112,18 @@ func Load() Config {
 	dsn := getEnv("PG_DSN", "")
 	log.Printf("[config] PG_DSN: %s", maskPassword(dsn))
 
+	jwtSecret := getEnv("AUTH_JWT_SECRET", "change-this-in-production")
+	if jwtSecret == "change-this-in-production" || jwtSecret == "change-this-in-production-32ch" {
+		log.Println("[security] AUTH_JWT_SECRET is using a default value; set a strong secret before production deployment")
+	}
+
+	log.Println("[security] Production deployment MUST use HTTPS to protect credentials in transit")
+
+	aiEncryptionKey := getEnv("AI_ENCRYPTION_KEY", "change-this-32-char-key!!")
+	if aiEncryptionKey == "change-this-32-char-key!!" {
+		log.Println("[security] AI_ENCRYPTION_KEY is using a default value; set a strong key before production deployment")
+	}
+
 	return Config{
 		Server: ServerConfig{
 			Port:              getEnv("PORT", "8787"),
@@ -102,7 +137,7 @@ func Load() Config {
 		},
 		Auth: AuthConfig{
 			Enabled:         getEnvBool("AUTH_ENABLED", true),
-			JWTSecret:       getEnv("AUTH_JWT_SECRET", "change-this-in-production"),
+			JWTSecret:       jwtSecret,
 			AccessTokenTTL:  getEnvDurationMinutes("AUTH_ACCESS_TTL_MIN", 120),
 			RefreshTokenTTL: getEnvDurationMinutes("AUTH_REFRESH_TTL_MIN", 43200),
 		},
@@ -120,7 +155,7 @@ func Load() Config {
 			PDFScale:              getEnvFloat64("PDF_SCALE", 1),
 		},
 		AI: AIConfig{
-			EncryptionKey: getEnv("AI_ENCRYPTION_KEY", "change-this-32-char-key!!"),
+			EncryptionKey: aiEncryptionKey,
 		},
 		Storage: StorageConfig{
 			Endpoint:  getEnv("S3_ENDPOINT", ""),
@@ -131,6 +166,25 @@ func Load() Config {
 		},
 		Parser: ParserConfig{
 			ServiceURL: getEnv("PARSER_SERVICE_URL", ""),
+		},
+		Redis: RedisConfig{
+			Enabled:      getEnvBool("REDIS_ENABLED", false),
+			Addr:         getEnv("REDIS_ADDR", "localhost:6379"),
+			Password:     getEnv("REDIS_PASSWORD", ""),
+			DB:           getEnvIntAllowZero("REDIS_DB", 0),
+			DialTimeout:  getEnvDurationSeconds("REDIS_DIAL_TIMEOUT_SEC", 5),
+			ReadTimeout:  getEnvDurationSeconds("REDIS_READ_TIMEOUT_SEC", 3),
+			WriteTimeout: getEnvDurationSeconds("REDIS_WRITE_TIMEOUT_SEC", 3),
+		},
+		RateLimit: RateLimitConfig{
+			Enabled:        getEnvBool("RATE_LIMIT_ENABLED", true),
+			FailOpen:       getEnvBool("RATE_LIMIT_FAIL_OPEN", true),
+			AuthCapacity:   getEnvInt("RATE_LIMIT_AUTH_CAPACITY", 8),
+			AuthRefill:     getEnvFloat64("RATE_LIMIT_AUTH_REFILL_PER_SEC", 0.2),
+			AICapacity:     getEnvInt("RATE_LIMIT_AI_CAPACITY", 20),
+			AIRefill:       getEnvFloat64("RATE_LIMIT_AI_REFILL_PER_SEC", 0.05),
+			GlobalCapacity: getEnvInt("RATE_LIMIT_GLOBAL_CAPACITY", 120),
+			GlobalRefill:   getEnvFloat64("RATE_LIMIT_GLOBAL_REFILL_PER_SEC", 2),
 		},
 	}
 }
@@ -246,6 +300,18 @@ func getEnvInt(key string, fallback int) int {
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func getEnvIntAllowZero(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
 		return fallback
 	}
 	return value

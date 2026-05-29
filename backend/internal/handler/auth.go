@@ -3,7 +3,6 @@ package handler
 import (
 	"log"
 	"net/http"
-	"strings"
 
 	"resumecraft-pdf-backend/internal/middleware"
 	"resumecraft-pdf-backend/internal/model"
@@ -89,7 +88,12 @@ func (h *Handler) Refresh(c *gin.Context) {
 
 	payload, err := h.authService.Refresh(c.Request.Context(), req.RefreshToken, clientIP(c), c.GetHeader("User-Agent"))
 	if err != nil {
-		response.JSONError(c, http.StatusUnauthorized, "INVALID_REFRESH_TOKEN", "刷新令牌无效")
+		switch err {
+		case auth.ErrTokenRevoked:
+			response.JSONError(c, http.StatusUnauthorized, "TOKEN_REVOKED", "令牌已撤销")
+		default:
+			response.JSONError(c, http.StatusUnauthorized, "INVALID_REFRESH_TOKEN", "刷新令牌无效")
+		}
 		return
 	}
 
@@ -108,9 +112,18 @@ func (h *Handler) Logout(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.Logout(c.Request.Context(), req.RefreshToken); err != nil {
-		response.JSONError(c, http.StatusUnauthorized, "INVALID_REFRESH_TOKEN", "刷新令牌无效")
-		return
+	// 优先从请求体获取 accessToken，若为空则从 Authorization header 获取
+	accessToken := req.AccessToken
+	if accessToken == "" {
+		authHeader := c.GetHeader("Authorization")
+		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			accessToken = authHeader[7:]
+		}
+	}
+
+	if err := h.authService.Logout(c.Request.Context(), accessToken, req.RefreshToken); err != nil {
+		// Logout 不因 token 无效而报错，客户端已清除本地状态
+		log.Printf("[auth] Logout warning: %v", err)
 	}
 
 	response.JSONSuccess(c, gin.H{"loggedOut": true})
@@ -138,11 +151,9 @@ func (h *Handler) Me(c *gin.Context) {
 	response.JSONSuccess(c, user)
 }
 
+// clientIP 获取客户端 IP。
+// 不再无条件信任 X-Forwarded-For，使用 Gin 的 ClientIP() 方法。
+// 当部署在可信反向代理后时，应通过 Engine.SetTrustedProxies() 配置。
 func clientIP(c *gin.Context) string {
-	forwarded := strings.TrimSpace(c.GetHeader("X-Forwarded-For"))
-	if forwarded != "" {
-		parts := strings.Split(forwarded, ",")
-		return strings.TrimSpace(parts[0])
-	}
 	return c.ClientIP()
 }

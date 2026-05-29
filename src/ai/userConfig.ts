@@ -114,12 +114,16 @@ const resolvePreset = (preset: AIProviderPreset): AIProviderPresetConfig => {
     return AI_PROVIDER_PRESETS.find((item) => item.id === preset) ?? AI_PROVIDER_PRESETS[0]
 }
 
+/**
+ * 本地用户偏好配置 — 不包含 apiKey。
+ * apiKey 仅存储在后端（加密），前端通过 hasApiKey 标识判断。
+ */
 export interface AIUserConfig {
     providerPreset: AIProviderPreset
     mode: AIProviderMode
     baseUrl?: string
     model?: string
-    apiKey?: string
+    // apiKey 不再保存到 localStorage；由后端管理
 }
 
 const normalizeMode = (value: unknown): AIProviderMode => {
@@ -144,16 +148,25 @@ export const readAIUserConfig = (): AIUserConfig | null => {
         const raw = localStorage.getItem(AI_USER_CONFIG_KEY)
         if (!raw) return null
 
-        const parsed = JSON.parse(raw) as Partial<AIUserConfig>
+        const parsed = JSON.parse(raw) as Partial<AIUserConfig> & { apiKey?: string }
         const providerPreset = normalizePreset(parsed.providerPreset)
         const preset = resolvePreset(providerPreset)
-        return {
+
+        // 迁移：如果旧数据包含 apiKey，静默移除后重新保存
+        const hasOldApiKey = 'apiKey' in parsed && parsed.apiKey
+        const result: AIUserConfig = {
             providerPreset,
             mode: normalizeMode(parsed.mode),
             baseUrl: normalizeText(parsed.baseUrl) ?? preset.baseUrl,
             model: normalizeText(parsed.model),
-            apiKey: normalizeText(parsed.apiKey),
         }
+
+        if (hasOldApiKey) {
+            // 迁移：清除旧 localStorage 中的 apiKey 后回写
+            saveAIUserConfig(result)
+        }
+
+        return result
     } catch {
         return null
     }
@@ -167,8 +180,8 @@ export const saveAIUserConfig = (config: AIUserConfig): void => {
         mode: normalizeMode(config.mode),
         baseUrl: normalizeText(config.baseUrl) ?? preset.baseUrl,
         model: normalizeText(config.model),
-        apiKey: normalizeText(config.apiKey),
     }
+    // 确保 apiKey 不会被持久化到 localStorage
     localStorage.setItem(AI_USER_CONFIG_KEY, JSON.stringify(normalized))
 }
 
@@ -176,12 +189,15 @@ export const clearAIUserConfig = (): void => {
     localStorage.removeItem(AI_USER_CONFIG_KEY)
 }
 
+/**
+ * 将本地偏好映射为 AIConfig 覆盖项。
+ * 注意：不再包含 apiKey，apiKey 由后端管理。
+ */
 export const toAIConfigOverride = (config: AIUserConfig): Partial<AIConfig> => {
     return {
         mode: 'openai-compatible',
         baseUrl: config.baseUrl,
         model: config.model,
-        apiKey: config.apiKey,
     }
 }
 

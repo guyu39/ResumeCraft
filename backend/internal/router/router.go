@@ -12,14 +12,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string) {
+func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, authLimiter, aiLimiter gin.HandlerFunc) {
 	api := engine.Group("/api")
 	{
 		authGroup := api.Group("/auth")
 		{
-			authGroup.POST("/register", h.Register)
-			authGroup.POST("/login", h.Login)
-			authGroup.POST("/refresh", h.Refresh)
+			// 认证路由挂载限流（注册/登录/刷新为高风险接口）
+			if authLimiter != nil {
+				authGroup.POST("/register", authLimiter, h.Register)
+				authGroup.POST("/login", authLimiter, h.Login)
+				authGroup.POST("/refresh", authLimiter, h.Refresh)
+			} else {
+				authGroup.POST("/register", h.Register)
+				authGroup.POST("/login", h.Login)
+				authGroup.POST("/refresh", h.Refresh)
+			}
 			authGroup.POST("/logout", h.Logout)
 			if h.AuthEnabled() {
 				authGroup.GET("/me", middleware.AuthRequired(h.AuthService()), h.Me)
@@ -55,15 +62,28 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string) {
 				aiGroup.GET("/conversations", h.ListAIConversations)
 				aiGroup.GET("/conversations/:id", h.GetAIConversation)
 				aiGroup.DELETE("/conversations/:id", h.DeleteAIConversation)
-				aiGroup.POST("/evaluate/stream", h.EvaluateResumeStream)
-				aiGroup.POST("/jd-match/stream", h.JDMatchStream)
-				aiGroup.POST("/score", h.ScoreResumeForJD)
-				aiGroup.POST("/rewrite/bullet", h.RewriteBullet)
-				aiGroup.POST("/cover-letter", h.GenerateCoverLetter)
-				aiGroup.POST("/suggest", h.SuggestContent)
+
+				// 高成本 AI 接口挂载限流
+				if aiLimiter != nil {
+					aiGroup.POST("/evaluate/stream", aiLimiter, h.EvaluateResumeStream)
+					aiGroup.POST("/jd-match/stream", aiLimiter, h.JDMatchStream)
+					aiGroup.POST("/score", aiLimiter, h.ScoreResumeForJD)
+					aiGroup.POST("/rewrite/bullet", aiLimiter, h.RewriteBullet)
+					aiGroup.POST("/cover-letter", aiLimiter, h.GenerateCoverLetter)
+					aiGroup.POST("/suggest", aiLimiter, h.SuggestContent)
+					aiGroup.POST("/translate", aiLimiter, h.TranslateResume)
+				} else {
+					aiGroup.POST("/evaluate/stream", h.EvaluateResumeStream)
+					aiGroup.POST("/jd-match/stream", h.JDMatchStream)
+					aiGroup.POST("/score", h.ScoreResumeForJD)
+					aiGroup.POST("/rewrite/bullet", h.RewriteBullet)
+					aiGroup.POST("/cover-letter", h.GenerateCoverLetter)
+					aiGroup.POST("/suggest", h.SuggestContent)
+					aiGroup.POST("/translate", h.TranslateResume)
+				}
+
 				aiGroup.GET("/suggest-records", h.ListSuggestRecords)
 				aiGroup.POST("/suggest-records", h.SaveSuggestRecord)
-				aiGroup.POST("/translate", h.TranslateResume)
 			}
 		}
 

@@ -35,6 +35,20 @@ services:
 
       PARSER_SERVICE_URL: "http://python-parser:9002"
 
+      # Redis
+      REDIS_ENABLED: "true"
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_DB: "0"
+
+      # 限流
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_FAIL_OPEN: "true"
+      RATE_LIMIT_AUTH_CAPACITY: "8"
+      RATE_LIMIT_AUTH_REFILL_PER_SEC: "0.2"
+      RATE_LIMIT_AI_CAPACITY: "20"
+      RATE_LIMIT_AI_REFILL_PER_SEC: "0.05"
+
       TZ: Asia/Shanghai
     depends_on:
       postgres:
@@ -42,6 +56,8 @@ services:
       minio:
         condition: service_healthy
       python-parser:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
     healthcheck:
@@ -104,6 +120,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  redis:
+    image: oyh0mq3odt54g3vzjv.xuanyuan.run/library/redis:7-alpine
+    container_name: resumecraft-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ./docker/redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     image: oyh0mq3odt54g3vzjv.xuanyuan.run/library/nginx:alpine

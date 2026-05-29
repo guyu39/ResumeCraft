@@ -28,6 +28,7 @@ export interface RefreshRequest {
 
 export interface LogoutRequest {
   refreshToken: string
+  accessToken?: string
 }
 
 export interface AuthUser {

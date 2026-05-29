@@ -16,6 +16,7 @@
 10. **A4 分页预览**：按页切片展示，减少内容截断。
 11. **AI 辅助**：简历评估、内容润色建议、JD 匹配分析、求职信生成。
 12. **PDF 导出**：后端异步任务模式（创建任务 → 轮询状态 → 下载）。
+13. **国际化**：支持设置英文简历，并且使用 ai 将简历翻译成英文。
 
 ## 技术栈
 
@@ -66,12 +67,22 @@ introduce/
 │       ├── storage/              # 数据访问
 │       ├── model/                # 数据模型
 │       └── renderer/             # PDF 渲染
+├── python-parser/                # 简历解析服务（FastAPI）
+├── docker/                       # 本地开发依赖（nginx/minio/redis 等）
 ├── 需求文档.md
 ├── 技术文档.md
 └── AI后端移植与双版本规划.md
 ```
 
 ## 快速开始
+
+### Docker Compose（一键启动）
+
+```bash
+docker compose up --build
+```
+
+默认包含：后端 API、PostgreSQL、MinIO、Redis、简历解析服务与 Nginx。
 
 ### 前端
 
@@ -112,18 +123,46 @@ docker compose up --build
 VITE_API_BASE_URL=http://localhost:8787/api
 ```
 
-### 后端
+### 后端（Go）
 
 ```env
 # 数据库
-DATABASE_URL=postgres://user:password@localhost:5432/resumecraft?sslmode=disable
+PG_DSN=postgres://user:password@localhost:5432/resumecraft?sslmode=disable
 
 # JWT
-JWT_SECRET=your-secret-key
+AUTH_JWT_SECRET=your-secret-key
 
-# AI（可选）
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-...
+# AI 配置加密密钥（用于保存用户 AI 配置）
+AI_ENCRYPTION_KEY=change-this-32-char-key!!
+
+# 对象存储（S3 兼容，未配置则使用内存降级）
+S3_ENDPOINT=localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin123
+S3_BUCKET=resumecraft
+S3_USE_SSL=false
+
+# 简历解析服务（python-parser）
+PARSER_SERVICE_URL=http://localhost:9002
+
+# Redis（用于认证与限流，可选）
+REDIS_ENABLED=true
+REDIS_ADDR=localhost:6379
+REDIS_PASSWORD=
+REDIS_DB=0
+
+# 限流
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_FAIL_OPEN=true
+RATE_LIMIT_AUTH_CAPACITY=8
+RATE_LIMIT_AUTH_REFILL_PER_SEC=0.2
+RATE_LIMIT_AI_CAPACITY=20
+RATE_LIMIT_AI_REFILL_PER_SEC=0.05
+RATE_LIMIT_GLOBAL_CAPACITY=120
+RATE_LIMIT_GLOBAL_REFILL_PER_SEC=2
+
+# 静态资源（可选，Go 后端直出前端构建产物时启用）
+FRONTEND_DIST_DIR=../dist
 ```
 
 ## API 概览
@@ -137,22 +176,30 @@ OPENAI_API_KEY=sk-...
 | GET | /api/auth/me | 当前用户信息 |
 | GET | /api/resumes | 简历列表 |
 | POST | /api/resumes | 创建简历 |
+| POST | /api/resumes/parse | 简历导入解析 |
 | GET | /api/resumes/:id | 获取简历详情 |
 | PUT | /api/resumes/:id | 更新简历 |
 | DELETE | /api/resumes/:id | 删除简历 |
 | POST | /api/resumes/:id/exports | 创建导出任务 |
 | GET | /api/exports/:taskId | 查询导出任务状态 |
+| GET | /api/exports/:taskId/download | 下载导出文件 |
 | GET | /api/ai/config | 获取 AI 配置 |
 | POST | /api/ai/config | 保存 AI 配置 |
+| GET | /api/ai/parser-config | 获取简历解析配置 |
+| POST | /api/ai/parser-config | 保存简历解析配置 |
 | GET | /api/ai/conversations | AI 对话列表 |
 | GET | /api/ai/conversations/:id | 获取对话详情 |
 | DELETE | /api/ai/conversations/:id | 删除对话 |
 | POST | /api/ai/evaluate/stream | 简历评估（SSE 流式） |
 | POST | /api/ai/jd-match/stream | JD 匹配分析（SSE 流式） |
+| POST | /api/ai/score | JD 评分 |
+| POST | /api/ai/rewrite/bullet | 要点改写 |
 | POST | /api/ai/cover-letter | 求职信生成 |
 | POST | /api/ai/suggest | 内容润色建议 |
+| POST | /api/ai/translate | 简历翻译 |
 | GET | /api/ai/suggest-records | 润色记录列表 |
 | POST | /api/ai/suggest-records | 保存润色记录 |
+| POST | /api/pdf/export | PDF 导出（内部接口） |
 
 ## 部署
 
@@ -180,14 +227,9 @@ docker run --rm -p 8787:8787 \
 ## 已知限制
 
 1. PDF 导出依赖后端 `chromedp` 服务，请确保后端正常启动。
-2. 头像图片以 Base64 存入 localStorage，建议单张不超过 1MB。
-3. AI 功能需要用户自行配置 OpenAI API Key。
-4. 版本管理 UI（列表/恢复）待开发，后端已支持 `RestoreVersion`。
-5. 导出文件下载接口 `GET /api/exports/:taskId/download` 后端尚未实现，当前通过 `downloadUrl` 字段获取。
+2. AI 功能需要用户自行配置 OpenAI API Key。
+3. 版本管理 UI（列表/恢复）待开发，后端已支持 `RestoreVersion`。
 
-## 已知问题
-
-1. **简历名称冲突循环**：同步成功后本地简历未删除，刷新后重复触发同步提示。修复方向：同步成功后删除本地简历，持久化 `hasSyncedOnLogin` 状态。
 
 ## License
 

@@ -20,6 +20,7 @@ var (
 	ErrConversationNotFound = errors.New("conversation not found")
 	ErrAIConfigNotFound     = errors.New("ai config not found")
 	ErrAIRequestFailed      = errors.New("ai request failed")
+	ErrAPIKeyRequired       = errors.New("api key required for first-time setup")
 )
 
 type Service interface {
@@ -130,7 +131,7 @@ func (s *service) SaveConfig(ctx context.Context, userID string, req model.AICon
 	} else if existingCfg != nil && existingCfg.APIKeyEncrypted != "" {
 		encryptedKey = existingCfg.APIKeyEncrypted
 	} else {
-		return fmt.Errorf("API Key 不能为空：首次配置必须提供密钥")
+		return ErrAPIKeyRequired
 	}
 
 	existingID := uuid.New().String()
@@ -1892,7 +1893,7 @@ func (s *service) SaveParserConfig(ctx context.Context, userID string, req model
 	} else if existingCfg != nil && existingCfg.APIKeyEncrypted != "" {
 		encryptedKey = existingCfg.APIKeyEncrypted
 	} else {
-		return fmt.Errorf("API Key 不能为空：首次配置必须提供密钥")
+		return ErrAPIKeyRequired
 	}
 
 	existingID := uuid.New().String()
