@@ -22,6 +22,12 @@ const AppShell: React.FC = () => {
   // 后台解析简历（从简历列表页传入的文件）
   const { status: parseStatus, error: parseError, dismiss: dismissParse } = usePendingParse()
 
+  const 开始拖拽 = (方向: 'left' | 'right', event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    window.getSelection()?.removeAllRanges()
+    设置拖拽中(方向)
+  }
+
   // 记录保存状态供 UI 使用
   React.useEffect(() => {
     console.log('[AppShell] 保存状态:', saveStatus)
@@ -30,7 +36,15 @@ const AppShell: React.FC = () => {
   React.useEffect(() => {
     if (!拖拽中) return
 
+    const 原始UserSelect = document.body.style.userSelect
+    const 原始Cursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    window.getSelection()?.removeAllRanges()
+
     const 处理鼠标移动 = (e: MouseEvent) => {
+      e.preventDefault()
+      window.getSelection()?.removeAllRanges()
       const 最小左栏 = 200
       const 最大左栏 = 320
       const 最小右栏 = 300
@@ -52,7 +66,13 @@ const AppShell: React.FC = () => {
       }
     }
 
+    const 恢复拖拽样式 = () => {
+      document.body.style.userSelect = 原始UserSelect
+      document.body.style.cursor = 原始Cursor
+    }
+
     const 处理鼠标抬起 = () => {
+      恢复拖拽样式()
       设置拖拽中(null)
     }
 
@@ -60,6 +80,7 @@ const AppShell: React.FC = () => {
     window.addEventListener('mouseup', 处理鼠标抬起)
 
     return () => {
+      恢复拖拽样式()
       window.removeEventListener('mousemove', 处理鼠标移动)
       window.removeEventListener('mouseup', 处理鼠标抬起)
     }
@@ -101,7 +122,7 @@ const AppShell: React.FC = () => {
         {/* 左拖拽条 */}
         <div
           className="w-1.5 rounded-full flex-shrink-0 cursor-col-resize bg-transparent hover:bg-primary/20 active:bg-primary/30 transition-colors"
-          onMouseDown={() => 设置拖拽中('left')}
+          onMouseDown={(event) => 开始拖拽('left', event)}
           title="拖拽调整左侧宽度"
         />
 
@@ -113,7 +134,7 @@ const AppShell: React.FC = () => {
         {/* 右拖拽条 */}
         <div
           className="w-1.5 rounded-full flex-shrink-0 cursor-col-resize bg-transparent hover:bg-primary/20 active:bg-primary/30 transition-colors"
-          onMouseDown={() => 设置拖拽中('right')}
+          onMouseDown={(event) => 开始拖拽('right', event)}
           title="拖拽调整右侧宽度"
         />
 
