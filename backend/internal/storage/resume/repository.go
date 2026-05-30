@@ -586,9 +586,8 @@ func (r *repository) GetSnapshotDetail(ctx context.Context, snapshotID string) (
 	return &snapshot, contentJSON, nil
 }
 
-// DiffSnapshots 对比两个快照
+// DiffSnapshots 对比两个快照（逐字段比较）
 func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string) (*model.DiffResult, error) {
-	// 加载两个快照
 	_, contentA, err := r.GetSnapshotDetail(ctx, snapshotAID)
 	if err != nil {
 		return nil, err
@@ -598,7 +597,6 @@ func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID
 		return nil, err
 	}
 
-	// 解析 JSON
 	var dataA, dataB map[string]interface{}
 	if err := json.Unmarshal(contentA, &dataA); err != nil {
 		return nil, fmt.Errorf("unmarshal snapshot A: %w", err)
@@ -607,79 +605,287 @@ func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID
 		return nil, fmt.Errorf("unmarshal snapshot B: %w", err)
 	}
 
-	// 逐模块对比
-	diffs := []model.FieldDiff{}
 	modulesA := extractModules(dataA)
 	modulesB := extractModules(dataB)
+	moduleMapA := buildModuleMap(modulesA)
+	moduleMapB := buildModuleMap(modulesB)
 
-	// 用 ID 匹配模块
-	moduleMapA := mapModules(modulesA)
-	moduleMapB := mapModules(modulesB)
-
+	diffs := []model.FieldDiff{}
 	stats := model.DiffStats{}
 
-	for id, nameA := range moduleMapA {
-		_, exists := moduleMapB[id]
+	for id, modA := range moduleMapA {
+		modB, exists := moduleMapB[id]
 		if !exists {
 			stats.ModulesRemoved++
 			diffs = append(diffs, model.FieldDiff{
-				ModuleType:       nameA,
+				ModuleType:       modTypeName(modA),
 				ModuleInstanceID: id,
-				Field:            "module",
-				Before:           "存在",
+				Field:            "模块",
+				Before:           moduleLabel(modA),
 				After:            "已删除",
 			})
 			continue
 		}
-		// 检查模块是否变化
-		if !jsonDeepEqual(modulesA, modulesB, id) {
+		// 逐字段对比
+		fieldDiffs := compareModuleFields(modA, modB)
+		if len(fieldDiffs) > 0 {
 			stats.ModulesModified++
-			stats.FieldsChanged++
-			diffs = append(diffs, model.FieldDiff{
-				ModuleType:       nameA,
-				ModuleInstanceID: id,
-				Field:            "content",
-				Before:           "[旧版本]",
-				After:            "[新版本]",
-			})
+			stats.FieldsChanged += len(fieldDiffs)
+			diffs = append(diffs, fieldDiffs...)
 		}
 	}
-
-	for id, nameB := range moduleMapB {
+	for id, modB := range moduleMapB {
 		if _, exists := moduleMapA[id]; !exists {
 			stats.ModulesAdded++
 			diffs = append(diffs, model.FieldDiff{
-				ModuleType:       nameB,
+				ModuleType:       modTypeName(modB),
 				ModuleInstanceID: id,
-				Field:            "module",
+				Field:            "模块",
 				Before:           "不存在",
-				After:            "新增",
+				After:            moduleLabel(modB),
 			})
 		}
 	}
-
-	// 获取快照元信息
-	snapshotA := model.SnapshotBrief{}
-	snapshotB := model.SnapshotBrief{}
-	r.pool.QueryRow(ctx, `
-		SELECT id, version_no, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000
-		FROM resume_versions WHERE id = $1
-	`, snapshotAID).Scan(&snapshotA.ID, &snapshotA.VersionNo, &snapshotA.Label, &snapshotA.CreatedAt)
-	r.pool.QueryRow(ctx, `
-		SELECT id, version_no, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000
-		FROM resume_versions WHERE id = $1
-	`, snapshotBID).Scan(&snapshotB.ID, &snapshotB.VersionNo, &snapshotB.Label, &snapshotB.CreatedAt)
 
 	if diffs == nil {
 		diffs = []model.FieldDiff{}
 	}
 
-	return &model.DiffResult{
-		SnapshotA: snapshotA,
-		SnapshotB: snapshotB,
-		Diffs:     diffs,
-		Stats:     stats,
-	}, nil
+	snapshotA := model.SnapshotBrief{}
+	snapshotB := model.SnapshotBrief{}
+	r.pool.QueryRow(ctx, `SELECT id, version_no, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000 FROM resume_versions WHERE id = $1`, snapshotAID).Scan(&snapshotA.ID, &snapshotA.VersionNo, &snapshotA.Label, &snapshotA.CreatedAt)
+	r.pool.QueryRow(ctx, `SELECT id, version_no, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000 FROM resume_versions WHERE id = $1`, snapshotBID).Scan(&snapshotB.ID, &snapshotB.VersionNo, &snapshotB.Label, &snapshotB.CreatedAt)
+
+	return &model.DiffResult{SnapshotA: snapshotA, SnapshotB: snapshotB, Diffs: diffs, Stats: stats}, nil
+}
+
+// buildModuleMap 构建 id → module map
+func buildModuleMap(modules []map[string]interface{}) map[string]map[string]interface{} {
+	result := make(map[string]map[string]interface{})
+	for _, m := range modules {
+		if id, ok := m["id"].(string); ok {
+			result[id] = m
+		}
+	}
+	return result
+}
+
+// compareModuleFields 比较两个模块的所有 data 字段
+func compareModuleFields(modA, modB map[string]interface{}) []model.FieldDiff {
+	dataA, _ := modA["data"].(map[string]interface{})
+	dataB, _ := modB["data"].(map[string]interface{})
+	if dataA == nil {
+		dataA = map[string]interface{}{}
+	}
+	if dataB == nil {
+		dataB = map[string]interface{}{}
+	}
+
+	modType := modTypeName(modA)
+	modID, _ := modA["id"].(string)
+
+	var diffs []model.FieldDiff
+	allKeys := mergedKeys(dataA, dataB)
+
+	for _, key := range allKeys {
+		va := fieldToString(dataA[key])
+		vb := fieldToString(dataB[key])
+		if va == vb {
+			continue
+		}
+		if va == "" {
+			va = "(空)"
+		}
+		if vb == "" {
+			vb = "(空)"
+		}
+		diffs = append(diffs, model.FieldDiff{
+			ModuleType:       modType,
+			ModuleInstanceID: modID,
+			Field:            fieldLabel(key),
+			Before:           va,
+			After:            vb,
+		})
+	}
+	return diffs
+}
+
+// fieldToString 将任意类型转为可比较的字符串
+func fieldToString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		if val == float64(int64(val)) {
+			return fmt.Sprintf("%d", int64(val))
+		}
+		return fmt.Sprintf("%g", val)
+	case bool:
+		if val {
+			return "是"
+		} else {
+			return "否"
+		}
+	case []interface{}:
+		parts := make([]string, 0, len(val))
+		for _, item := range val {
+			if m, ok := item.(map[string]interface{}); ok {
+				if name, ok := m["name"].(string); ok {
+					parts = append(parts, name)
+				}
+			} else if s, ok := item.(string); ok {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, "、")
+	case map[string]interface{}:
+		b, _ := json.Marshal(v)
+		return string(b)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// mergedKeys 合并两个 map 的 key（去重排序，已知固定字段排前面）
+func mergedKeys(a, b map[string]interface{}) []string {
+	order := []string{
+		"companyName", "schoolName", "projectName", "title", "degree", "major",
+		"position", "startDate", "endDate", "date", "duration",
+		"description", "content", "responsibilities", "achievements",
+		"skills", "summary", "level", "certificateName", "issuingOrg", "portfolioUrl",
+		"languageName", "proficiency", "customContent",
+	}
+	seen := map[string]bool{}
+	var keys []string
+	for _, k := range order {
+		if _, okA := a[k]; okA {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+		if _, okB := b[k]; okB {
+			if !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+	}
+	for k := range a {
+		if !seen[k] {
+			keys = append(keys, k)
+		}
+	}
+	for k := range b {
+		if !seen[k] {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
+// modTypeName 模块类型 → 中文名
+func modTypeName(m map[string]interface{}) string {
+	t, _ := m["type"].(string)
+	switch t {
+	case "personal":
+		return "个人信息"
+	case "work":
+		return "工作经历"
+	case "education":
+		return "教育经历"
+	case "project":
+		return "项目经历"
+	case "skills":
+		return "专业技能"
+	case "awards":
+		return "获奖经历"
+	case "summary":
+		return "自我评价"
+	case "certificates":
+		return "证书资质"
+	case "portfolio":
+		return "作品集"
+	case "languages":
+		return "语言能力"
+	case "custom":
+		return "自定义模块"
+	default:
+		return t
+	}
+}
+
+// moduleLabel 模块的显示标签（标题 or 公司名 or 学校名）
+func moduleLabel(m map[string]interface{}) string {
+	data, _ := m["data"].(map[string]interface{})
+	if data != nil {
+		if name, ok := data["companyName"].(string); ok {
+			return name
+		}
+		if name, ok := data["schoolName"].(string); ok {
+			return name
+		}
+		if name, ok := data["projectName"].(string); ok {
+			return name
+		}
+	}
+	if title, ok := m["title"].(string); ok {
+		return title
+	}
+	return modTypeName(m)
+}
+
+// fieldLabel 字段 → 中文名
+func fieldLabel(key string) string {
+	switch key {
+	case "companyName", "schoolName", "projectName":
+		return "名称"
+	case "position":
+		return "职位"
+	case "degree":
+		return "学位"
+	case "major":
+		return "专业"
+	case "startDate":
+		return "开始日期"
+	case "endDate":
+		return "结束日期"
+	case "date":
+		return "日期"
+	case "duration":
+		return "时长"
+	case "description":
+		return "描述"
+	case "content":
+		return "内容"
+	case "responsibilities":
+		return "职责"
+	case "achievements":
+		return "成果"
+	case "summary":
+		return "摘要"
+	case "skills":
+		return "技能列表"
+	case "title":
+		return "标题"
+	case "level":
+		return "等级"
+	case "certificateName":
+		return "证书名称"
+	case "issuingOrg":
+		return "颁发机构"
+	case "portfolioUrl":
+		return "作品链接"
+	case "languageName":
+		return "语言"
+	case "proficiency":
+		return "熟练度"
+	case "customContent":
+		return "内容"
+	default:
+		return key
+	}
 }
 
 // extractModules 从 resume content JSON 提取 modules 数组
@@ -696,35 +902,4 @@ func extractModules(data map[string]interface{}) []map[string]interface{} {
 		}
 	}
 	return []map[string]interface{}{}
-}
-
-// mapModules 将模块列表映射为 id -> moduleType 的映射
-func mapModules(modules []map[string]interface{}) map[string]string {
-	result := make(map[string]string)
-	for _, m := range modules {
-		id, _ := m["id"].(string)
-		mType, _ := m["type"].(string)
-		if id != "" {
-			result[id] = mType
-		}
-	}
-	return result
-}
-
-// jsonDeepEqual 深度比较两个模块列表中指定 id 的模块是否相同
-func jsonDeepEqual(modulesA, modulesB []map[string]interface{}, id string) bool {
-	var a, b []byte
-	for _, m := range modulesA {
-		if mid, _ := m["id"].(string); mid == id {
-			a, _ = json.Marshal(m)
-			break
-		}
-	}
-	for _, m := range modulesB {
-		if mid, _ := m["id"].(string); mid == id {
-			b, _ = json.Marshal(m)
-			break
-		}
-	}
-	return string(a) == string(b)
 }

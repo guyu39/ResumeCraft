@@ -9,7 +9,10 @@ import type { SnapshotListItem } from '@/api/resume'
 
 interface SnapshotTimelineProps {
   resumeId: string
+  activeSnapshotId: string | null
   onSelectSnapshot?: (snapshot: SnapshotListItem) => void
+  onCompareSnapshot?: (snapshotId: string) => void
+  onSnapshotsLoaded?: (items: SnapshotListItem[]) => void
 }
 
 interface TooltipInfo {
@@ -18,7 +21,9 @@ interface TooltipInfo {
   y: number
 }
 
-export default function SnapshotTimeline({ resumeId, onSelectSnapshot }: SnapshotTimelineProps) {
+export default function SnapshotTimeline({
+  resumeId, activeSnapshotId, onSelectSnapshot, onCompareSnapshot, onSnapshotsLoaded,
+}: SnapshotTimelineProps) {
   const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null)
@@ -34,14 +39,15 @@ export default function SnapshotTimeline({ resumeId, onSelectSnapshot }: Snapsho
       setLoading(true); setError(null)
       const res = await resumeApi.getSnapshots(resumeId, { limit: 50, includeAuto: false })
       setSnapshots(res.items)
+      onSnapshotsLoaded?.(res.items)
     } catch { setError('加载版本历史失败') } finally { setLoading(false) }
-  }, [resumeId])
+  }, [resumeId, onSnapshotsLoaded])
 
   useEffect(() => { loadSnapshots() }, [loadSnapshots])
   useEffect(() => () => { if (hideTimer.current) clearTimeout(hideTimer.current) }, [])
 
   const handleMouseEnter = (snapshot: SnapshotListItem, el: HTMLElement) => {
-    if (renameInfo) return // 改名中禁止触发其他气泡
+    if (renameInfo) return
     if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null }
     const rect = el.getBoundingClientRect()
     setTooltip({ snapshot, x: rect.left + rect.width / 2, y: rect.top })
@@ -75,14 +81,16 @@ export default function SnapshotTimeline({ resumeId, onSelectSnapshot }: Snapsho
     } catch { setError('重命名失败') }
   }
 
-  const getNodeStyle = (_s: SnapshotListItem, hovered: boolean): React.CSSProperties => ({
+  const getNodeStyle = (_s: SnapshotListItem, hovered: boolean, isActive: boolean): React.CSSProperties => ({
     width: hovered ? 20 : 18, height: hovered ? 20 : 18,
-    borderRadius: '50%', background: '#1A56DB', border: 'none',
+    borderRadius: '50%',
+    background: isActive ? '#3B82F6' : '#1A56DB',
+    border: isActive ? '2px solid #3B82F6' : 'none',
+    boxShadow: isActive ? '0 0 0 3px rgba(59,130,246,0.3)' : 'none',
     cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s ease',
   })
 
-  // 计算每个节点占用的最小宽度，确保不溢出
-  const minNodeWidth = Math.max(40, Math.floor((scrollRefWidth() - 80) / Math.max(snapshots.length, 1)))
+  const nodeSpacing = 80
 
   return (
     <div className="w-full flex-shrink-0">
@@ -92,9 +100,7 @@ export default function SnapshotTimeline({ resumeId, onSelectSnapshot }: Snapsho
         </div>
       )}
 
-      {/* 时间轴 — 不滚动，节点均匀分布 */}
       <div className="flex items-center justify-center px-4 py-5 relative">
-        {/* 轨道线 */}
         <div className="absolute left-4 right-4 h-[3px] bg-gray-200 rounded" style={{ top: '50%', transform: 'translateY(-50%)' }} />
 
         {snapshots.length === 0 && !loading && (
@@ -104,22 +110,22 @@ export default function SnapshotTimeline({ resumeId, onSelectSnapshot }: Snapsho
           <span className="text-xs text-gray-400">加载中...</span>
         )}
 
-        <div className="flex items-center justify-center gap-0" style={{ width: '100%' }}>
+        <div className="flex items-center justify-center gap-0">
           {snapshots.map((snapshot) => {
             const isHovered = tooltip?.snapshot.id === snapshot.id
-            const w = Math.max(50, minNodeWidth)
+            const isActive = activeSnapshotId === snapshot.id
 
             return (
               <div key={snapshot.id} className="relative flex flex-col items-center flex-shrink-0"
-                style={{ minWidth: w, width: w }}
+                style={{ width: nodeSpacing }}
                 onMouseEnter={(e) => handleMouseEnter(snapshot, e.currentTarget)}
                 onMouseLeave={handleMouseLeave}
               >
-                <div style={getNodeStyle(snapshot, isHovered)}
+                <div style={getNodeStyle(snapshot, isHovered, isActive)}
                   onClick={() => onSelectSnapshot?.(snapshot)}
                 />
                 {snapshot.label && (
-                  <div className="absolute top-full mt-1.5 text-[10px] font-semibold text-[#1A56DB] whitespace-nowrap max-w-[80px] truncate leading-tight text-center">
+                  <div className={`absolute top-full mt-1.5 text-[10px] font-semibold whitespace-nowrap max-w-[80px] truncate leading-tight text-center ${isActive ? 'text-[#3B82F6]' : 'text-[#1A56DB]'}`}>
                     {snapshot.label}
                   </div>
                 )}
@@ -131,12 +137,11 @@ export default function SnapshotTimeline({ resumeId, onSelectSnapshot }: Snapsho
 
       {/* Portal tooltip */}
       {tooltip && createPortal(
-        <div
-          className="fixed bg-white border border-gray-200 rounded-lg shadow-xl p-2 z-[9999]"
+        <div className="fixed bg-white border border-gray-200 rounded-lg shadow-xl p-2 z-[9999]"
           style={{
-            left: Math.min(Math.max(tooltip.x - 85, 8), window.innerWidth - 190),
+            left: Math.min(Math.max(tooltip.x - 95, 8), window.innerWidth - 200),
             bottom: window.innerHeight - tooltip.y + 14,
-            whiteSpace: 'nowrap', minWidth: 140,
+            whiteSpace: 'nowrap', minWidth: 170,
           }}
           onMouseEnter={handleTooltipEnter}
           onMouseLeave={handleTooltipLeave}
@@ -148,6 +153,12 @@ export default function SnapshotTimeline({ resumeId, onSelectSnapshot }: Snapsho
             {new Date(tooltip.snapshot.createdAt).toLocaleString('zh-CN')}
           </div>
           <div className="flex gap-2 mt-2">
+            {activeSnapshotId && activeSnapshotId !== tooltip.snapshot.id && (
+              <button className="text-[10px] px-2 py-0.5 bg-purple-50 hover:bg-purple-100 rounded text-purple-600"
+                onClick={() => { onCompareSnapshot?.(tooltip.snapshot.id); setTooltip(null) }}>
+                对比
+              </button>
+            )}
             <button className="text-[10px] px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-600"
               onClick={() => handleStartRename(tooltip.snapshot)}>改名</button>
             <button className="text-[10px] px-2 py-0.5 bg-red-50 hover:bg-red-100 rounded text-red-500"
@@ -179,5 +190,3 @@ export default function SnapshotTimeline({ resumeId, onSelectSnapshot }: Snapsho
     </div>
   )
 }
-
-function scrollRefWidth() { return typeof window !== 'undefined' ? window.innerWidth : 800 }
