@@ -191,11 +191,12 @@ type JDResumeSuggestion struct {
 
 // JDScoreRequest JD 深度评分请求
 type JDScoreRequest struct {
-	ResumeID    string                 `json:"resumeId" binding:"required"`
-	Content     map[string]interface{} `json:"content" binding:"required"`
-	JDText      string                 `json:"jdText" binding:"required"`
-	TargetTitle string                 `json:"targetTitle"`
-	CompanyName string                 `json:"companyName"`
+	ResumeID          string                 `json:"resumeId" binding:"required"`
+	Content           map[string]interface{} `json:"content" binding:"required"`
+	JDText            string                 `json:"jdText" binding:"required"`
+	TargetTitle       string                 `json:"targetTitle"`
+	CompanyName       string                 `json:"companyName"`
+	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
 }
 
 // JDParsedResult JD 结构化抽取结果

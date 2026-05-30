@@ -130,7 +130,7 @@ func Load() Config {
 			FrontendDistDir:   getEnv("FRONTEND_DIST_DIR", ""),
 			ReadHeaderTimeout: getEnvDurationSeconds("SERVER_READ_HEADER_TIMEOUT_SEC", 10),
 			ReadTimeout:       getEnvDurationSeconds("SERVER_READ_TIMEOUT_SEC", 30),
-			WriteTimeout:      getEnvDurationSeconds("SERVER_WRITE_TIMEOUT_SEC", 120),
+			WriteTimeout:      getEnvDurationSeconds("SERVER_WRITE_TIMEOUT_SEC", 300),
 		},
 		DB: DBConfig{
 			DSN: dsn,

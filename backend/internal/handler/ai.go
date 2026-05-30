@@ -189,10 +189,7 @@ func (h *Handler) EvaluateResumeStream(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		ResumeID string                 `json:"resumeId" binding:"required"`
-		Content  map[string]interface{} `json:"content" binding:"required"`
-	}
+	var req model.EvaluateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
 		return
@@ -211,10 +208,7 @@ func (h *Handler) EvaluateResumeStream(c *gin.Context) {
 		return
 	}
 
-	result, err := h.aiService.StreamEvaluate(c.Request.Context(), userID.(string), model.EvaluateRequest{
-		ResumeID: req.ResumeID,
-		Content:  req.Content,
-	}, func(evt ai.StreamEvent) {
+	result, err := h.aiService.StreamEvaluate(c.Request.Context(), userID.(string), req, func(evt ai.StreamEvent) {
 		if evt.Type == "" {
 			return
 		}

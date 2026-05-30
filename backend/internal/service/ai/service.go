@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"resumecraft-pdf-backend/internal/config"
 	"resumecraft-pdf-backend/internal/model"
 	aiStorage "resumecraft-pdf-backend/internal/storage/ai"
@@ -64,9 +66,10 @@ type service struct {
 	parserCfgRepo     aiStorage.ParserConfigRepository
 	aiProvider        AIProvider
 	encryption        *Encryption
+	redis             *redis.Client // AI 对话缓存
 }
 
-func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, suggestRecordRepo aiStorage.SuggestRecordRepository, parserCfgRepo aiStorage.ParserConfigRepository, aiCfg config.AIConfig) Service {
+func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, suggestRecordRepo aiStorage.SuggestRecordRepository, parserCfgRepo aiStorage.ParserConfigRepository, aiCfg config.AIConfig, redisClient *redis.Client) Service {
 	return &service{
 		repo:              repo,
 		cfgRepo:           cfgRepo,
@@ -74,6 +77,7 @@ func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, s
 		parserCfgRepo:     parserCfgRepo,
 		aiProvider:        newAIProvider(aiCfg),
 		encryption:        NewEncryption(aiCfg.EncryptionKey),
+		redis:             redisClient,
 	}
 }
 
@@ -154,7 +158,7 @@ func (s *service) SaveConfig(ctx context.Context, userID string, req model.AICon
 	return s.cfgRepo.Upsert(ctx, cfg)
 }
 
-// ListConversations 获取对话列表
+// ListConversations 获取对话列表（Redis 缓存 30 分钟）
 func (s *service) ListConversations(ctx context.Context, userID string, conversationType, resumeID string, page, pageSize int) (*model.ConversationListResponse, error) {
 	if page < 1 {
 		page = 1
@@ -164,6 +168,18 @@ func (s *service) ListConversations(ctx context.Context, userID string, conversa
 	}
 	if pageSize > 100 {
 		pageSize = 100
+	}
+
+	// Redis 缓存：key = ai:conv:{userID}:{type}:{resumeID}:{page}:{pageSize}
+	if s.redis != nil {
+		cacheKey := fmt.Sprintf("ai:conv:%s:%s:%s:%d:%d", userID, conversationType, resumeID, page, pageSize)
+		cached, err := s.redis.Get(ctx, cacheKey).Result()
+		if err == nil && cached != "" {
+			var resp model.ConversationListResponse
+			if json.Unmarshal([]byte(cached), &resp) == nil {
+				return &resp, nil
+			}
+		}
 	}
 
 	items, total, err := s.repo.List(ctx, userID, conversationType, resumeID, page, pageSize)
@@ -176,7 +192,7 @@ func (s *service) ListConversations(ctx context.Context, userID string, conversa
 		totalPages++
 	}
 
-	return &model.ConversationListResponse{
+	resp := &model.ConversationListResponse{
 		Items: items,
 		Pagination: model.Pagination{
 			Page:       page,
@@ -184,7 +200,16 @@ func (s *service) ListConversations(ctx context.Context, userID string, conversa
 			Total:      total,
 			TotalPages: totalPages,
 		},
-	}, nil
+	}
+
+	// 回写 Redis（TTL 30 分钟）
+	if s.redis != nil {
+		cacheKey := fmt.Sprintf("ai:conv:%s:%s:%s:%d:%d", userID, conversationType, resumeID, page, pageSize)
+		data, _ := json.Marshal(resp)
+		_ = s.redis.Set(ctx, cacheKey, data, 30*time.Minute)
+	}
+
+	return resp, nil
 }
 
 // GetConversation 获取对话详情
@@ -201,7 +226,27 @@ func (s *service) GetConversation(ctx context.Context, userID, conversationID st
 
 // DeleteConversation 删除对话
 func (s *service) DeleteConversation(ctx context.Context, userID, conversationID string) error {
+	// 清除该会话的缓存（因为不知道 resumeID，需要先查出来）
+	if s.redis != nil {
+		conv, err := s.repo.GetByID(ctx, userID, conversationID)
+		if err == nil && conv.ResumeID != nil {
+			s.invalidateConvCache(context.Background(), userID, *conv.ResumeID)
+		}
+	}
 	return s.repo.Delete(ctx, userID, conversationID)
+}
+
+// invalidateConvCache 失效某个用户+简历的所有对话列表缓存
+func (s *service) invalidateConvCache(ctx context.Context, userID, resumeID string) {
+	if s.redis == nil {
+		return
+	}
+	// 使用 SCAN 删除匹配的 key（ai:conv:{userID}:*:{resumeID}:*:*）
+	pattern := fmt.Sprintf("ai:conv:%s:*:%s:*", userID, resumeID)
+	iter := s.redis.Scan(ctx, 0, pattern, 0).Iterator()
+	for iter.Next(ctx) {
+		s.redis.Del(ctx, iter.Val())
+	}
 }
 
 // EvaluateStream 流式评估简历
@@ -287,19 +332,21 @@ func (s *service) EvaluateStream(ctx context.Context, userID string, req model.E
 	}
 	contextJSON, _ := json.Marshal(contextData)
 	conversation := &aiStorage.ConversationRecord{
-		ID:       convID,
-		UserID:   userID,
-		ResumeID: &req.ResumeID,
-		Type:     string(model.ConversationTypeEvaluate),
-		Title:    stringPtr("简历评估"),
-		Context:  contextJSON,
+		ID:                convID,
+		UserID:            userID,
+		ResumeID:          &req.ResumeID,
+		SnapshotVersionID: req.SnapshotVersionID,
+		Type:              string(model.ConversationTypeEvaluate),
+		Title:             stringPtr("简历评估"),
+		Context:           contextJSON,
 	}
-	if err := s.repo.Create(ctx, conversation); err != nil {
+	if err := s.repo.Create(context.Background(), conversation); err != nil {
 		log.Printf("[ai] Failed to create conversation: %v", err)
+	} else if conversation.ResumeID != nil {
+		s.invalidateConvCache(context.Background(), userID, *conversation.ResumeID)
 	}
-
 	// 保存用户消息
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "user",
@@ -310,7 +357,7 @@ func (s *service) EvaluateStream(ctx context.Context, userID string, req model.E
 	evalResp.ConversationID = convID
 
 	// 保存 AI 响应
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "assistant",
@@ -507,18 +554,20 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 	}
 	contextJSON, _ := json.Marshal(contextData)
 	conversation := &aiStorage.ConversationRecord{
-		ID:       convID,
-		UserID:   userID,
-		ResumeID: &req.ResumeID,
-		Type:     string(model.ConversationTypeEvaluate),
-		Title:    stringPtr("简历评估"),
-		Context:  contextJSON,
+		ID:                convID,
+		UserID:            userID,
+		ResumeID:          &req.ResumeID,
+		SnapshotVersionID: req.SnapshotVersionID,
+		Type:              string(model.ConversationTypeEvaluate),
+		Title:             stringPtr("简历评估"),
+		Context:           contextJSON,
 	}
-	if err := s.repo.Create(ctx, conversation); err != nil {
+	if err := s.repo.Create(context.Background(), conversation); err != nil {
 		log.Printf("[ai] Failed to create conversation: %v", err)
+	} else if conversation.ResumeID != nil {
+		s.invalidateConvCache(context.Background(), userID, *conversation.ResumeID)
 	}
-
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "user",
@@ -527,7 +576,7 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 	})
 	evalResp.ConversationID = convID
 
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "assistant",
@@ -729,17 +778,20 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		title = fmt.Sprintf("JD匹配 - %s", strings.TrimSpace(req.TargetTitle))
 	}
 	conversation := &aiStorage.ConversationRecord{
-		ID:       convID,
-		UserID:   userID,
-		ResumeID: &req.ResumeID,
-		Type:     string(model.ConversationTypeJDMatch),
-		Title:    stringPtr(title),
-		Context:  contextJSON,
+		ID:                convID,
+		UserID:            userID,
+		ResumeID:          &req.ResumeID,
+		SnapshotVersionID: req.SnapshotVersionID,
+		Type:              string(model.ConversationTypeJDMatch),
+		Title:             stringPtr(title),
+		Context:           contextJSON,
 	}
-	if err := s.repo.Create(ctx, conversation); err != nil {
+	if err := s.repo.Create(context.Background(), conversation); err != nil {
 		log.Printf("[ai] Failed to create JD match conversation: %v", err)
+	} else if conversation.ResumeID != nil {
+		s.invalidateConvCache(context.Background(), userID, *conversation.ResumeID)
 	}
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "user",
@@ -747,7 +799,7 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		Model:          &jdMatchModel,
 	})
 	jdResp.ConversationID = convID
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "assistant",
@@ -833,17 +885,20 @@ func (s *service) ScoreResumeForJD(ctx context.Context, userID string, req model
 		title = fmt.Sprintf("JD评分 - %s", strings.TrimSpace(req.TargetTitle))
 	}
 	conversation := &aiStorage.ConversationRecord{
-		ID:       convID,
-		UserID:   userID,
-		ResumeID: &req.ResumeID,
-		Type:     string(model.ConversationTypeJDMatch),
-		Title:    stringPtr(title),
-		Context:  contextJSON,
+		ID:                convID,
+		UserID:            userID,
+		ResumeID:          &req.ResumeID,
+		SnapshotVersionID: req.SnapshotVersionID,
+		Type:              string(model.ConversationTypeJDMatch),
+		Title:             stringPtr(title),
+		Context:           contextJSON,
 	}
-	if err := s.repo.Create(ctx, conversation); err != nil {
+	if err := s.repo.Create(context.Background(), conversation); err != nil {
 		log.Printf("[ai] Failed to create JD score conversation: %v", err)
+	} else if conversation.ResumeID != nil {
+		s.invalidateConvCache(context.Background(), userID, *conversation.ResumeID)
 	}
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "user",
@@ -851,7 +906,7 @@ func (s *service) ScoreResumeForJD(ctx context.Context, userID string, req model
 		Model:          &cfg.DefaultModel,
 	})
 	resp.ConversationID = convID
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "assistant",
@@ -918,17 +973,20 @@ func (s *service) GenerateCoverLetter(ctx context.Context, userID string, req mo
 		title = fmt.Sprintf("求职信 - %s", strings.TrimSpace(req.JobTitle))
 	}
 	conversation := &aiStorage.ConversationRecord{
-		ID:       convID,
-		UserID:   userID,
-		ResumeID: &req.ResumeID,
-		Type:     string(model.ConversationTypeCoverLetter),
-		Title:    stringPtr(title),
-		Context:  contextJSON,
+		ID:                convID,
+		UserID:            userID,
+		ResumeID:          &req.ResumeID,
+		SnapshotVersionID: req.SnapshotVersionID,
+		Type:              string(model.ConversationTypeCoverLetter),
+		Title:             stringPtr(title),
+		Context:           contextJSON,
 	}
-	if err := s.repo.Create(ctx, conversation); err != nil {
+	if err := s.repo.Create(context.Background(), conversation); err != nil {
 		log.Printf("[ai] Failed to create cover letter conversation: %v", err)
+	} else if conversation.ResumeID != nil {
+		s.invalidateConvCache(context.Background(), userID, *conversation.ResumeID)
 	}
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "user",
@@ -936,7 +994,7 @@ func (s *service) GenerateCoverLetter(ctx context.Context, userID string, req mo
 		Model:          &cfg.DefaultModel,
 	})
 	coverResp.ConversationID = convID
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "assistant",
@@ -1133,12 +1191,14 @@ func (s *service) Suggest(ctx context.Context, userID string, req model.SuggestR
 		ModuleType:       req.ModuleType,
 		ModuleInstanceID: req.ModuleInstanceID,
 	}
-	if err := s.repo.Create(ctx, conversation); err != nil {
+	if err := s.repo.Create(context.Background(), conversation); err != nil {
 		log.Printf("[ai] Failed to create conversation: %v", err)
+	} else if conversation.ResumeID != nil {
+		s.invalidateConvCache(context.Background(), userID, *conversation.ResumeID)
 	}
 
 	// 保存用户消息
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "user",
@@ -1149,7 +1209,7 @@ func (s *service) Suggest(ctx context.Context, userID string, req model.SuggestR
 	suggestResp.ConversationID = convID
 
 	// 保存 AI 响应
-	s.repo.AddMessage(ctx, &aiStorage.MessageRecord{
+	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
 		Role:           "assistant",

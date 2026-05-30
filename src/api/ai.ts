@@ -559,7 +559,7 @@ export const aiApi = {
     suggest: (data: SuggestRequest) =>
         apiClient.post<SuggestResponse>('/ai/suggest', data, { auth: true }),
 
-    getConversations: (params?: { type?: string; resumeId?: string; page?: number; pageSize?: number }) => {
+    getConversations: (params?: { type?: string; resumeId?: string; snapshotVersionId?: string; page?: number; pageSize?: number }) => {
         const searchParams = new URLSearchParams()
         if (params?.type) searchParams.set('type', params.type)
         if (params?.resumeId) searchParams.set('resumeId', params.resumeId)

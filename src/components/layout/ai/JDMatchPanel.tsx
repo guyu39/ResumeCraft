@@ -6,6 +6,8 @@ import { useResumeStore } from '@/store/resumeStore'
 
 interface JDMatchPanelProps {
     resume: Resume
+    /** 父组件已预取的对话历史列表（消除"查看历史"网络延迟） */
+    preloadedHistory?: ConversationItem[]
     loading: boolean
     scoreLoading: boolean
     error: string | null
@@ -45,6 +47,7 @@ const scoreClass = (score: number) => {
 
 const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     resume,
+    preloadedHistory,
     loading,
     scoreLoading,
     error,
@@ -85,10 +88,17 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     const canSubmit = jdText.trim().length > 0 && jdText.length <= 20000 && !loading && !scoreLoading
 
     const loadHistory = async () => {
+        // 优先使用父组件预取的数据
+        if (preloadedHistory && preloadedHistory.length > 0) {
+            setHistoryItems(preloadedHistory)
+            setHistoryLoading(false)
+            return
+        }
         setHistoryLoading(true)
         try {
-            const res = await aiApi.getConversations({ type: 'jd_match', resumeId: resume.id, pageSize: 5 })
-            setHistoryItems(res.items || [])
+            const res = await aiApi.getConversations({ type: 'jd_match', resumeId: resume.id, pageSize: 20 })
+            const items = res.items || []
+            setHistoryItems(items.slice(0, 5))
         } catch {
             setHistoryItems([])
         } finally {

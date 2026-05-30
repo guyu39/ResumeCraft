@@ -23,7 +23,8 @@ export const useJDScore = () => {
 
     const runScore = async (
         resume: Resume,
-        form: { jdText: string; targetTitle?: string; companyName?: string }
+        form: { jdText: string; targetTitle?: string; companyName?: string },
+        snapshotVersionId?: string | null
     ): Promise<JDScoreResponse | null> => {
         if (state.loading) {
             return state.result
@@ -46,6 +47,7 @@ export const useJDScore = () => {
         try {
             const output = await aiApi.score({
                 resumeId: resume.id,
+                snapshotVersionId: snapshotVersionId ?? undefined,
                 content: resume as unknown as Record<string, unknown>,
                 jdText,
                 targetTitle: form.targetTitle?.trim(),

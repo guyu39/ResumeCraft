@@ -9,6 +9,8 @@ interface ResumeScoreDrawerProps {
     embedded?: boolean
     result: ResumeEvaluateOutput | null
     restoredResult?: ResumeEvaluateOutput | null
+    /** 父组件已预取的对话历史列表（消除"查看历史"网络延迟） */
+    preloadedHistory?: ConversationItem[]
     loading: boolean
     streamDone: boolean
     error: string | null
@@ -317,6 +319,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     open,
     embedded = false,
     result,
+    preloadedHistory,
     loading,
     streamDone,
     error,
@@ -343,7 +346,6 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     const getSnapshotLabel = (snapshotVersionId?: string | null): string | null => {
         if (!snapshotVersionId) return null
         const snap = snapshots.find((s) => s.id === snapshotVersionId)
-        // 仅手动快照显示标签（default 类型不在列表中，自动不显示）
         if (!snap || snap.snapshotType !== 'manual') return null
         return snap.label || `v${snap.id.slice(0, 4)}`
     }
@@ -357,25 +359,29 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
             setSelectedHistoryId(null)
             return
         }
-        // 打开时：加载评估历史
+        // 打开时：优先使用预取数据，否则加载评估历史
+        if (preloadedHistory && preloadedHistory.length > 0) {
+            setConversationHistory(preloadedHistory)
+            setSelectedHistoryId(preloadedHistory[0].id)
+            setShowHistory(false)
+            setHistoryLoading(false)
+            return
+        }
         setHistoryLoading(true)
-        aiApi.getConversations({ type: 'evaluate', resumeId, pageSize: 5 }).then((res) => {
+        aiApi.getConversations({ type: 'evaluate', resumeId, pageSize: 20 }).then((res) => {
             const items = res.items || []
-            setConversationHistory(items)
-            // 有历史记录：自动选中最新一条并渲染
+            setConversationHistory(items.slice(0, 5))
+            // 有历史记录：自动选中最新一条
             if (items.length > 0) {
-                const latestId = items[0].id
-                setSelectedHistoryId(latestId)
+                setSelectedHistoryId(items[0].id)
                 setShowHistory(false)
-                onConversationSelect?.(latestId)
             }
         }).catch(() => {
             setConversationHistory([])
         }).finally(() => {
             setHistoryLoading(false)
         })
-    }, [open])
-
+    }, [open, preloadedHistory, resumeId])
     // 新评估完成时：将新会话 ID 通知父组件（用于云端同步），并拼接到本地历史列表
     useEffect(() => {
         if (!result?.conversationId || !resumeId) return

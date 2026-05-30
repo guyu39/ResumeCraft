@@ -2,7 +2,7 @@
 // RightPanel — 右栏（步骤五/六/七：设置面板 + PDF 导出）
 // ============================================================
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Download, Globe, Settings, Sparkles, X } from 'lucide-react'
 import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
@@ -28,7 +28,7 @@ import { useCoverLetter } from '@/hooks/useCoverLetter'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
 import CoverLetterPanel from '@/components/layout/ai/CoverLetterPanel'
-import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse } from '@/api'
+import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse, type ConversationItem } from '@/api'
 
 // 各模块表单
 import PersonalForm from '@/components/resume/blocks/PersonalForm'
@@ -829,7 +829,7 @@ const RightPanel: React.FC = () => {
             }
             triggerSnapshotRefresh()
         } catch (error) {
-            const message = error instanceof ApiError ? error.message : '保存快照失败'
+            const message = error instanceof ApiError ? error.message : '保存失败'
             const normalized = message.toLowerCase()
             if (normalized.includes('label already exists')) {
                 setSnapshotError('标签已存在，请换一个')
@@ -873,6 +873,9 @@ const RightPanel: React.FC = () => {
     const [initialEvaluation, setInitialEvaluation] = useState<ResumeEvaluateOutput | null>(null)
     const [restoredJDMatch, setRestoredJDMatch] = useState<JDMatchResponse | null>(null)
     const [restoredJDScore, setRestoredJDScore] = useState<JDScoreResponse | null>(null)
+    // 预取的对话历史列表（消除"查看历史"延迟）
+    const [preloadedEvalHistory, setPreloadedEvalHistory] = useState<ConversationItem[]>([])
+    const [preloadedJDHistory, setPreloadedJDHistory] = useState<ConversationItem[]>([])
     const [restoredCoverLetter, setRestoredCoverLetter] = useState<CoverLetterResponse | null>(null)
     const { exportPDF, exporting, error: exportError } = useSyncExport()
     const {
@@ -931,7 +934,7 @@ const RightPanel: React.FC = () => {
         })
     }, [isAuthenticated])
 
-    // 进入评估面板时：加载最新评估历史，无历史且未登录才触发评估
+    // 进入评估面板时：加载当前快照对应的最新评估历史
     useEffect(() => {
         if (!showAIEvaluation) {
             setInitialEvaluation(null)
@@ -942,8 +945,11 @@ const RightPanel: React.FC = () => {
         }
         const loadLatest = async () => {
             try {
-                const res = await aiApi.getConversations({ type: 'evaluate', resumeId: resume.id, pageSize: 1 })
+                // 加载更多条，然后客户端按快照过滤
+                const res = await aiApi.getConversations({ type: 'evaluate', resumeId: resume.id, pageSize: 10 })
                 const items = res.items || []
+                // 保存预取列表供 Drawer 使用（消除"查看历史"延迟）
+                setPreloadedEvalHistory(items.slice(0, 5))
                 if (items.length > 0) {
                     const detail = await aiApi.getConversation(items[0].id)
                     if (detail.context) {
@@ -964,6 +970,9 @@ const RightPanel: React.FC = () => {
                             return
                         }
                     }
+                } else {
+                    // 当前快照下无评估记录，清空显示
+                    setInitialEvaluation(null)
                 }
             } catch (err) {
                 console.error('Failed to load initial evaluation:', err)
@@ -972,6 +981,7 @@ const RightPanel: React.FC = () => {
         loadLatest()
     }, [showAIEvaluation, isAuthenticated, resume.id])
 
+
     // initialEvaluation 就绪后同步到 restoredEvaluation 供 Drawer 显示
     useEffect(() => {
         if (initialEvaluation) {
@@ -979,13 +989,15 @@ const RightPanel: React.FC = () => {
         }
     }, [initialEvaluation])
 
-    // 切换 AI 工具标签时：加载 JD 匹配 / 求职信历史
+    // 切换 AI 工具标签时：加载当前快照对应的 JD 匹配 / 求职信历史
     useEffect(() => {
         if (!showAIEvaluation || !isAuthenticated) return
         if (activeAITool === 'jd_match') {
             setRestoredJDMatch(null)
-            aiApi.getConversations({ type: 'jd_match', resumeId: resume.id, pageSize: 1 }).then((res) => {
+            aiApi.getConversations({ type: 'jd_match', resumeId: resume.id, pageSize: 10 }).then((res) => {
                 const items = res.items || []
+                // 保存预取列表供面板使用
+                setPreloadedJDHistory(items.slice(0, 5))
                 if (items.length > 0) {
                     return aiApi.getConversation(items[0].id)
                 }
@@ -996,11 +1008,13 @@ const RightPanel: React.FC = () => {
                     if (ctx.matchScore !== undefined) {
                         setRestoredJDMatch(ctx as unknown as JDMatchResponse)
                     }
+                } else {
+                    setRestoredJDMatch(null)
                 }
             }).catch(() => { })
         } else if (activeAITool === 'cover_letter') {
             setRestoredCoverLetter(null)
-            aiApi.getConversations({ type: 'cover_letter', resumeId: resume.id, pageSize: 1 }).then((res) => {
+            aiApi.getConversations({ type: 'cover_letter', resumeId: resume.id, pageSize: 10 }).then((res) => {
                 const items = res.items || []
                 if (items.length > 0) {
                     return aiApi.getConversation(items[0].id)
@@ -1123,7 +1137,8 @@ const RightPanel: React.FC = () => {
     const handleRunJDScore = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
         setRestoredJDMatch(null)
         setRestoredJDScore(null)
-        await runScore(resume, form)
+        await flushToCloud()
+        await runScore(resume, form, activeSnapshotId)
     }
 
     const handleRestoreJDScore = (result: JDScoreResponse) => {
@@ -1137,7 +1152,7 @@ const RightPanel: React.FC = () => {
         await generateCoverLetter(resume, form, activeSnapshotId)
     }
 
-    const handleConversationSelect = async (conversationId: string) => {
+    const handleConversationSelect = useCallback(async (conversationId: string) => {
         try {
             const detail = await aiApi.getConversation(conversationId)
             if (detail.context) {
@@ -1166,7 +1181,7 @@ const RightPanel: React.FC = () => {
         } catch (err) {
             console.error('Failed to load conversation:', err)
         }
-    }
+    }, [])
 
     return (
         <div className="flex flex-col h-full">
@@ -1180,7 +1195,7 @@ const RightPanel: React.FC = () => {
                     </div>
                 )}
 
-                {/* 保存快照按钮 */}
+                {/* 保存按钮 */}
                 {resume.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id) && (
                     <button
                         onClick={() => setShowSnapshotDialog(true)}
@@ -1329,6 +1344,7 @@ const RightPanel: React.FC = () => {
                                     open={showAIEvaluation}
                                     result={evaluateResult}
                                     restoredResult={restoredEvaluation}
+                                    preloadedHistory={preloadedEvalHistory}
                                     loading={evaluating}
                                     streamDone={evaluateStreamDone}
                                     error={evaluateError}
@@ -1349,6 +1365,7 @@ const RightPanel: React.FC = () => {
                             {activeAITool === 'jd_match' && (
                                 <JDMatchPanel
                                     resume={resume}
+                                    preloadedHistory={preloadedJDHistory}
                                     loading={jdMatching}
                                     scoreLoading={jdScoring}
                                     error={jdMatchError}
@@ -1428,7 +1445,7 @@ const RightPanel: React.FC = () => {
                 </>
             )}
 
-            {/* 保存快照对话框 */}
+            {/* 保存对话框 */}
             {showSnapshotDialog && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel(''); setSnapshotError('') }}>
                     <div className="bg-white rounded-xl shadow-2xl p-6 w-[380px]" onClick={(e) => e.stopPropagation()}>
@@ -1467,7 +1484,7 @@ const RightPanel: React.FC = () => {
                                 disabled={!snapshotLabel.trim() || snapshotSaving}
                                 onClick={handleCreateSnapshot}
                             >
-                                {snapshotSaving ? '保存中...' : '保存快照'}
+                                {snapshotSaving ? '保存中...' : '保存'}
                             </button>
                         </div>
                     </div>
