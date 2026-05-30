@@ -27,7 +27,8 @@ export const useJDMatch = () => {
 
     const runMatch = async (
         resume: Resume,
-        form: { jdText: string; targetTitle?: string; companyName?: string }
+        form: { jdText: string; targetTitle?: string; companyName?: string },
+        snapshotVersionId?: string | null
     ): Promise<JDMatchResponse | null> => {
         if (state.loading) {
             return state.result
@@ -51,6 +52,7 @@ export const useJDMatch = () => {
             const output = await aiApi.jdMatchStream(
                 {
                     resumeId: resume.id,
+                    snapshotVersionId: snapshotVersionId ?? undefined,
                     content: resume as unknown as Record<string, unknown>,
                     jdText,
                     targetTitle: form.targetTitle?.trim(),

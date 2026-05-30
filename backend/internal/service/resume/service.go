@@ -5,12 +5,13 @@ import (
 	"errors"
 
 	"resumecraft-pdf-backend/internal/model"
-	"resumecraft-pdf-backend/internal/storage/resume"
+	resumeRepo "resumecraft-pdf-backend/internal/storage/resume"
 )
 
 var (
-	ErrResumeNotFound  = errors.New("resume not found")
+	ErrResumeNotFound = errors.New("resume not found")
 	ErrDuplicateTitle = errors.New("resume title already exists")
+	ErrDuplicateLabel = errors.New("snapshot label already exists")
 )
 
 type Service interface {
@@ -20,13 +21,21 @@ type Service interface {
 	Update(ctx context.Context, userID, resumeID string, req model.UpdateResumeRequest) (*model.ResumeUpdateResponse, error)
 	Delete(ctx context.Context, userID, resumeID string) error
 	RestoreVersion(ctx context.Context, userID, resumeID, versionID string) (*model.ResumeUpdateResponse, error)
+
+	// 版本快照
+	ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error)
+	CreateManualSnapshot(ctx context.Context, userID, resumeID string, label string) (*model.VersionSnapshot, error)
+	UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error
+	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
+	GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error)
+	DiffSnapshots(ctx context.Context, userID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error)
 }
 
 type service struct {
-	repo resume.Repository
+	repo resumeRepo.Repository
 }
 
-func NewService(repo resume.Repository) Service {
+func NewService(repo resumeRepo.Repository) Service {
 	return &service{repo: repo}
 }
 
@@ -76,7 +85,7 @@ func (s *service) Create(ctx context.Context, userID string, req model.CreateRes
 func (s *service) GetByID(ctx context.Context, userID, resumeID string) (*model.ResumeDetail, error) {
 	detail, err := s.repo.GetByID(ctx, userID, resumeID)
 	if err != nil {
-		if errors.Is(err, resume.ErrResumeNotFound) {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound
 		}
 		return nil, err
@@ -87,7 +96,7 @@ func (s *service) GetByID(ctx context.Context, userID, resumeID string) (*model.
 func (s *service) Update(ctx context.Context, userID, resumeID string, req model.UpdateResumeRequest) (*model.ResumeUpdateResponse, error) {
 	resp, err := s.repo.Update(ctx, userID, resumeID, req)
 	if err != nil {
-		if errors.Is(err, resume.ErrResumeNotFound) {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound
 		}
 		return nil, err
@@ -98,7 +107,7 @@ func (s *service) Update(ctx context.Context, userID, resumeID string, req model
 func (s *service) Delete(ctx context.Context, userID, resumeID string) error {
 	err := s.repo.Delete(ctx, userID, resumeID)
 	if err != nil {
-		if errors.Is(err, resume.ErrResumeNotFound) {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return ErrResumeNotFound
 		}
 		return err
@@ -110,7 +119,7 @@ func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionI
 	// 获取版本内容
 	versionContent, err := s.repo.GetVersionContent(ctx, versionID)
 	if err != nil {
-		if errors.Is(err, resume.ErrResumeNotFound) {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound
 		}
 		return nil, err
@@ -119,10 +128,65 @@ func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionI
 	// 恢复简历
 	resp, err := s.repo.RestoreFromVersion(ctx, userID, resumeID, versionContent)
 	if err != nil {
-		if errors.Is(err, resume.ErrResumeNotFound) {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound
 		}
 		return nil, err
 	}
 	return resp, nil
+}
+
+// ---------- 版本快照 Service 实现 ----------
+
+func (s *service) ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	items, total, err := s.repo.ListSnapshots(ctx, resumeID, limit, includeAuto)
+	if err != nil {
+		return nil, err
+	}
+	return &model.SnapshotListResponse{
+		Items:   items,
+		Total:   total,
+		HasMore: len(items) < total,
+	}, nil
+}
+
+func (s *service) CreateManualSnapshot(ctx context.Context, userID, resumeID string, label string) (*model.VersionSnapshot, error) {
+	snapshot, err := s.repo.CreateManualSnapshot(ctx, userID, resumeID, label)
+	if err != nil {
+		if errors.Is(err, resumeRepo.ErrDuplicateLabel) {
+			return nil, ErrDuplicateLabel
+		}
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func (s *service) UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error {
+	return s.repo.UpdateSnapshotLabel(ctx, snapshotID, userID, label)
+}
+
+func (s *service) DeleteSnapshot(ctx context.Context, snapshotID, userID string) error {
+	err := s.repo.DeleteSnapshot(ctx, snapshotID, userID)
+	if errors.Is(err, resumeRepo.ErrResumeNotFound) {
+		return ErrResumeNotFound
+	}
+	return err
+}
+
+func (s *service) GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error) {
+	snapshot, content, err := s.repo.GetSnapshotDetail(ctx, snapshotID)
+	if err != nil {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
+			return nil, nil, ErrResumeNotFound
+		}
+		return nil, nil, err
+	}
+	return snapshot, content, nil
+}
+
+func (s *service) DiffSnapshots(ctx context.Context, userID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error) {
+	return s.repo.DiffSnapshots(ctx, req.SnapshotAID, req.SnapshotBID)
 }

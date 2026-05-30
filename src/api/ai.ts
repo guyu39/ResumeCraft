@@ -27,6 +27,7 @@ export interface AIConfigResponse {
 
 export interface EvaluateRequest {
     resumeId: string
+    snapshotVersionId?: string
     content: Record<string, unknown>
 }
 
@@ -100,6 +101,7 @@ export interface JDResumeSuggestion {
 
 export interface JDMatchRequest {
     resumeId: string
+    snapshotVersionId?: string
     content: Record<string, unknown>
     jdText: string
     targetTitle?: string
@@ -222,6 +224,7 @@ export interface JDScoreResponse {
 
 export interface CoverLetterRequest {
     resumeId: string
+    snapshotVersionId?: string
     content: Record<string, unknown>
     jdText?: string
     jobTitle: string
@@ -245,6 +248,7 @@ export interface CoverLetterResponse {
 
 export interface BulletRewriteRequest {
     resumeId: string
+    snapshotVersionId?: string
     moduleType: string
     moduleInstanceId?: string
     fieldKey: string
@@ -275,6 +279,7 @@ export interface BulletRewriteResponse {
 
 export interface SuggestRequest {
     resumeId: string
+    snapshotVersionId?: string
     moduleType: string
     moduleInstanceId: string
     fieldKey: string
@@ -293,6 +298,7 @@ export interface SuggestResponse {
 export interface ConversationItem {
     id: string
     resumeId: string | null
+    snapshotVersionId?: string | null
     type: 'evaluate' | 'suggest' | 'rewrite' | 'jd_match' | 'cover_letter' | 'translate'
     title: string
     createdAt: number
@@ -318,6 +324,7 @@ export interface ConversationListResponse {
 export interface ConversationDetail {
     id: string
     resumeId: string | null
+    snapshotVersionId?: string | null
     type: 'evaluate' | 'suggest' | 'rewrite' | 'jd_match' | 'cover_letter' | 'translate'
     title: string
     createdAt: number
@@ -581,6 +588,7 @@ export const aiApi = {
 
     saveSuggestRecord: (data: {
         resumeId: string
+    snapshotVersionId?: string
         conversationId: string
         moduleType: string
         moduleInstanceId: string
@@ -640,6 +648,7 @@ export interface SuggestRecordListResponse {
 
 export interface TranslateRequest {
     resumeId: string
+    snapshotVersionId?: string
     targetLocale: 'zh-CN' | 'en-US'
     options?: {
         keepChineseFields?: boolean

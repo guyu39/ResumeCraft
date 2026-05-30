@@ -31,7 +31,7 @@ export const useResumeEvaluation = () => {
 
     const configuredMode = 'openai-compatible' // 始终使用后端模式
 
-    const runEvaluate = async (resume: Resume): Promise<ResumeEvaluateOutput | null> => {
+    const runEvaluate = async (resume: Resume, snapshotVersionId?: string | null): Promise<ResumeEvaluateOutput | null> => {
         if (state.loading) {
             return state.result
         }
@@ -46,6 +46,7 @@ export const useResumeEvaluation = () => {
             const output = await aiApi.evaluateStream(
                 {
                     resumeId: resume.id,
+                    snapshotVersionId: snapshotVersionId ?? undefined,
                     content: resume as unknown as Record<string, unknown>,
                 },
                 (partial) => {

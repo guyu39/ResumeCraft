@@ -74,6 +74,11 @@ create table resume_versions
         constraint resume_versions_version_no_check
             check (version_no > 0),
     content_snapshot jsonb                                              not null,
+    snapshot_type    varchar(20)              default 'auto'::character varying not null
+        constraint chk_snapshot_type
+            check ((snapshot_type)::text = ANY ((ARRAY['auto'::character varying, 'manual'::character varying])::text[])),
+    label            varchar(100),
+    jd_context_id    uuid,
     created_at       timestamp with time zone default now()             not null,
     created_by       uuid
         constraint fk_resume_versions_created_by
@@ -96,6 +101,14 @@ create index idx_resume_versions_resume_version_desc
 
 create index idx_resume_versions_user_created_at
     on resume_versions (user_id asc, created_at desc);
+
+create index idx_resume_versions_manual
+    on resume_versions (resume_id asc, snapshot_type asc, created_at desc)
+    where ((snapshot_type)::text = 'manual'::text);
+
+create index idx_resume_versions_auto_created
+    on resume_versions (resume_id asc, created_at desc)
+    where ((snapshot_type)::text = 'auto'::text);
 
 create table auth_sessions
 (
@@ -291,7 +304,10 @@ create table ai_conversations
     created_at         timestamp with time zone default now()             not null,
     updated_at         timestamp with time zone default now()             not null,
     module_type        varchar(50),
-    module_instance_id varchar(100)
+    module_instance_id varchar(100),
+    snapshot_version_id uuid
+        references resume_versions
+            on delete set null
 );
 
 comment on table ai_conversations is 'AI 对话会话（评估/建议等）';

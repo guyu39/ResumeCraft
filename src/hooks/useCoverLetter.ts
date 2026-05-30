@@ -23,7 +23,8 @@ export const useCoverLetter = () => {
 
     const generateCoverLetter = async (
         resume: Resume,
-        form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }
+        form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string },
+        snapshotVersionId?: string | null
     ): Promise<CoverLetterResponse | null> => {
         if (state.loading) {
             return state.result
@@ -46,6 +47,7 @@ export const useCoverLetter = () => {
         try {
             const output = await aiApi.generateCoverLetter({
                 resumeId: resume.id,
+                snapshotVersionId: snapshotVersionId ?? undefined,
                 content: resume as unknown as Record<string, unknown>,
                 jdText: form.jdText?.trim(),
                 jobTitle,

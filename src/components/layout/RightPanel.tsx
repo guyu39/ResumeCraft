@@ -806,11 +806,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
 
 // ---------- 右栏主组件 ----------
 const RightPanel: React.FC = () => {
-    const { resume, activeModuleId, lastSavedAt, setActiveModule } = useResumeStore()
+    const { resume, activeModuleId, lastSavedAt, setActiveModule, activeSnapshotId, triggerSnapshotRefresh } = useResumeStore()
     const { isAuthenticated } = useAuthStore()
     const formRef = useRef<HTMLDivElement>(null)
     const [showSaved, setShowSaved] = useState(false)
     const [showSettings, setShowSettings] = useState(false)
+    const [showSnapshotDialog, setShowSnapshotDialog] = useState(false)
+    const [snapshotLabel, setSnapshotLabel] = useState('')
+    const [snapshotSaving, setSnapshotSaving] = useState(false)
     const [showAIEvaluation, setShowAIEvaluation] = useState(false)
 
     // 收集所有模块的日期范围校验错误
@@ -1059,13 +1062,13 @@ const RightPanel: React.FC = () => {
 
     // ---------- AI 综合评估 ----------
     const handleRetryEvaluate = async () => {
-        await runEvaluate(resume)
+        await runEvaluate(resume, activeSnapshotId)
     }
 
     const handleReevaluate = async () => {
         // 清除历史选择，直接运行新的评估
         setRestoredEvaluation(null)
-        await runEvaluate(resume)
+        await runEvaluate(resume, activeSnapshotId)
     }
 
     const handleJumpToIssueModule = (moduleType: ModuleType) => {
@@ -1079,7 +1082,7 @@ const RightPanel: React.FC = () => {
     const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
         setRestoredJDMatch(null)
         setRestoredJDScore(null)
-        await runMatch(resume, form)
+        await runMatch(resume, form, activeSnapshotId)
     }
 
     const handleRestoreJDMatch = (result: JDMatchResponse) => {
@@ -1100,7 +1103,7 @@ const RightPanel: React.FC = () => {
 
     const handleGenerateCoverLetter = async (form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }) => {
         setRestoredCoverLetter(null)
-        await generateCoverLetter(resume, form)
+        await generateCoverLetter(resume, form, activeSnapshotId)
     }
 
     const handleConversationSelect = async (conversationId: string) => {
@@ -1144,6 +1147,18 @@ const RightPanel: React.FC = () => {
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
                         已保存
                     </div>
+                )}
+
+                {/* 保存快照按钮 */}
+                {resume.id?.includes('-') && (
+                  <button
+                    onClick={() => setShowSnapshotDialog(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 hover:text-slate-700 transition-colors flex-shrink-0"
+                    title="保存简历快照"
+                  >
+                    <span className="text-sm leading-none">📸</span>
+                    <span className="truncate">保存快照</span>
+                  </button>
                 )}
 
                 {/* 设置按钮 */}
@@ -1382,6 +1397,65 @@ const RightPanel: React.FC = () => {
                         )}
                     </div>
                 </>
+            )}
+
+            {/* 保存快照对话框 */}
+            {showSnapshotDialog && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel('') }}>
+                <div className="bg-white rounded-xl shadow-2xl p-6 w-[380px]" onClick={(e) => e.stopPropagation()}>
+                  <h3 className="text-base font-semibold text-slate-800 mb-4">📸 保存简历快照</h3>
+                  <label className="block text-sm text-slate-600 mb-2">快照标签</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="如：投腾讯云版、定稿v1"
+                    value={snapshotLabel}
+                    onChange={(e) => setSnapshotLabel(e.target.value)}
+                    maxLength={100}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && snapshotLabel.trim() && !snapshotSaving) {
+                        setSnapshotSaving(true)
+                        resumeApi.createSnapshot(resume.id, snapshotLabel.trim())
+                          .then(() => {
+                            setShowSnapshotDialog(false)
+                            setSnapshotLabel('')
+                            triggerSnapshotRefresh()
+                          })
+                          .catch(() => {})
+                          .finally(() => setSnapshotSaving(false))
+                      }
+                      if (e.key === 'Escape') { setShowSnapshotDialog(false); setSnapshotLabel('') }
+                    }}
+                  />
+                  <p className="mt-2 text-xs text-slate-400">
+                    💡 建议：为不同岗位投递的简历版本添加标签，方便后续快速切换和对比
+                  </p>
+                  <div className="flex justify-end gap-3 mt-5">
+                    <button className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                      onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel('') }}>
+                      取消
+                    </button>
+                    <button className="px-4 py-2 text-sm font-medium text-white bg-[#1A56DB] hover:bg-blue-700 rounded-lg disabled:opacity-50"
+                      disabled={!snapshotLabel.trim() || snapshotSaving}
+                      onClick={() => {
+                        if (!snapshotLabel.trim() || snapshotSaving) return
+                        setSnapshotSaving(true)
+                        resumeApi.createSnapshot(resume.id, snapshotLabel.trim())
+                          .then(() => {
+                            setShowSnapshotDialog(false)
+                            setSnapshotLabel('')
+                            triggerSnapshotRefresh()
+                          })
+                          .catch(() => {})
+                          .finally(() => setSnapshotSaving(false))
+                      }}
+                    >
+                      {snapshotSaving ? '保存中...' : '保存快照'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
         </div>
     )

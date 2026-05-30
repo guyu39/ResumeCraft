@@ -17,6 +17,7 @@ import (
 var (
 	ErrResumeNotFound = errors.New("resume not found")
 	ErrDuplicateTitle = errors.New("resume title already exists")
+	ErrDuplicateLabel = errors.New("snapshot label already exists")
 )
 
 type Repository interface {
@@ -28,6 +29,14 @@ type Repository interface {
 	Delete(ctx context.Context, userID, resumeID string) error
 	RestoreFromVersion(ctx context.Context, userID, resumeID string, versionContent []byte) (*model.ResumeUpdateResponse, error)
 	GetVersionContent(ctx context.Context, versionID string) ([]byte, error)
+
+	// 版本快照
+	ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) ([]model.SnapshotListItem, int, error)
+	CreateManualSnapshot(ctx context.Context, userID, resumeID string, label string) (*model.VersionSnapshot, error)
+	UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error
+	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
+	GetSnapshotDetail(ctx context.Context, snapshotID string) (*model.VersionSnapshot, []byte, error)
+	DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string) (*model.DiffResult, error)
 }
 
 type repository struct {
@@ -383,4 +392,339 @@ func getOrDefaultStyleSettings(s *model.ResumeStyleSettings) model.ResumeStyleSe
 		}
 	}
 	return *s
+}
+
+// ============================================================================
+// 版本快照 Repository 实现
+// ============================================================================
+
+// ListSnapshots 获取快照列表（时间轴）
+func (r *repository) ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) ([]model.SnapshotListItem, int, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	var total int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM resume_versions
+		WHERE resume_id = $1
+		  AND ($2::bool OR snapshot_type = 'manual')
+	`, resumeID, includeAuto).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count snapshots: %w", err)
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, version_no, snapshot_type, label,
+		       EXTRACT(EPOCH FROM created_at)::bigint * 1000
+		FROM resume_versions
+		WHERE resume_id = $1
+		  AND ($2::bool OR snapshot_type = 'manual')
+		ORDER BY created_at DESC
+		LIMIT $3
+	`, resumeID, includeAuto, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list snapshots: %w", err)
+	}
+	defer rows.Close()
+
+	var items []model.SnapshotListItem
+	for rows.Next() {
+		var item model.SnapshotListItem
+		if err := rows.Scan(&item.ID, &item.VersionNo, &item.SnapshotType, &item.Label, &item.CreatedAt); err != nil {
+			return nil, 0, fmt.Errorf("scan snapshot: %w", err)
+		}
+		item.IsCurrent = false
+		items = append(items, item)
+	}
+
+	if items == nil {
+		items = []model.SnapshotListItem{}
+	}
+
+	// 标记最新版本为 current
+	if len(items) > 0 {
+		items[0].IsCurrent = true
+	}
+
+	return items, total, nil
+}
+
+// CreateManualSnapshot 创建手动快照
+func (r *repository) CreateManualSnapshot(ctx context.Context, userID, resumeID string, label string) (*model.VersionSnapshot, error) {
+	// 校验同名快照
+	var dupExists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM resume_versions
+			WHERE resume_id = $1 AND user_id = $2 AND snapshot_type = 'manual' AND label = $3
+		)
+	`, resumeID, userID, label).Scan(&dupExists)
+	if err != nil {
+		return nil, fmt.Errorf("check duplicate label: %w", err)
+	}
+	if dupExists {
+		return nil, fmt.Errorf("duplicate label: %w", ErrDuplicateLabel)
+	}
+
+	// 获取当前内容
+	var currentContentJSON []byte
+	err = r.pool.QueryRow(ctx, `
+		SELECT content FROM resumes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+	`, resumeID, userID).Scan(&currentContentJSON)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrResumeNotFound
+		}
+		return nil, fmt.Errorf("get current content: %w", err)
+	}
+
+	// 获取下一个版本号
+	var versionNo int
+	err = r.pool.QueryRow(ctx, `
+		SELECT COALESCE(MAX(version_no), 0) + 1 FROM resume_versions WHERE resume_id = $1
+	`, resumeID).Scan(&versionNo)
+	if err != nil {
+		return nil, fmt.Errorf("get next version no: %w", err)
+	}
+
+	// 插入手动快照
+	var snapshot model.VersionSnapshot
+	var createdAtMS int64
+	err = r.pool.QueryRow(ctx, `
+		INSERT INTO resume_versions (resume_id, user_id, version_no, content_snapshot, snapshot_type, label)
+		VALUES ($1, $2, $3, $4, 'manual', $5)
+		RETURNING id, resume_id, user_id, version_no, snapshot_type, label,
+		          EXTRACT(EPOCH FROM created_at)::bigint * 1000
+	`, resumeID, userID, versionNo, currentContentJSON, label).Scan(
+		&snapshot.ID, &snapshot.ResumeID, &snapshot.UserID,
+		&snapshot.VersionNo, &snapshot.SnapshotType, &snapshot.Label,
+		&createdAtMS,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create manual snapshot: %w", err)
+	}
+	snapshot.CreatedAt = createdAtMS
+	snapshot.IsCurrent = true
+
+	// 清理超过 50 个的自动版本
+	_, _ = r.pool.Exec(ctx, `
+		DELETE FROM resume_versions
+		WHERE resume_id = $1
+		  AND snapshot_type = 'auto'
+		  AND id NOT IN (
+		      SELECT id FROM resume_versions
+		      WHERE resume_id = $1 AND snapshot_type = 'auto'
+		      ORDER BY created_at DESC LIMIT 50
+		  )
+	`, resumeID)
+
+	return &snapshot, nil
+}
+
+// UpdateSnapshotLabel 更新快照标签
+func (r *repository) UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE resume_versions
+		SET label = $1
+		WHERE id = $2
+		  AND user_id = $3
+		  AND snapshot_type = 'manual'
+	`, label, snapshotID, userID)
+	if err != nil {
+		return fmt.Errorf("update snapshot label: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrResumeNotFound
+	}
+	return nil
+}
+
+// DeleteSnapshot 删除手动快照
+func (r *repository) DeleteSnapshot(ctx context.Context, snapshotID, userID string) error {
+	tag, err := r.pool.Exec(ctx, `
+		DELETE FROM resume_versions
+		WHERE id = $1
+		  AND user_id = $2
+		  AND snapshot_type = 'manual'
+	`, snapshotID, userID)
+	if err != nil {
+		return fmt.Errorf("delete snapshot: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrResumeNotFound
+	}
+	return nil
+}
+
+// GetSnapshotDetail 获取快照详情（元信息 + 内容）
+func (r *repository) GetSnapshotDetail(ctx context.Context, snapshotID string) (*model.VersionSnapshot, []byte, error) {
+	var snapshot model.VersionSnapshot
+	var contentJSON []byte
+	var createdAtMS int64
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, resume_id, user_id, version_no, snapshot_type, label,
+		       content_snapshot,
+		       EXTRACT(EPOCH FROM created_at)::bigint * 1000
+		FROM resume_versions
+		WHERE id = $1
+	`, snapshotID).Scan(
+		&snapshot.ID, &snapshot.ResumeID, &snapshot.UserID,
+		&snapshot.VersionNo, &snapshot.SnapshotType, &snapshot.Label,
+		&contentJSON,
+		&createdAtMS,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, ErrResumeNotFound
+		}
+		return nil, nil, fmt.Errorf("get snapshot detail: %w", err)
+	}
+	snapshot.CreatedAt = createdAtMS
+
+	return &snapshot, contentJSON, nil
+}
+
+// DiffSnapshots 对比两个快照
+func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string) (*model.DiffResult, error) {
+	// 加载两个快照
+	_, contentA, err := r.GetSnapshotDetail(ctx, snapshotAID)
+	if err != nil {
+		return nil, err
+	}
+	_, contentB, err := r.GetSnapshotDetail(ctx, snapshotBID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解析 JSON
+	var dataA, dataB map[string]interface{}
+	if err := json.Unmarshal(contentA, &dataA); err != nil {
+		return nil, fmt.Errorf("unmarshal snapshot A: %w", err)
+	}
+	if err := json.Unmarshal(contentB, &dataB); err != nil {
+		return nil, fmt.Errorf("unmarshal snapshot B: %w", err)
+	}
+
+	// 逐模块对比
+	diffs := []model.FieldDiff{}
+	modulesA := extractModules(dataA)
+	modulesB := extractModules(dataB)
+
+	// 用 ID 匹配模块
+	moduleMapA := mapModules(modulesA)
+	moduleMapB := mapModules(modulesB)
+
+	stats := model.DiffStats{}
+
+	for id, nameA := range moduleMapA {
+		_, exists := moduleMapB[id]
+		if !exists {
+			stats.ModulesRemoved++
+			diffs = append(diffs, model.FieldDiff{
+				ModuleType:       nameA,
+				ModuleInstanceID: id,
+				Field:            "module",
+				Before:           "存在",
+				After:            "已删除",
+			})
+			continue
+		}
+		// 检查模块是否变化
+		if !jsonDeepEqual(modulesA, modulesB, id) {
+			stats.ModulesModified++
+			stats.FieldsChanged++
+			diffs = append(diffs, model.FieldDiff{
+				ModuleType:       nameA,
+				ModuleInstanceID: id,
+				Field:            "content",
+				Before:           "[旧版本]",
+				After:            "[新版本]",
+			})
+		}
+	}
+
+	for id, nameB := range moduleMapB {
+		if _, exists := moduleMapA[id]; !exists {
+			stats.ModulesAdded++
+			diffs = append(diffs, model.FieldDiff{
+				ModuleType:       nameB,
+				ModuleInstanceID: id,
+				Field:            "module",
+				Before:           "不存在",
+				After:            "新增",
+			})
+		}
+	}
+
+	// 获取快照元信息
+	snapshotA := model.SnapshotBrief{}
+	snapshotB := model.SnapshotBrief{}
+	r.pool.QueryRow(ctx, `
+		SELECT id, version_no, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000
+		FROM resume_versions WHERE id = $1
+	`, snapshotAID).Scan(&snapshotA.ID, &snapshotA.VersionNo, &snapshotA.Label, &snapshotA.CreatedAt)
+	r.pool.QueryRow(ctx, `
+		SELECT id, version_no, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000
+		FROM resume_versions WHERE id = $1
+	`, snapshotBID).Scan(&snapshotB.ID, &snapshotB.VersionNo, &snapshotB.Label, &snapshotB.CreatedAt)
+
+	if diffs == nil {
+		diffs = []model.FieldDiff{}
+	}
+
+	return &model.DiffResult{
+		SnapshotA: snapshotA,
+		SnapshotB: snapshotB,
+		Diffs:     diffs,
+		Stats:     stats,
+	}, nil
+}
+
+// extractModules 从 resume content JSON 提取 modules 数组
+func extractModules(data map[string]interface{}) []map[string]interface{} {
+	if raw, ok := data["modules"]; ok {
+		if arr, ok := raw.([]interface{}); ok {
+			result := make([]map[string]interface{}, 0, len(arr))
+			for _, item := range arr {
+				if m, ok := item.(map[string]interface{}); ok {
+					result = append(result, m)
+				}
+			}
+			return result
+		}
+	}
+	return []map[string]interface{}{}
+}
+
+// mapModules 将模块列表映射为 id -> moduleType 的映射
+func mapModules(modules []map[string]interface{}) map[string]string {
+	result := make(map[string]string)
+	for _, m := range modules {
+		id, _ := m["id"].(string)
+		mType, _ := m["type"].(string)
+		if id != "" {
+			result[id] = mType
+		}
+	}
+	return result
+}
+
+// jsonDeepEqual 深度比较两个模块列表中指定 id 的模块是否相同
+func jsonDeepEqual(modulesA, modulesB []map[string]interface{}, id string) bool {
+	var a, b []byte
+	for _, m := range modulesA {
+		if mid, _ := m["id"].(string); mid == id {
+			a, _ = json.Marshal(m)
+			break
+		}
+	}
+	for _, m := range modulesB {
+		if mid, _ := m["id"].(string); mid == id {
+			b, _ = json.Marshal(m)
+			break
+		}
+	}
+	return string(a) == string(b)
 }

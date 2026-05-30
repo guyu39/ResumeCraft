@@ -73,17 +73,18 @@ const (
 
 // AIConversation AI 对话会话
 type AIConversation struct {
-	ID               string           `json:"id"`
-	UserID           string           `json:"userId"`
-	ResumeID         *string          `json:"resumeId,omitempty"`
-	Type             ConversationType `json:"type"`
-	Title            *string          `json:"title,omitempty"`
-	Context          map[string]any   `json:"context,omitempty"`
-	ModuleType       string           `json:"moduleType,omitempty"`
-	ModuleInstanceID string           `json:"moduleInstanceId,omitempty"`
-	CreatedAt        int64            `json:"createdAt"`
-	UpdatedAt        int64            `json:"updatedAt"`
-	Messages         []AIMessage      `json:"messages,omitempty"`
+	ID                string           `json:"id"`
+	UserID            string           `json:"userId"`
+	ResumeID          *string          `json:"resumeId,omitempty"`
+	SnapshotVersionID *string          `json:"snapshotVersionId,omitempty"`
+	Type              ConversationType `json:"type"`
+	Title             *string          `json:"title,omitempty"`
+	Context           map[string]any   `json:"context,omitempty"`
+	ModuleType        string           `json:"moduleType,omitempty"`
+	ModuleInstanceID  string           `json:"moduleInstanceId,omitempty"`
+	CreatedAt         int64            `json:"createdAt"`
+	UpdatedAt         int64            `json:"updatedAt"`
+	Messages          []AIMessage      `json:"messages,omitempty"`
 }
 
 // AIMessage AI 消息
@@ -100,9 +101,10 @@ type AIMessage struct {
 
 // EvaluateRequest 评估请求
 type EvaluateRequest struct {
-	ResumeID   string                 `json:"resumeId" binding:"required"`
-	Content    map[string]interface{} `json:"content" binding:"required"`
-	OnProgress bool                   `json:"onProgress"`
+	ResumeID          string                 `json:"resumeId" binding:"required"`
+	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
+	Content           map[string]interface{} `json:"content" binding:"required"`
+	OnProgress        bool                   `json:"onProgress"`
 }
 
 // EvaluateResponse 评估响应
@@ -138,11 +140,12 @@ type EvaluateIssue struct {
 
 // JDMatchRequest JD 匹配请求
 type JDMatchRequest struct {
-	ResumeID    string                 `json:"resumeId" binding:"required"`
-	Content     map[string]interface{} `json:"content" binding:"required"`
-	JDText      string                 `json:"jdText" binding:"required"`
-	TargetTitle string                 `json:"targetTitle"`
-	CompanyName string                 `json:"companyName"`
+	ResumeID          string                 `json:"resumeId" binding:"required"`
+	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
+	Content           map[string]interface{} `json:"content" binding:"required"`
+	JDText            string                 `json:"jdText" binding:"required"`
+	TargetTitle       string                 `json:"targetTitle"`
+	CompanyName       string                 `json:"companyName"`
 }
 
 // JDMatchResponse JD 匹配响应
@@ -293,13 +296,14 @@ type JDScoreImprovement struct {
 
 // CoverLetterRequest 求职信生成请求
 type CoverLetterRequest struct {
-	ResumeID    string                 `json:"resumeId" binding:"required"`
-	Content     map[string]interface{} `json:"content" binding:"required"`
-	JDText      string                 `json:"jdText"`
-	JobTitle    string                 `json:"jobTitle" binding:"required"`
-	CompanyName string                 `json:"companyName"`
-	Tone        string                 `json:"tone"`
-	Language    string                 `json:"language"`
+	ResumeID          string                 `json:"resumeId" binding:"required"`
+	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
+	Content           map[string]interface{} `json:"content" binding:"required"`
+	JDText            string                 `json:"jdText"`
+	JobTitle          string                 `json:"jobTitle" binding:"required"`
+	CompanyName       string                 `json:"companyName"`
+	Tone              string                 `json:"tone"`
+	Language          string                 `json:"language"`
 }
 
 // CoverLetterResponse 求职信生成响应

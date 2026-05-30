@@ -358,6 +358,13 @@ interface ResumeStoreState {
   // 简历数据
   resume: Resume
 
+  // 快照预览（点击时间轴节点时临时覆盖显示）
+  previewResume: Resume | null
+  // 当前活跃的快照 ID（用于 AI 操作关联版本）
+  activeSnapshotId: string | null
+  // 快照变更计数器（用于跨组件触发时间轴刷新）
+  snapshotVersion: number
+
   // 当前选中模块 ID
   activeModuleId: string | null
 
@@ -419,6 +426,12 @@ interface ResumeStoreActions {
 
   // 更新简历标题（同时更新内存状态和本地存储）
   setResumeTitle: (title: string) => void
+
+  // 快照预览
+  setPreviewResume: (resume: Resume | null) => void
+  clearPreviewResume: () => void
+  setActiveSnapshotId: (id: string | null) => void
+  triggerSnapshotRefresh: () => void
 }
 
 type ResumeStore = ResumeStoreState & ResumeStoreActions
@@ -429,6 +442,9 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   activeModuleId: null,
   isLoading: false,
   lastSavedAt: null,
+  previewResume: null,
+  activeSnapshotId: null,
+  snapshotVersion: 0,
 
   // ---------- initResume ----------
   initResume: (partial) => {
@@ -743,6 +759,12 @@ export const useResumeStore = create<ResumeStore>((set) => ({
       return { resume: updated }
     })
   },
+
+  // ---------- 快照预览 ----------
+  setPreviewResume: (r: Resume | null) => set({ previewResume: r }),
+  clearPreviewResume: () => set({ previewResume: null, activeSnapshotId: null }),
+  setActiveSnapshotId: (id: string | null) => set({ activeSnapshotId: id }),
+  triggerSnapshotRefresh: () => set((s) => ({ snapshotVersion: s.snapshotVersion + 1 })),
 }))
 
 // ---------- 导出工具函数（供外部使用） ----------

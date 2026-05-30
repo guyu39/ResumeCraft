@@ -45,6 +45,15 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 				resumeGroup.PUT("/:id", h.UpdateResume)
 				resumeGroup.DELETE("/:id", h.DeleteResume)
 
+				// 版本快照
+				resumeGroup.GET("/:id/snapshots", h.ListSnapshots)
+				resumeGroup.POST("/:id/snapshots", h.CreateManualSnapshot)
+				resumeGroup.GET("/:id/snapshots/:snapshotId", h.GetSnapshotDetail)
+				resumeGroup.PUT("/:id/snapshots/:snapshotId", h.UpdateSnapshotLabel)
+				resumeGroup.DELETE("/:id/snapshots/:snapshotId", h.DeleteSnapshot)
+				resumeGroup.POST("/:id/snapshots/:snapshotId/restore", h.RestoreFromSnapshot)
+				resumeGroup.POST("/:id/snapshots/diff", h.DiffSnapshots)
+
 				// 导出接口
 				resumeGroup.POST("/:id/exports", h.CreateExport)
 			}

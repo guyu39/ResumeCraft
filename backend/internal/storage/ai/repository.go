@@ -20,32 +20,33 @@ var (
 
 // AIConfigRecord AI 配置记录
 type AIConfigRecord struct {
-	ID                string
-	UserID            string
-	Provider          string
-	APIKeyEncrypted   string
-	BaseURL           string
-	DefaultModel      string
-	EvaluateModel     *string
-	TimeoutMs         int
-	Enabled           bool
-	IsGlobal          bool
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID              string
+	UserID          string
+	Provider        string
+	APIKeyEncrypted string
+	BaseURL         string
+	DefaultModel    string
+	EvaluateModel   *string
+	TimeoutMs       int
+	Enabled         bool
+	IsGlobal        bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // ConversationRecord AI 对话记录
 type ConversationRecord struct {
-	ID               string
-	UserID           string
-	ResumeID         *string
-	Type             string
-	Title            *string
-	Context          json.RawMessage
-	ModuleType       string
+	ID                string
+	UserID            string
+	ResumeID          *string
+	SnapshotVersionID *string
+	Type              string
+	Title             *string
+	Context           json.RawMessage
+	ModuleType        string
 	ModuleInstanceID  string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // MessageRecord AI 消息记录
@@ -173,7 +174,7 @@ func (r *repository) List(ctx context.Context, userID, conversationType, resumeI
 
 	// 查询列表
 	query := `
-		SELECT id, user_id, resume_id, type, title, context, module_type, module_instance_id, created_at, updated_at
+		SELECT id, user_id, resume_id, snapshot_version_id, type, title, context, module_type, module_instance_id, created_at, updated_at
 		FROM ai_conversations
 		WHERE user_id = $1`
 	listArgs := []interface{}{userID}
@@ -204,7 +205,7 @@ func (r *repository) List(ctx context.Context, userID, conversationType, resumeI
 		var contextJSON []byte
 		var moduleType, moduleInstanceID string
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&item.ID, &item.UserID, &item.ResumeID, &item.Type,
+		if err := rows.Scan(&item.ID, &item.UserID, &item.ResumeID, &item.SnapshotVersionID, &item.Type,
 			&title, &contextJSON, &moduleType, &moduleInstanceID, &createdAt, &updatedAt); err != nil {
 			return nil, 0, err
 		}
@@ -233,11 +234,11 @@ func (r *repository) GetByID(ctx context.Context, userID, conversationID string)
 	var createdAt, updatedAt time.Time
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, user_id, resume_id, type, title, context, module_type, module_instance_id, created_at, updated_at
+		SELECT id, user_id, resume_id, snapshot_version_id, type, title, context, module_type, module_instance_id, created_at, updated_at
 		FROM ai_conversations
 		WHERE id = $1 AND user_id = $2
 	`, conversationID, userID).Scan(
-		&conv.ID, &conv.UserID, &conv.ResumeID, &conv.Type,
+		&conv.ID, &conv.UserID, &conv.ResumeID, &conv.SnapshotVersionID, &conv.Type,
 		&title, &contextJSON, &moduleType, &moduleInstanceID, &createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -271,9 +272,9 @@ func (r *repository) Create(ctx context.Context, conv *ConversationRecord) error
 		contextJSON = []byte("{}")
 	}
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO ai_conversations (id, user_id, resume_id, type, title, context, module_type, module_instance_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-	`, conv.ID, conv.UserID, conv.ResumeID, conv.Type, conv.Title, contextJSON, conv.ModuleType, conv.ModuleInstanceID)
+		INSERT INTO ai_conversations (id, user_id, resume_id, snapshot_version_id, type, title, context, module_type, module_instance_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+	`, conv.ID, conv.UserID, conv.ResumeID, conv.SnapshotVersionID, conv.Type, conv.Title, contextJSON, conv.ModuleType, conv.ModuleInstanceID)
 	return err
 }
 
@@ -349,13 +350,13 @@ func (r *repository) GetLatestSuggestByResume(ctx context.Context, userID, resum
 	var createdAt, updatedAt time.Time
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, user_id, resume_id, type, title, context, module_type, module_instance_id, created_at, updated_at
+		SELECT id, user_id, resume_id, snapshot_version_id, type, title, context, module_type, module_instance_id, created_at, updated_at
 		FROM ai_conversations
 		WHERE user_id = $1 AND type = 'suggest' AND resume_id = $2
 		ORDER BY updated_at DESC
 		LIMIT 1
 	`, userID, resumeID).Scan(
-		&conv.ID, &conv.UserID, &conv.ResumeID, &conv.Type,
+		&conv.ID, &conv.UserID, &conv.ResumeID, &conv.SnapshotVersionID, &conv.Type,
 		&title, &contextJSON, &dbModuleType, &dbModuleInstanceID, &createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -403,13 +404,13 @@ func (r *repository) GetSuggestByContentHash(ctx context.Context, userID, resume
 	var dbModuleType, dbModuleInstanceID string
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, user_id, resume_id, type, title, context, module_type, module_instance_id, created_at, updated_at
+		SELECT id, user_id, resume_id, snapshot_version_id, type, title, context, module_type, module_instance_id, created_at, updated_at
 		FROM ai_conversations
 		WHERE user_id = $1 AND type = 'suggest' AND resume_id = $2 AND module_type = $3 AND module_instance_id = $4
 		ORDER BY updated_at DESC
 		LIMIT 1
 	`, userID, resumeID, moduleType, moduleInstanceID).Scan(
-		&conv.ID, &conv.UserID, &conv.ResumeID, &conv.Type,
+		&conv.ID, &conv.UserID, &conv.ResumeID, &conv.SnapshotVersionID, &conv.Type,
 		&title, &contextJSON, &dbModuleType, &dbModuleInstanceID, &createdAt, &updatedAt,
 	)
 	if err != nil {
