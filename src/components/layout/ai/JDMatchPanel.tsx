@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { aiApi } from '@/api'
 import type { ConversationItem, JDMatchResponse, JDScoreResponse } from '@/api/ai'
 import type { Resume } from '@/types/resume'
+import { useResumeStore } from '@/store/resumeStore'
 
 interface JDMatchPanelProps {
     resume: Resume
@@ -71,6 +72,15 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     const [historyLoading, setHistoryLoading] = useState(false)
     const [historyItems, setHistoryItems] = useState<ConversationItem[]>([])
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
+
+    // 从 store 获取快照列表，用于在对话历史中显示快照标签
+    const snapshots = useResumeStore((s) => s.snapshots)
+    const getSnapshotLabel = (snapshotVersionId?: string | null): string | null => {
+        if (!snapshotVersionId) return null
+        const snap = snapshots.find((s) => s.id === snapshotVersionId)
+        if (!snap || snap.snapshotType !== 'manual') return null
+        return snap.label || `v${snap.id.slice(0, 4)}`
+    }
 
     const canSubmit = jdText.trim().length > 0 && jdText.length <= 20000 && !loading && !scoreLoading
 
@@ -217,7 +227,14 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                                                 <span className="truncate text-sm font-medium text-gray-800">{recordType} · {target}{company}</span>
                                                 {score !== undefined && <span className={`text-sm font-semibold ${scoreClass(score)}`}>{score}</span>}
                                             </div>
-                                            <p className="mt-1 text-xs text-gray-400">{new Date(item.createdAt).toLocaleString()}</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <p className="text-xs text-gray-400">{new Date(item.createdAt).toLocaleString()}</p>
+                                                {getSnapshotLabel(item.snapshotVersionId) && (
+                                                    <span className="text-xs text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">
+                                                        {getSnapshotLabel(item.snapshotVersionId)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </button>
                                     )
                                 })}
@@ -341,8 +358,8 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                                                 <p className="text-xs font-medium text-gray-500">岗位 JD</p>
                                                 <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-600 no-scrollbar">
                                                     {displayResult.jdText}
-                                            </p>
-                                        </div>
+                                                </p>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

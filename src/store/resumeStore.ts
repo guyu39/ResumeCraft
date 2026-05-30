@@ -33,18 +33,17 @@ import {
 } from '@/types/resume'
 
 // ---------- 防抖工具函数 ----------
-function debounce<T extends (...args: Parameters<T>) => void>(
-  fn: T,
-  delay: number
-): (...args: Parameters<T>) => void {
+function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T & { flush: T } {
   let timer: ReturnType<typeof setTimeout> | null = null
-  return (...args: Parameters<T>) => {
+  const wrapper = ((...args: any[]) => {
     if (timer !== null) clearTimeout(timer)
-    timer = setTimeout(() => {
-      fn(...args)
-      timer = null
-    }, delay)
-  }
+    timer = setTimeout(() => { fn(...args); timer = null }, delay)
+  }) as unknown as T & { flush: T }
+  wrapper.flush = ((...args: any[]) => {
+    if (timer !== null) { clearTimeout(timer); timer = null }
+    fn(...args)
+  }) as unknown as T
+  return wrapper
 }
 
 // ---------- localStorage Key ----------
@@ -249,6 +248,7 @@ interface StoragePayload {
   version: number
   data: Resume
   savedAt: number
+  basedOnSnapshotId: string | null
 }
 
 interface CollectionPayload {
@@ -322,6 +322,7 @@ function saveToStorage(resume: Resume): void {
       version: STORAGE_VERSION,
       data: resume,
       savedAt: Date.now(),
+      basedOnSnapshotId: useResumeStore.getState().basedOnSnapshotId,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     upsertResumeToCollection(resume)
@@ -341,6 +342,10 @@ function loadDraftFromStorage(): Resume | null {
       localStorage.removeItem(STORAGE_KEY)
       return null
     }
+    // 恢复 basedOnSnapshotId
+    if (payload.basedOnSnapshotId) {
+      useResumeStore.getState().setBasedOnSnapshotId(payload.basedOnSnapshotId)
+    }
     return payload.data
   } catch (e) {
     console.warn('[ResumeStore] localStorage 读取失败:', e)
@@ -348,10 +353,31 @@ function loadDraftFromStorage(): Resume | null {
   }
 }
 
+// ---------- 全局落库回调（由 useCloudSync 注册） ----------
+let _flushToCloudFn: (() => Promise<boolean>) | null = null
+
+export function registerFlushToCloud(fn: () => Promise<boolean>) {
+  _flushToCloudFn = fn
+}
+
+/** 触发落库（供任意组件调用，如导出前、AI评估前） */
+export async function flushToCloud(): Promise<boolean> {
+  if (_flushToCloudFn) return _flushToCloudFn()
+  return false
+}
+
 // ---------- 防抖保存 ----------
 const debouncedSave = debounce((resume: Resume) => {
   saveToStorage(resume)
-}, 500)
+  // 标记脏数据：有未落库的修改
+  useResumeStore.getState().markDirty()
+}, 2000)
+
+// 强制刷新：退出前立即保存到 localStorage
+function flushDraft() {
+  const resume = useResumeStore.getState().resume
+  debouncedSave.flush(resume)
+}
 
 // ---------- Zustand Store ----------
 interface ResumeStoreState {
@@ -362,8 +388,14 @@ interface ResumeStoreState {
   previewResume: Resume | null
   // 当前活跃的快照 ID（用于 AI 操作关联版本）
   activeSnapshotId: string | null
+  // 当前编辑基于哪个快照版本
+  basedOnSnapshotId: string | null
   // 快照变更计数器（用于跨组件触发时间轴刷新）
   snapshotVersion: number
+  // 快照列表（用于跨组件查找快照标签，如 AI 对话历史显示）
+  snapshots: Array<{ id: string; label?: string; snapshotType: string }>
+  // 脏标记：自上次落库以来是否有修改
+  isDirty: boolean
 
   // 当前选中模块 ID
   activeModuleId: string | null
@@ -431,7 +463,12 @@ interface ResumeStoreActions {
   setPreviewResume: (resume: Resume | null) => void
   clearPreviewResume: () => void
   setActiveSnapshotId: (id: string | null) => void
+  setBasedOnSnapshotId: (id: string | null) => void
+  setSnapshots: (items: Array<{ id: string; label?: string; snapshotType: string }>) => void
   triggerSnapshotRefresh: () => void
+  // 脏标记
+  markDirty: () => void
+  markClean: () => void
 }
 
 type ResumeStore = ResumeStoreState & ResumeStoreActions
@@ -444,7 +481,10 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   lastSavedAt: null,
   previewResume: null,
   activeSnapshotId: null,
+  basedOnSnapshotId: null,
   snapshotVersion: 0,
+  snapshots: [],
+  isDirty: false,
 
   // ---------- initResume ----------
   initResume: (partial) => {
@@ -732,9 +772,12 @@ export const useResumeStore = create<ResumeStore>((set) => ({
           ...(saved.styleSettings ?? {}),
         },
       }
+      const state = useResumeStore.getState()
       set({
         resume: normalizedResume,
         activeModuleId: normalizedResume.modules[0]?.id ?? null,
+        // 同步快照状态：basedOnSnapshotId 已由 loadDraftFromStorage 恢复
+        activeSnapshotId: state.basedOnSnapshotId,
         isLoading: false,
         lastSavedAt: Date.now(),
       })
@@ -764,7 +807,12 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   setPreviewResume: (r: Resume | null) => set({ previewResume: r }),
   clearPreviewResume: () => set({ previewResume: null, activeSnapshotId: null }),
   setActiveSnapshotId: (id: string | null) => set({ activeSnapshotId: id }),
+  setBasedOnSnapshotId: (id: string | null) => set({ basedOnSnapshotId: id, activeSnapshotId: id }),
+  setSnapshots: (items: Array<{ id: string; label?: string; snapshotType: string }>) => set({ snapshots: items }),
   triggerSnapshotRefresh: () => set((s) => ({ snapshotVersion: s.snapshotVersion + 1 })),
+
+  markDirty: () => set({ isDirty: true }),
+  markClean: () => set({ isDirty: false }),
 }))
 
 // ---------- 导出工具函数（供外部使用） ----------
@@ -840,4 +888,5 @@ export {
   selectResumeForEditingInStorage,
   removeResumeFromStorageCollection,
   setCurrentResumeIdToStorage,
+  flushDraft,
 }

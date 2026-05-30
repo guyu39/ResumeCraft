@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Download, Globe, Settings, Sparkles, X } from 'lucide-react'
-import { useResumeStore } from '@/store/resumeStore'
+import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
 import { getAutoFixEnabled, setAutoFixEnabled } from '@/utils/textGuard'
@@ -28,7 +28,7 @@ import { useCoverLetter } from '@/hooks/useCoverLetter'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
 import CoverLetterPanel from '@/components/layout/ai/CoverLetterPanel'
-import { aiApi, resumeApi, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse } from '@/api'
+import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse } from '@/api'
 
 // 各模块表单
 import PersonalForm from '@/components/resume/blocks/PersonalForm'
@@ -356,22 +356,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                         <button
                             type="button"
                             onClick={() => setLocale('zh-CN')}
-                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${
-                                resume.locale === 'zh-CN'
-                                    ? 'border-primary bg-primary/5 text-primary font-medium'
-                                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                            }`}
+                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${resume.locale === 'zh-CN'
+                                ? 'border-primary bg-primary/5 text-primary font-medium'
+                                : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                                }`}
                         >
                             中文
                         </button>
                         <button
                             type="button"
                             onClick={() => setLocale('en-US')}
-                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${
-                                resume.locale === 'en-US'
-                                    ? 'border-primary bg-primary/5 text-primary font-medium'
-                                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                            }`}
+                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${resume.locale === 'en-US'
+                                ? 'border-primary bg-primary/5 text-primary font-medium'
+                                : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                                }`}
                         >
                             English
                         </button>
@@ -693,81 +691,81 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                         <p className="text-[11px] text-gray-400 mt-0.5">仅用于「新建简历 → 解析简历导入」的文件识别，与上方 AI 评估独立配置</p>
                     </div>
 
-                {!isAuthenticated ? (
-                    <p className="text-xs text-gray-500">请登录后配置</p>
-                ) : (
-                    <>
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-gray-700">模型供应商</label>
-                            <select
-                                value={parserForm.provider}
-                                onChange={(e) => setParserForm((prev) => ({ ...prev, provider: e.target.value }))}
-                                className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            >
-                                <option value="openai">OpenAI</option>
-                                <option value="doubao">豆包 (Doubao)</option>
-                                <option value="deepseek">DeepSeek</option>
-                                <option value="zhipu">智谱 (GLM)</option>
-                                <option value="qwen">通义千问</option>
-                                <option value="moonshot">Moonshot</option>
-                                <option value="custom">自定义</option>
-                            </select>
-                        </div>
-
-                        {parserForm.provider === 'custom' && (
+                    {!isAuthenticated ? (
+                        <p className="text-xs text-gray-500">请登录后配置</p>
+                    ) : (
+                        <>
                             <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-gray-700">Base URL（自定义必填）</label>
+                                <label className="text-xs font-medium text-gray-700">模型供应商</label>
+                                <select
+                                    value={parserForm.provider}
+                                    onChange={(e) => setParserForm((prev) => ({ ...prev, provider: e.target.value }))}
+                                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                >
+                                    <option value="openai">OpenAI</option>
+                                    <option value="doubao">豆包 (Doubao)</option>
+                                    <option value="deepseek">DeepSeek</option>
+                                    <option value="zhipu">智谱 (GLM)</option>
+                                    <option value="qwen">通义千问</option>
+                                    <option value="moonshot">Moonshot</option>
+                                    <option value="custom">自定义</option>
+                                </select>
+                            </div>
+
+                            {parserForm.provider === 'custom' && (
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-medium text-gray-700">Base URL（自定义必填）</label>
+                                    <input
+                                        value={parserForm.baseUrl}
+                                        onChange={(e) => setParserForm((prev) => ({ ...prev, baseUrl: e.target.value }))}
+                                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                        placeholder="https://api.example.com/v1"
+                                    />
+                                </div>
+                            )}
+
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-gray-700">模型</label>
                                 <input
-                                    value={parserForm.baseUrl}
-                                    onChange={(e) => setParserForm((prev) => ({ ...prev, baseUrl: e.target.value }))}
+                                    value={parserForm.model}
+                                    onChange={(e) => setParserForm((prev) => ({ ...prev, model: e.target.value }))}
                                     className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                    placeholder="https://api.example.com/v1"
+                                    placeholder="例如 gpt-4o-mini"
                                 />
                             </div>
-                        )}
 
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-gray-700">模型</label>
-                            <input
-                                value={parserForm.model}
-                                onChange={(e) => setParserForm((prev) => ({ ...prev, model: e.target.value }))}
-                                className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                placeholder="例如 gpt-4o-mini"
-                            />
-                        </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-gray-700">API Key</label>
+                                <input
+                                    type="password"
+                                    value={parserForm.apiKey}
+                                    onChange={(e) => setParserForm((prev) => ({ ...prev, apiKey: e.target.value }))}
+                                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                    placeholder={parserHasApiKey ? '已保存密钥，留空则继续使用' : '输入 API Key'}
+                                />
+                                {parserHasApiKey && !parserForm.apiKey && (
+                                    <p className="text-[11px] text-green-600">✓ 已保存密钥</p>
+                                )}
+                            </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-gray-700">API Key</label>
-                            <input
-                                type="password"
-                                value={parserForm.apiKey}
-                                onChange={(e) => setParserForm((prev) => ({ ...prev, apiKey: e.target.value }))}
-                                className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                placeholder={parserHasApiKey ? '已保存密钥，留空则继续使用' : '输入 API Key'}
-                            />
-                            {parserHasApiKey && !parserForm.apiKey && (
-                                <p className="text-[11px] text-green-600">✓ 已保存密钥</p>
+                            <div className="flex items-center gap-2 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={saveParserConfig}
+                                    className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                                >
+                                    保存解析配置
+                                </button>
+                            </div>
+
+                            {parserError && (
+                                <p className="text-xs text-red-600">{parserError}</p>
                             )}
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-1">
-                            <button
-                                type="button"
-                                onClick={saveParserConfig}
-                                className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
-                            >
-                                保存解析配置
-                            </button>
-                        </div>
-
-                        {parserError && (
-                            <p className="text-xs text-red-600">{parserError}</p>
-                        )}
-                        {parserStatus && (
-                            <p className="text-xs text-green-600">{parserStatus}</p>
-                        )}
-                    </>
-                )}
+                            {parserStatus && (
+                                <p className="text-xs text-green-600">{parserStatus}</p>
+                            )}
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -806,7 +804,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
 
 // ---------- 右栏主组件 ----------
 const RightPanel: React.FC = () => {
-    const { resume, activeModuleId, lastSavedAt, setActiveModule, activeSnapshotId, triggerSnapshotRefresh } = useResumeStore()
+    const { resume, activeModuleId, lastSavedAt, setActiveModule, activeSnapshotId, triggerSnapshotRefresh, setBasedOnSnapshotId } = useResumeStore()
     const { isAuthenticated } = useAuthStore()
     const formRef = useRef<HTMLDivElement>(null)
     const [showSaved, setShowSaved] = useState(false)
@@ -814,7 +812,34 @@ const RightPanel: React.FC = () => {
     const [showSnapshotDialog, setShowSnapshotDialog] = useState(false)
     const [snapshotLabel, setSnapshotLabel] = useState('')
     const [snapshotSaving, setSnapshotSaving] = useState(false)
+    const [snapshotError, setSnapshotError] = useState('')
     const [showAIEvaluation, setShowAIEvaluation] = useState(false)
+
+    const handleCreateSnapshot = async () => {
+        if (!snapshotLabel.trim() || snapshotSaving) return
+        setSnapshotSaving(true)
+        setSnapshotError('')
+        try {
+            const resp = await resumeApi.createSnapshot(resume.id, snapshotLabel.trim())
+            setShowSnapshotDialog(false)
+            setSnapshotLabel('')
+            // 创建快照成功后，设置 basedOnSnapshotId 指向新快照
+            if (resp?.id) {
+                setBasedOnSnapshotId(resp.id)
+            }
+            triggerSnapshotRefresh()
+        } catch (error) {
+            const message = error instanceof ApiError ? error.message : '保存快照失败'
+            const normalized = message.toLowerCase()
+            if (normalized.includes('label already exists')) {
+                setSnapshotError('标签已存在，请换一个')
+            } else {
+                setSnapshotError(message)
+            }
+        } finally {
+            setSnapshotSaving(false)
+        }
+    }
 
     // 收集所有模块的日期范围校验错误
     const dateErrors = useMemo(() => {
@@ -1053,6 +1078,8 @@ const RightPanel: React.FC = () => {
 
     // ---------- PDF 导出 ----------
     const handleExport = async () => {
+        // 导出前先落库
+        await flushToCloud()
         try {
             await exportPDF('resume-paper-export', resume.title)
         } catch {
@@ -1062,12 +1089,14 @@ const RightPanel: React.FC = () => {
 
     // ---------- AI 综合评估 ----------
     const handleRetryEvaluate = async () => {
+        await flushToCloud()
         await runEvaluate(resume, activeSnapshotId)
     }
 
     const handleReevaluate = async () => {
         // 清除历史选择，直接运行新的评估
         setRestoredEvaluation(null)
+        await flushToCloud()
         await runEvaluate(resume, activeSnapshotId)
     }
 
@@ -1082,6 +1111,7 @@ const RightPanel: React.FC = () => {
     const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
         setRestoredJDMatch(null)
         setRestoredJDScore(null)
+        await flushToCloud()
         await runMatch(resume, form, activeSnapshotId)
     }
 
@@ -1103,6 +1133,7 @@ const RightPanel: React.FC = () => {
 
     const handleGenerateCoverLetter = async (form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }) => {
         setRestoredCoverLetter(null)
+        await flushToCloud()
         await generateCoverLetter(resume, form, activeSnapshotId)
     }
 
@@ -1150,15 +1181,15 @@ const RightPanel: React.FC = () => {
                 )}
 
                 {/* 保存快照按钮 */}
-                {resume.id?.includes('-') && (
-                  <button
-                    onClick={() => setShowSnapshotDialog(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 hover:text-slate-700 transition-colors flex-shrink-0"
-                    title="保存简历快照"
-                  >
-                    <span className="text-sm leading-none">📸</span>
-                    <span className="truncate">保存快照</span>
-                  </button>
+                {resume.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id) && (
+                    <button
+                        onClick={() => setShowSnapshotDialog(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 hover:text-slate-700 transition-colors flex-shrink-0"
+                        title="新建简历版本"
+                    >
+
+                        <span className="truncate">新建版本</span>
+                    </button>
                 )}
 
                 {/* 设置按钮 */}
@@ -1198,11 +1229,10 @@ const RightPanel: React.FC = () => {
                     }}
                     disabled={hasDateErrors}
                     title={hasDateErrors ? '请先修正日期范围错误' : undefined}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors flex-shrink min-w-0 ${
-                        hasDateErrors
-                            ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                            : 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
-                    }`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors flex-shrink min-w-0 ${hasDateErrors
+                        ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                        }`}
                 >
                     <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">{showAIEvaluation ? '返回编辑' : evaluating ? '评估中...' : 'AI评估'}</span>
@@ -1220,11 +1250,10 @@ const RightPanel: React.FC = () => {
                     onClick={handleExport}
                     disabled={exporting || hasDateErrors}
                     title={hasDateErrors ? '请先修正日期范围错误' : undefined}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors flex-shrink min-w-0 ${
-                        hasDateErrors
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'text-white bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait'
-                    }`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors flex-shrink min-w-0 ${hasDateErrors
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'text-white bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait'
+                        }`}
                 >
                     <Download className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">{exporting ? '导出中...' : '导出PDF'}</span>
@@ -1401,61 +1430,48 @@ const RightPanel: React.FC = () => {
 
             {/* 保存快照对话框 */}
             {showSnapshotDialog && (
-              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel('') }}>
-                <div className="bg-white rounded-xl shadow-2xl p-6 w-[380px]" onClick={(e) => e.stopPropagation()}>
-                  <h3 className="text-base font-semibold text-slate-800 mb-4">📸 保存简历快照</h3>
-                  <label className="block text-sm text-slate-600 mb-2">快照标签</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="如：投腾讯云版、定稿v1"
-                    value={snapshotLabel}
-                    onChange={(e) => setSnapshotLabel(e.target.value)}
-                    maxLength={100}
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && snapshotLabel.trim() && !snapshotSaving) {
-                        setSnapshotSaving(true)
-                        resumeApi.createSnapshot(resume.id, snapshotLabel.trim())
-                          .then(() => {
-                            setShowSnapshotDialog(false)
-                            setSnapshotLabel('')
-                            triggerSnapshotRefresh()
-                          })
-                          .catch(() => {})
-                          .finally(() => setSnapshotSaving(false))
-                      }
-                      if (e.key === 'Escape') { setShowSnapshotDialog(false); setSnapshotLabel('') }
-                    }}
-                  />
-                  <p className="mt-2 text-xs text-slate-400">
-                    💡 建议：为不同岗位投递的简历版本添加标签，方便后续快速切换和对比
-                  </p>
-                  <div className="flex justify-end gap-3 mt-5">
-                    <button className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
-                      onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel('') }}>
-                      取消
-                    </button>
-                    <button className="px-4 py-2 text-sm font-medium text-white bg-[#1A56DB] hover:bg-blue-700 rounded-lg disabled:opacity-50"
-                      disabled={!snapshotLabel.trim() || snapshotSaving}
-                      onClick={() => {
-                        if (!snapshotLabel.trim() || snapshotSaving) return
-                        setSnapshotSaving(true)
-                        resumeApi.createSnapshot(resume.id, snapshotLabel.trim())
-                          .then(() => {
-                            setShowSnapshotDialog(false)
-                            setSnapshotLabel('')
-                            triggerSnapshotRefresh()
-                          })
-                          .catch(() => {})
-                          .finally(() => setSnapshotSaving(false))
-                      }}
-                    >
-                      {snapshotSaving ? '保存中...' : '保存快照'}
-                    </button>
-                  </div>
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel(''); setSnapshotError('') }}>
+                    <div className="bg-white rounded-xl shadow-2xl p-6 w-[380px]" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-base font-semibold text-slate-800 mb-4">新建简历版本</h3>
+                        <label className="block text-sm text-slate-600 mb-2">快照标签</label>
+                        <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="如：投腾讯云版、定稿v1"
+                            value={snapshotLabel}
+                            onChange={(e) => {
+                                setSnapshotLabel(e.target.value)
+                                if (snapshotError) setSnapshotError('')
+                            }}
+                            maxLength={100}
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    handleCreateSnapshot()
+                                }
+                                if (e.key === 'Escape') { setShowSnapshotDialog(false); setSnapshotLabel(''); setSnapshotError('') }
+                            }}
+                        />
+                        {snapshotError && (
+                            <p className="mt-2 text-xs text-rose-600">{snapshotError}</p>
+                        )}
+                        <p className="mt-2 text-xs text-slate-400">
+                            💡 建议：为不同岗位投递的简历版本添加标签，方便后续快速切换和对比
+                        </p>
+                        <div className="flex justify-end gap-3 mt-5">
+                            <button className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                                onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel(''); setSnapshotError('') }}>
+                                取消
+                            </button>
+                            <button className="px-4 py-2 text-sm font-medium text-white bg-[#1A56DB] hover:bg-blue-700 rounded-lg disabled:opacity-50"
+                                disabled={!snapshotLabel.trim() || snapshotSaving}
+                                onClick={handleCreateSnapshot}
+                            >
+                                {snapshotSaving ? '保存中...' : '保存快照'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
-              </div>
             )}
         </div>
     )

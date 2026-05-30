@@ -142,19 +142,34 @@ func (r *repository) Create(ctx context.Context, userID string, req model.Create
 
 	var item model.ResumeListItem
 	var updatedAt, createdAt time.Time
+	var resumeID string
 	err = r.pool.QueryRow(ctx, `
 		INSERT INTO resumes (user_id, title, locale, template, content)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, title, template, updated_at, created_at
 	`, userID, req.Title, locale, template, contentJSON).Scan(
-		&item.ID, &item.Title, &item.Template, &updatedAt, &createdAt,
+		&resumeID, &item.Title, &item.Template, &updatedAt, &createdAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create resume: %w", err)
 	}
 
+	item.ID = resumeID
 	item.UpdatedAt = updatedAt.UnixMilli()
 	item.CreatedAt = createdAt.UnixMilli()
+
+	// 自动创建 "默认" 快照（隐藏，不在时间轴显示）
+	var defaultSnapshotID string
+	_ = r.pool.QueryRow(ctx, `
+		INSERT INTO resume_versions (resume_id, user_id, version_no, content_snapshot, snapshot_type, label)
+		VALUES ($1, $2, 1, $3, 'default', '默认')
+		RETURNING id
+	`, resumeID, userID, contentJSON).Scan(&defaultSnapshotID)
+
+	// 将 latest_version_id 指向默认快照
+	_, _ = r.pool.Exec(ctx, `
+		UPDATE resumes SET latest_version_id = $1 WHERE id = $2
+	`, defaultSnapshotID, resumeID)
 
 	return &item, nil
 }
@@ -190,6 +205,15 @@ func (r *repository) GetByID(ctx context.Context, userID, resumeID string) (*mod
 	detail.Modules = content.Modules
 	detail.UpdatedAt = updatedAt.UnixMilli()
 	detail.CreatedAt = createdAt.UnixMilli()
+
+	// 查询最新的 manual 或 default 快照 ID（用于前端进入时定位当前快照）
+	var latestSnapshotID *string
+	_ = r.pool.QueryRow(ctx, `
+		SELECT id FROM resume_versions
+		WHERE resume_id = $1 AND snapshot_type IN ('manual', 'default')
+		ORDER BY created_at DESC LIMIT 1
+	`, resumeID).Scan(&latestSnapshotID)
+	detail.LatestSnapshotID = latestSnapshotID
 
 	return &detail, nil
 }
@@ -252,23 +276,24 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		if err != nil {
 			return nil, fmt.Errorf("get updated_at: %w", err)
 		}
+
+		// 查询最新快照 ID
+		var latestSnapshotID *string
+		_ = r.pool.QueryRow(ctx, `
+			SELECT id FROM resume_versions
+			WHERE resume_id = $1 AND snapshot_type IN ('manual', 'default')
+			ORDER BY created_at DESC LIMIT 1
+		`, resumeID).Scan(&latestSnapshotID)
+
 		return &model.ResumeUpdateResponse{
-			ID:              resumeID,
-			UpdatedAt:       updatedAt.UnixMilli(),
-			LatestVersionID: currentVersionID,
+			ID:               resumeID,
+			UpdatedAt:        updatedAt.UnixMilli(),
+			LatestVersionID:  currentVersionID,
+			LatestSnapshotID: latestSnapshotID,
 		}, nil
 	}
 
-	// 创建新版本（保存当前内容）
-	newVersionID, err := r.createVersion(ctx, resumeID, userID, currentContentJSON)
-	if err != nil {
-		return nil, fmt.Errorf("create version: %w", err)
-	}
-
-	updates = append(updates, fmt.Sprintf("latest_version_id = $%d", argIdx))
-	args = append(args, newVersionID)
-	argIdx++
-
+	// 不再创建 auto 版本！仅更新 resumes 表 content + updated_at
 	updates = append(updates, "updated_at = NOW()")
 
 	setClause := strings.Join(updates, ", ")
@@ -282,10 +307,19 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		return nil, fmt.Errorf("update resume: %w", err)
 	}
 
+	// 查询最新快照 ID
+	var latestSnapshotID *string
+	_ = r.pool.QueryRow(ctx, `
+		SELECT id FROM resume_versions
+		WHERE resume_id = $1 AND snapshot_type IN ('manual', 'default')
+		ORDER BY created_at DESC LIMIT 1
+	`, resumeID).Scan(&latestSnapshotID)
+
 	return &model.ResumeUpdateResponse{
-		ID:              resumeID,
-		UpdatedAt:       updatedAt.UnixMilli(),
-		LatestVersionID: &newVersionID,
+		ID:               resumeID,
+		UpdatedAt:        updatedAt.UnixMilli(),
+		LatestVersionID:  currentVersionID,
+		LatestSnapshotID: latestSnapshotID,
 	}, nil
 }
 
@@ -324,31 +358,14 @@ func (r *repository) Delete(ctx context.Context, userID, resumeID string) error 
 
 // RestoreFromVersion 从版本恢复简历内容
 func (r *repository) RestoreFromVersion(ctx context.Context, userID, resumeID string, versionContent []byte) (*model.ResumeUpdateResponse, error) {
-	// 创建新版本（保存当前内容）
-	var currentContentJSON []byte
-	err := r.pool.QueryRow(ctx, `
-		SELECT content FROM resumes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-	`, resumeID, userID).Scan(&currentContentJSON)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrResumeNotFound
-		}
-		return nil, fmt.Errorf("get current content: %w", err)
-	}
-
-	newVersionID, err := r.createVersion(ctx, resumeID, userID, currentContentJSON)
-	if err != nil {
-		return nil, fmt.Errorf("create backup version: %w", err)
-	}
-
-	// 用版本内容更新简历
+	// 直接用版本内容更新简历（不创建新 auto 版本）
 	var updatedAt time.Time
-	err = r.pool.QueryRow(ctx, `
+	err := r.pool.QueryRow(ctx, `
 		UPDATE resumes
-		SET content = $1, latest_version_id = $2, updated_at = NOW()
-		WHERE id = $3 AND user_id = $4 AND deleted_at IS NULL
+		SET content = $1, updated_at = NOW()
+		WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
 		RETURNING updated_at
-	`, versionContent, newVersionID, resumeID, userID).Scan(&updatedAt)
+	`, versionContent, resumeID, userID).Scan(&updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrResumeNotFound
@@ -356,10 +373,25 @@ func (r *repository) RestoreFromVersion(ctx context.Context, userID, resumeID st
 		return nil, fmt.Errorf("restore resume: %w", err)
 	}
 
+	// 查询最新快照 ID
+	var latestSnapshotID *string
+	_ = r.pool.QueryRow(ctx, `
+		SELECT id FROM resume_versions
+		WHERE resume_id = $1 AND snapshot_type IN ('manual', 'default')
+		ORDER BY created_at DESC LIMIT 1
+	`, resumeID).Scan(&latestSnapshotID)
+
+	// 获取 currentVersionID
+	var currentVersionID *string
+	_ = r.pool.QueryRow(ctx, `
+		SELECT latest_version_id FROM resumes WHERE id = $1
+	`, resumeID).Scan(&currentVersionID)
+
 	return &model.ResumeUpdateResponse{
-		ID:              resumeID,
-		UpdatedAt:       updatedAt.UnixMilli(),
-		LatestVersionID: &newVersionID,
+		ID:               resumeID,
+		UpdatedAt:        updatedAt.UnixMilli(),
+		LatestVersionID:  currentVersionID,
+		LatestSnapshotID: latestSnapshotID,
 	}, nil
 }
 
@@ -399,6 +431,7 @@ func getOrDefaultStyleSettings(s *model.ResumeStyleSettings) model.ResumeStyleSe
 // ============================================================================
 
 // ListSnapshots 获取快照列表（时间轴）
+// 默认只返回 manual 类型（排除 auto 和 default），includeAuto=true 时也包含 auto
 func (r *repository) ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) ([]model.SnapshotListItem, int, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
@@ -408,6 +441,7 @@ func (r *repository) ListSnapshots(ctx context.Context, resumeID string, limit i
 	err := r.pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM resume_versions
 		WHERE resume_id = $1
+		  AND snapshot_type <> 'default'
 		  AND ($2::bool OR snapshot_type = 'manual')
 	`, resumeID, includeAuto).Scan(&total)
 	if err != nil {
@@ -419,6 +453,7 @@ func (r *repository) ListSnapshots(ctx context.Context, resumeID string, limit i
 		       EXTRACT(EPOCH FROM created_at)::bigint * 1000
 		FROM resume_versions
 		WHERE resume_id = $1
+		  AND snapshot_type <> 'default'
 		  AND ($2::bool OR snapshot_type = 'manual')
 		ORDER BY created_at DESC
 		LIMIT $3
@@ -507,17 +542,13 @@ func (r *repository) CreateManualSnapshot(ctx context.Context, userID, resumeID 
 	snapshot.CreatedAt = createdAtMS
 	snapshot.IsCurrent = true
 
-	// 清理超过 50 个的自动版本
+	// 创建手动快照后，删除该简历的 "默认" 快照（如果有）
 	_, _ = r.pool.Exec(ctx, `
 		DELETE FROM resume_versions
-		WHERE resume_id = $1
-		  AND snapshot_type = 'auto'
-		  AND id NOT IN (
-		      SELECT id FROM resume_versions
-		      WHERE resume_id = $1 AND snapshot_type = 'auto'
-		      ORDER BY created_at DESC LIMIT 50
-		  )
+		WHERE resume_id = $1 AND snapshot_type = 'default'
 	`, resumeID)
+
+	r.cleanupAutoVersions(ctx, resumeID)
 
 	return &snapshot, nil
 }
@@ -902,4 +933,18 @@ func extractModules(data map[string]interface{}) []map[string]interface{} {
 		}
 	}
 	return []map[string]interface{}{}
+}
+
+// cleanupAutoVersions 清理超过 50 个的自动版本
+func (r *repository) cleanupAutoVersions(ctx context.Context, resumeID string) {
+	_, _ = r.pool.Exec(ctx, `
+		DELETE FROM resume_versions
+		WHERE resume_id = $1
+		  AND snapshot_type = 'auto'
+		  AND id NOT IN (
+		      SELECT id FROM resume_versions
+		      WHERE resume_id = $1 AND snapshot_type = 'auto'
+		      ORDER BY created_at DESC LIMIT 50
+		  )
+	`, resumeID)
 }

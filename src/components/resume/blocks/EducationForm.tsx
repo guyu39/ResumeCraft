@@ -33,10 +33,9 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
     { label: t('enum.otherLevel'), value: '其他' },
   ]
 
-  const DEGREE_SELECT_OPTIONS = DEGREE_OPTIONS.map((d) => {
-    const key = `enum.${d}`
-    return { label: te(key) ? t(key) : d, value: d }
-  })
+  const DEGREE_SELECT_OPTIONS = DEGREE_OPTIONS.map((d) => ({
+    label: te(d), value: d
+  }))
 
   const update = (newItems: EducationItem[]) => {
     updateModuleData(moduleId, { items: newItems } as unknown as Partial<{ items: EducationItem[] }>)

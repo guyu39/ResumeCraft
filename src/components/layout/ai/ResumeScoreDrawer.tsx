@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import type { ModuleType } from '@/types/resume'
 import type { ResumeEvaluateOutput } from '@/ai'
 import { aiApi, type ConversationItem } from '@/api/ai'
+import { useResumeStore } from '@/store/resumeStore'
 
 interface ResumeScoreDrawerProps {
     open: boolean
@@ -337,6 +338,15 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
 }) => {
     if (!open) return null
 
+    // 从 store 获取快照列表，用于在对话历史中显示快照标签
+    const snapshots = useResumeStore((s) => s.snapshots)
+    const getSnapshotLabel = (snapshotVersionId?: string | null): string | null => {
+        if (!snapshotVersionId) return null
+        const snap = snapshots.find((s) => s.id === snapshotVersionId)
+        // 仅手动快照显示标签（default 类型不在列表中，自动不显示）
+        if (!snap || snap.snapshotType !== 'manual') return null
+        return snap.label || `v${snap.id.slice(0, 4)}`
+    }
     // Use restored result for display when available
     const displayResult = restoredResult ?? result
 
@@ -539,9 +549,16 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                                                 : ''}
                                                         </span>
                                                     </div>
-                                                    <p className="mt-0.5 text-xs text-gray-400">
-                                                        {new Date(item.createdAt).toLocaleString()}
-                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        <p className="text-xs text-gray-400">
+                                                            {new Date(item.createdAt).toLocaleString()}
+                                                        </p>
+                                                        {getSnapshotLabel(item.snapshotVersionId) && (
+                                                            <span className="text-xs text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">
+                                                                {getSnapshotLabel(item.snapshotVersionId)}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </button>
                                             </li>
                                         ))}

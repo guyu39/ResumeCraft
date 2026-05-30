@@ -33,16 +33,17 @@ type ResumeStyleSettings struct {
 
 // ResumeDetail 简历详情（与前端 Resume 类型对齐）
 type ResumeDetail struct {
-	ID              string                   `json:"id"`
-	Title           string                   `json:"title"`
-	Locale          string                   `json:"locale"`
-	Template        string                   `json:"template"`
-	ThemeColor      string                   `json:"themeColor"`
-	StyleSettings   ResumeStyleSettings      `json:"styleSettings"`
-	Modules         []map[string]interface{} `json:"modules"`
-	LatestVersionID *string                  `json:"latestVersionId"`
-	UpdatedAt       int64                    `json:"updatedAt"` // 前端期望时间戳
-	CreatedAt       int64                    `json:"createdAt"` // 前端期望时间戳
+	ID               string                   `json:"id"`
+	Title            string                   `json:"title"`
+	Locale           string                   `json:"locale"`
+	Template         string                   `json:"template"`
+	ThemeColor       string                   `json:"themeColor"`
+	StyleSettings    ResumeStyleSettings      `json:"styleSettings"`
+	Modules          []map[string]interface{} `json:"modules"`
+	LatestVersionID  *string                  `json:"latestVersionId"`
+	LatestSnapshotID *string                  `json:"latestSnapshotId,omitempty"` // 最新的 manual/default 快照 ID
+	UpdatedAt        int64                    `json:"updatedAt"`                  // 前端期望时间戳
+	CreatedAt        int64                    `json:"createdAt"`                  // 前端期望时间戳
 }
 
 // CreateResumeRequest 创建简历请求
@@ -57,11 +58,12 @@ type CreateResumeRequest struct {
 
 // UpdateResumeRequest 更新简历请求
 type UpdateResumeRequest struct {
-	Title           string                   `json:"title" binding:"max=255"`
-	ThemeColor      string                   `json:"themeColor"`
-	StyleSettings   *ResumeStyleSettings     `json:"styleSettings"`
-	Modules         []map[string]interface{} `json:"modules"`
-	ClientUpdatedAt int64                    `json:"clientUpdatedAt"`
+	Title             string                   `json:"title" binding:"max=255"`
+	ThemeColor        string                   `json:"themeColor"`
+	StyleSettings     *ResumeStyleSettings     `json:"styleSettings"`
+	Modules           []map[string]interface{} `json:"modules"`
+	ClientUpdatedAt   int64                    `json:"clientUpdatedAt"`
+	BasedOnSnapshotID *string                  `json:"basedOnSnapshotId,omitempty"` // 当前编辑基于的快照 ID
 }
 
 // Pagination 分页信息
@@ -80,9 +82,10 @@ type ResumeListResponse struct {
 
 // ResumeUpdateResponse 更新简历响应
 type ResumeUpdateResponse struct {
-	ID              string  `json:"id"`
-	UpdatedAt       int64   `json:"updatedAt"`
-	LatestVersionID *string `json:"latestVersionId"`
+	ID               string  `json:"id"`
+	UpdatedAt        int64   `json:"updatedAt"`
+	LatestVersionID  *string `json:"latestVersionId"`
+	LatestSnapshotID *string `json:"latestSnapshotId,omitempty"` // 最新的 manual/default 快照 ID
 }
 
 // ---------- 版本快照相关类型 ----------
@@ -91,8 +94,9 @@ type ResumeUpdateResponse struct {
 type SnapshotType string
 
 const (
-	SnapshotTypeAuto   SnapshotType = "auto"
-	SnapshotTypeManual SnapshotType = "manual"
+	SnapshotTypeAuto    SnapshotType = "auto"
+	SnapshotTypeManual  SnapshotType = "manual"
+	SnapshotTypeDefault SnapshotType = "default" // 新建简历时的隐藏默认快照
 )
 
 // VersionSnapshot 版本快照（列表视图）

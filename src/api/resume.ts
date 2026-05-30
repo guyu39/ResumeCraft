@@ -89,7 +89,7 @@ export const resumeApi = {
 
 // ---------- 快照相关类型 ----------
 
-export type SnapshotType = 'auto' | 'manual'
+export type SnapshotType = 'auto' | 'manual' | 'default'
 
 export interface SnapshotListItem {
   id: string

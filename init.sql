@@ -76,7 +76,7 @@ create table resume_versions
     content_snapshot jsonb                                              not null,
     snapshot_type    varchar(20)              default 'auto'::character varying not null
         constraint chk_snapshot_type
-            check ((snapshot_type)::text = ANY ((ARRAY['auto'::character varying, 'manual'::character varying])::text[])),
+            check ((snapshot_type)::text = ANY ((ARRAY['auto'::character varying, 'manual'::character varying, 'default'::character varying])::text[])),
     label            varchar(100),
     jd_context_id    uuid,
     created_at       timestamp with time zone default now()             not null,

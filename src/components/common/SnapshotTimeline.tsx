@@ -94,7 +94,7 @@ export default function SnapshotTimeline({
 
   return (
     <div className="w-full flex-shrink-0">
-      {error && (
+      {error && snapshots.length === 0 && (
         <div className="text-center py-1 text-xs text-red-500 bg-red-50">
           {error}<button className="ml-2 underline" onClick={() => setError(null)}>关闭</button>
         </div>
@@ -104,7 +104,7 @@ export default function SnapshotTimeline({
         <div className="absolute left-4 right-4 h-[3px] bg-gray-200 rounded" style={{ top: '50%', transform: 'translateY(-50%)' }} />
 
         {snapshots.length === 0 && !loading && (
-          <span className="text-xs text-gray-400">点击右上角「📸 保存快照」记录当前版本</span>
+          <span className="text-xs text-gray-400">点击右上角「新建版本」记录当前版本</span>
         )}
         {loading && snapshots.length === 0 && (
           <span className="text-xs text-gray-400">加载中...</span>
@@ -147,7 +147,7 @@ export default function SnapshotTimeline({
           onMouseLeave={handleTooltipLeave}
         >
           <div className="flex items-center gap-1 text-xs font-semibold text-gray-800">
-            <span>📸 {tooltip.snapshot.label || `v${tooltip.snapshot.versionNo}`}</span>
+            <span>{tooltip.snapshot.label || `v${tooltip.snapshot.versionNo}`}</span>
           </div>
           <div className="text-[10px] text-gray-500 mt-1">
             {new Date(tooltip.snapshot.createdAt).toLocaleString('zh-CN')}

@@ -94,6 +94,7 @@ export interface ResumeDetail {
   styleSettings: ResumeStyleSettings
   modules: unknown[]
   latestVersionId: string
+  latestSnapshotId?: string // 最新的 manual/default 快照 ID
   updatedAt: number
   createdAt: number
 }
@@ -113,12 +114,14 @@ export interface UpdateResumeRequest {
   styleSettings?: ResumeStyleSettings
   modules?: unknown[]
   clientUpdatedAt?: number
+  basedOnSnapshotId?: string // 当前编辑基于的快照 ID
 }
 
 export interface ResumeUpdateResponse {
   id: string
   updatedAt: number
   latestVersionId: string
+  latestSnapshotId?: string // 最新的 manual/default 快照 ID
 }
 
 // 版本相关
