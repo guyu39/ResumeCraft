@@ -57,6 +57,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const resumeId = useResumeStore((state) => state.resume.id)
     const locale = useResumeStore((state) => state.resume.locale)
     const 上次合法HTML引用 = useRef<string>(转为编辑器HTML(value))
+    // 追踪最近一次由编辑器 onUpdate 产出的 HTML，
+    // 用于区分 value 变化来源：编辑器内部（用户打字）vs 外部注入（快照切换/AI 生成）
+    const lastEditorHtml = useRef<string>('')
     const 链接输入框引用 = useRef<HTMLInputElement>(null)
     const [工具栏版本, set工具栏版本] = useState(0)
     const [链接弹窗显示, set链接弹窗显示] = useState(false)
@@ -126,6 +129,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             }
 
             const html = instance.getHTML()
+            lastEditorHtml.current = html
             上次合法HTML引用.current = html
             onChange(html)
         },
@@ -175,15 +179,16 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor])
 
-    // 外部 value 变化时比较同步 —— 仅在 editor 就绪后生效，
-    // 用于处理 store 数据被外部更新（AI 生成、快照恢复等）的场景
+    // 外部 value 变化时同步 —— 仅在 editor 就绪后生效。
+    // 通过 lastEditorHtml 追踪变化来源：
+    // - value 与 lastEditorHtml 相同 → 来源于编辑器内部（用户打字）→ 跳过
+    // - value 不同 → 来源于外部注入（快照切换、AI 生成等）→ 强制同步
     useEffect(() => {
       if (!editor || !editorReadyRef.current) return
       const next = 转为编辑器HTML(value)
-      if (editor.getHTML() !== next) {
-        editor.commands.setContent(next, { emitUpdate: false })
-        上次合法HTML引用.current = next
-      }
+      if (value === lastEditorHtml.current) return
+      editor.commands.setContent(next, { emitUpdate: false })
+      上次合法HTML引用.current = next
     }, [editor, value])
 
     useEffect(() => {

@@ -823,6 +823,10 @@ const RightPanel: React.FC = () => {
             const resp = await resumeApi.createSnapshot(resume.id, snapshotLabel.trim())
             setShowSnapshotDialog(false)
             setSnapshotLabel('')
+            // 清除当前快照的本地草稿（编辑已固化为新快照，草稿不再需要）
+            if (activeSnapshotId) {
+                try { localStorage.removeItem(`resumecraft_snapshot_draft_${activeSnapshotId}`) } catch { /* ignore */ }
+            }
             // 创建快照成功后，设置 basedOnSnapshotId 指向新快照
             if (resp?.id) {
                 setBasedOnSnapshotId(resp.id)

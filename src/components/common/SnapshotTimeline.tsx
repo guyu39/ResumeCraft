@@ -63,7 +63,12 @@ export default function SnapshotTimeline({
   const handleDelete = async (snapshotId: string) => {
     if (!confirm('确定删除此快照？')) return
     setTooltip(null)
-    try { await resumeApi.deleteSnapshot(resumeId, snapshotId); await loadSnapshots() } catch { setError('删除快照失败') }
+    try {
+      await resumeApi.deleteSnapshot(resumeId, snapshotId)
+      // 清除该快照的本地草稿
+      try { localStorage.removeItem(`resumecraft_snapshot_draft_${snapshotId}`) } catch { /* ignore */ }
+      await loadSnapshots()
+    } catch { setError('删除快照失败') }
   }
 
   const handleStartRename = (snapshot: SnapshotListItem) => {

@@ -5,7 +5,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useResumeStore } from '@/store/resumeStore'
-import { useAuthStore } from '@/store/authStore'
 import PagedResumePaper, { A4_HEIGHT_PX, A4_WIDTH_PX } from '@/components/resume/PagedResumePaper'
 import SnapshotTimeline from '@/components/common/SnapshotTimeline'
 import { resumeApi, type SnapshotListItem, type DiffResult } from '@/api/resume'
@@ -16,8 +15,7 @@ const FIT_BOOST_RATIO = 1.3
 const MAX_PREVIEW_SCALE = 1.3
 
 const CenterPanel: React.FC = () => {
-  const { resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, snapshotVersion, isDirty, markClean, basedOnSnapshotId, setSnapshots: setStoreSnapshots } = useResumeStore()
-  const { isAuthenticated } = useAuthStore()
+  const { resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, snapshotVersion, isDirty, markClean, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
   const [contentHeight, setContentHeight] = useState(A4_HEIGHT_PX)
@@ -53,21 +51,46 @@ const CenterPanel: React.FC = () => {
 
   const finalScale = Math.min(autoFitScale * FIT_BOOST_RATIO, MAX_PREVIEW_SCALE)
 
-  // 点击节点 → 切快照前如有修改先落库，再加载目标快照
+  // 点击节点 → 切换快照。快照是不可变时间点，但支持每个快照独立的本地草稿：
+  // - 切走时：将当前编辑保存到快照专属 localStorage key，而非云DB
+  // - 切入时：优先加载快照专属本地草稿（如果存在），跳过云端 API
   const handleSelectSnapshot = useCallback(async (snapshot: SnapshotListItem) => {
     if (snapshot.id === activeSnapshotId) return
 
-    // 有未保存的修改 → 先落库
-    if (isDirty && isAuthenticated) {
-      await resumeApi.update(resume.id, {
-        title: resume.title, themeColor: resume.themeColor,
-        styleSettings: resume.styleSettings, modules: resume.modules,
-        clientUpdatedAt: Date.now(),
-        basedOnSnapshotId: basedOnSnapshotId || undefined,
-      }).catch(() => { })
+    // ① 离开当前快照：对应当前编辑的快照专属固化到 localStorage
+    if (isDirty && activeSnapshotId) {
+      const draftKey = `resumecraft_snapshot_draft_${activeSnapshotId}`
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          modules: resume.modules,
+          themeColor: resume.themeColor,
+          styleSettings: resume.styleSettings,
+          savedAt: Date.now(),
+        }))
+      } catch { /* ignore */ }
       markClean()
     }
 
+    // ② 进入目标快照：优先加载快照专属本地草稿
+    const targetDraftKey = `resumecraft_snapshot_draft_${snapshot.id}`
+    const targetDraft = (() => { try { return localStorage.getItem(targetDraftKey) } catch { return null } })()
+
+    if (targetDraft) {
+      const parsed = JSON.parse(targetDraft)
+      if (parsed.modules) {
+        initResume({
+          ...resume,
+          modules: parsed.modules as Resume['modules'],
+          themeColor: (parsed.themeColor as Resume['themeColor']) ?? resume.themeColor,
+          styleSettings: (parsed.styleSettings as Resume['styleSettings']) ?? resume.styleSettings,
+        })
+        setActiveSnapshotId(snapshot.id)
+        setBasedOnSnapshotId(snapshot.id)
+        return
+      }
+    }
+
+    // ③ 无本地草稿：从云端加载快照原始内容
     try {
       const { content } = await resumeApi.getSnapshotDetail(resume.id, snapshot.id)
       const c = content as { modules?: unknown[]; themeColor?: string; styleSettings?: unknown }
@@ -82,7 +105,7 @@ const CenterPanel: React.FC = () => {
         setBasedOnSnapshotId(snapshot.id)
       }
     } catch { /* ignore */ }
-  }, [resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, isDirty, isAuthenticated, markClean, basedOnSnapshotId])
+  }, [resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, isDirty, markClean])
 
   // 对比：tooltip 点击「对比」触发
   const handleCompareSnapshot = useCallback(async (snapshotId: string) => {
