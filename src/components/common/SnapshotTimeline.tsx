@@ -103,9 +103,6 @@ export default function SnapshotTimeline({
       <div className="flex items-center justify-center px-4 py-5 relative">
         <div className="absolute left-4 right-4 h-[3px] bg-gray-200 rounded" style={{ top: '50%', transform: 'translateY(-50%)' }} />
 
-        {snapshots.length === 0 && !loading && (
-          <span className="text-xs text-gray-400">点击右上角「新建版本」记录当前版本</span>
-        )}
         {loading && snapshots.length === 0 && (
           <span className="text-xs text-gray-400">加载中...</span>
         )}

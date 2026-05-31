@@ -56,7 +56,8 @@ type PDFConfig struct {
 }
 
 type AIConfig struct {
-	EncryptionKey string
+	EncryptionKey   string
+	SanitizeEnabled bool // 发送前脱敏开关
 }
 
 type StorageConfig struct {
@@ -155,7 +156,8 @@ func Load() Config {
 			PDFScale:              getEnvFloat64("PDF_SCALE", 1),
 		},
 		AI: AIConfig{
-			EncryptionKey: aiEncryptionKey,
+			EncryptionKey:   aiEncryptionKey,
+			SanitizeEnabled: getEnvBool("AI_SANITIZE_ENABLED", true),
 		},
 		Storage: StorageConfig{
 			Endpoint:  getEnv("S3_ENDPOINT", ""),

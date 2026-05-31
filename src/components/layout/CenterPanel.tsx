@@ -23,6 +23,7 @@ const CenterPanel: React.FC = () => {
   const [contentHeight, setContentHeight] = useState(A4_HEIGHT_PX)
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null)
   const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([])
+  const [snapshotsLoaded, setSnapshotsLoaded] = useState(false)
   const isServerResume = resume?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id)
 
   const displayResume = resume
@@ -95,6 +96,7 @@ const CenterPanel: React.FC = () => {
   // 首次加载快照列表（用于显示标签名 + 自动选中最新快照）
   const handleSnapshotsLoaded = useCallback((items: SnapshotListItem[]) => {
     setSnapshots(items)
+    setSnapshotsLoaded(true)
     // 同步到全局 store，供 AI 面板查找快照标签
     setStoreSnapshots(items.map((s) => ({ id: s.id, label: s.label, snapshotType: s.snapshotType })))
     // 如果当前没有活跃快照 ID，或者当前快照 ID 不在列表中（可能被删除），自动选中最新快照
@@ -125,7 +127,12 @@ const CenterPanel: React.FC = () => {
         </div>
       </div>
 
-
+      {/* 无快照提示：显示在工具栏下而非时间线内 */}
+      {isServerResume && snapshotsLoaded && snapshots.length === 0 && (
+        <div className="flex-shrink-0 text-center py-1.5 text-xs text-gray-400 bg-gray-50 border-b border-gray-100">
+          点击右上角「新建版本」记录当前版本
+        </div>
+      )}
 
       {/* 简历画布区域 */}
       <div ref={viewportRef} className="flex-1 overflow-auto no-scrollbar flex items-start justify-center pt-8 pb-12 px-8">

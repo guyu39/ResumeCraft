@@ -13,6 +13,7 @@ import (
 
 	"resumecraft-pdf-backend/internal/config"
 	"resumecraft-pdf-backend/internal/model"
+	"resumecraft-pdf-backend/internal/service/ai/sanitizer"
 	aiStorage "resumecraft-pdf-backend/internal/storage/ai"
 
 	"github.com/google/uuid"
@@ -66,10 +67,16 @@ type service struct {
 	parserCfgRepo     aiStorage.ParserConfigRepository
 	aiProvider        AIProvider
 	encryption        *Encryption
-	redis             *redis.Client // AI 对话缓存
+	redis             *redis.Client    // AI 对话缓存
+	sanitizeCfg       sanitizer.Config // 脱敏配置
 }
 
 func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, suggestRecordRepo aiStorage.SuggestRecordRepository, parserCfgRepo aiStorage.ParserConfigRepository, aiCfg config.AIConfig, redisClient *redis.Client) Service {
+	// 脱敏配置：默认开启，可通过 AI_SANITIZE_ENABLED=false 关闭
+	sanCfg := sanitizer.DefaultConfig()
+	if !aiCfg.SanitizeEnabled {
+		sanCfg.Enabled = false
+	}
 	return &service{
 		repo:              repo,
 		cfgRepo:           cfgRepo,
@@ -78,6 +85,7 @@ func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, s
 		aiProvider:        newAIProvider(aiCfg),
 		encryption:        NewEncryption(aiCfg.EncryptionKey),
 		redis:             redisClient,
+		sanitizeCfg:       sanCfg,
 	}
 }
 
@@ -236,7 +244,23 @@ func (s *service) DeleteConversation(ctx context.Context, userID, conversationID
 	return s.repo.Delete(ctx, userID, conversationID)
 }
 
-// invalidateConvCache 失效某个用户+简历的所有对话列表缓存
+// maskPrompt 对 prompt 做脱敏，返回 (脱敏后文本, 脱敏器)。
+// 若 sanitizer 为 nil 表示脱敏未启用，调用方 skip unmask。
+func (s *service) maskPrompt(prompt string) (string, *sanitizer.Sanitizer) {
+	if !s.sanitizeCfg.Enabled {
+		return prompt, nil
+	}
+	san := sanitizer.New(s.sanitizeCfg)
+	return san.Mask(prompt), san
+}
+
+// unmaskResponse 还原 AI 响应中的占位符
+func (s *service) unmaskResponse(san *sanitizer.Sanitizer, text string) string {
+	if san == nil {
+		return text
+	}
+	return san.Unmask(text)
+}
 func (s *service) invalidateConvCache(ctx context.Context, userID, resumeID string) {
 	if s.redis == nil {
 		return
@@ -270,6 +294,9 @@ func (s *service) EvaluateStream(ctx context.Context, userID string, req model.E
 	// 构建提示词
 	prompt := buildEvaluatePrompt(req.Content)
 
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
+
 	// 调用 AI（流式）
 	evaluateModel := cfg.DefaultModel
 	if cfg.EvaluateModel != nil && *cfg.EvaluateModel != "" {
@@ -294,7 +321,7 @@ func (s *service) EvaluateStream(ctx context.Context, userID string, req model.E
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     evaluateModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 		OnProgress: func(chunk string) {
 			select {
@@ -312,7 +339,7 @@ func (s *service) EvaluateStream(ctx context.Context, userID string, req model.E
 	}
 
 	// 解析 AI 响应
-	fullText := accumulated.String()
+	fullText := s.unmaskResponse(san, accumulated.String())
 	evalResp, err := parseEvaluateResponse(fullText)
 	if err != nil {
 		log.Printf("[ai] Failed to parse evaluate response: %v, text: %s", err, fullText)
@@ -386,6 +413,9 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 	}
 
 	prompt := buildEvaluatePrompt(req.Content)
+
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
 	evaluateModel := cfg.DefaultModel
 	if cfg.EvaluateModel != nil && *cfg.EvaluateModel != "" {
 		evaluateModel = *cfg.EvaluateModel
@@ -517,7 +547,7 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     evaluateModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 		OnProgress: func(chunk string) {
 			ch <- chunk
@@ -531,7 +561,7 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 		return nil, ErrAIRequestFailed
 	}
 
-	fullText := accumulated.String()
+	fullText := s.unmaskResponse(san, accumulated.String())
 
 	// 最终解析（兜底，若流中已完整推送则数据一致）
 	evalResp, err := parseEvaluateResponse(fullText)
@@ -603,6 +633,9 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 
 	jdMatchModel := cfg.DefaultModel
 	prompt := buildJDMatchPrompt(req.Content, req.JDText, req.TargetTitle, req.CompanyName)
+
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
 	onEvent(StreamEvent{Type: "model", Model: jdMatchModel})
 
 	accumulated := &strings.Builder{}
@@ -733,7 +766,7 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     jdMatchModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 		OnProgress: func(chunk string) {
 			ch <- chunk
@@ -746,7 +779,7 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		return nil, ErrAIRequestFailed
 	}
 
-	fullText := accumulated.String()
+	fullText := s.unmaskResponse(san, accumulated.String())
 	jdResp, err := parseJDMatchResponse(fullText)
 	if err != nil {
 		log.Printf("[ai] Failed to parse JD match response: %v, text: %s", err, fullText)
@@ -825,17 +858,22 @@ func (s *service) ScoreResumeForJD(ctx context.Context, userID string, req model
 	}
 
 	prompt := buildJDScorePrompt(req.Content, req.JDText, req.TargetTitle, req.CompanyName)
+
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
 	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     cfg.DefaultModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 	})
 	if err != nil {
 		log.Printf("[ai] ScoreResumeForJD failed: %v", err)
 		return nil, ErrAIRequestFailed
 	}
+	// 还原脱敏
+	result.Text = s.unmaskResponse(san, result.Text)
 
 	jdParsed, summary, improvements, err := parseJDScoreAIResponse(result.Text)
 	if err != nil {
@@ -932,17 +970,22 @@ func (s *service) GenerateCoverLetter(ctx context.Context, userID string, req mo
 	}
 
 	prompt := buildCoverLetterPrompt(req.Content, req.JDText, req.JobTitle, req.CompanyName, req.Tone, req.Language)
+
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
 	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     cfg.DefaultModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 	})
 	if err != nil {
 		log.Printf("[ai] GenerateCoverLetter failed: %v", err)
 		return nil, ErrAIRequestFailed
 	}
+	// 还原脱敏
+	result.Text = s.unmaskResponse(san, result.Text)
 
 	coverResp, err := parseCoverLetterResponse(result.Text)
 	if err != nil {
@@ -1149,18 +1192,23 @@ func (s *service) Suggest(ctx context.Context, userID string, req model.SuggestR
 	// 构建提示词
 	prompt := buildSuggestPrompt(req.ModuleType, req.FieldKey, req.Content)
 
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
+
 	// 调用 AI
 	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     cfg.DefaultModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 	})
 	if err != nil {
 		log.Printf("[ai] Suggest failed: %v", err)
 		return nil, ErrAIRequestFailed
 	}
+	// 还原脱敏
+	result.Text = s.unmaskResponse(san, result.Text)
 
 	// 解析响应
 	suggestResp, err := parseSuggestResponse(result.Text)
@@ -1383,8 +1431,10 @@ func truncateString(value string, maxLength int) string {
 func buildEvaluatePrompt(content map[string]interface{}) string {
 	var sb strings.Builder
 	sb.WriteString("你是资深简历评估顾问，严格遵守以下所有规则，禁止任何违规输出，禁止对空内容/无有效信息的简历给出任何形式的高分。\n")
+	sb.WriteString("\n【隐私保护声明 — 必须遵守】\n")
+	sb.WriteString("简历中以 [NAME_N]、[PHONE_N]、[EMAIL_N]、[ADDR_N]、[URL_N]、[ID_N]、[CODE_N]、[COMP_N]、[SALARY_N] 等固定格式出现的内容均为已填写真实信息的隐私脱敏标记，不是缺失、不是占位、不是无效内容。你必须在评估中将其视为已填写的有效信息，禁止将这些标记判定为\"未填写\"\"占位符\"\"缺失\"\"不完整\"等质量问题。\n")
 	sb.WriteString("【基础定义强制规则】\n")
-	sb.WriteString("1. 有效内容定义：仅指能支撑求职画像的、非空的、有具体信息的内容，包括但不限于完整的个人求职信息、教育经历、工作经历、项目经历、技能成果等；空白字段、仅占位无实质信息的内容、无意义字符，均不属于有效内容。\n")
+	sb.WriteString("1. 有效内容定义：仅指能支撑求职画像的、非空的、有具体信息的内容，包括但不限于完整的个人求职信息、教育经历、工作经历、项目经历、技能成果等；空白字段、无意义字符、纯标点符号，不属于有效内容。注意：[NAME_N]、[PHONE_N] 等固定格式为隐私脱敏标记，属于有效内容。\n")
 	sb.WriteString("2. 核心必填模块定义：个人信息（含求职意向）、教育背景、工作经历/项目经历（应届生至少有一项），以上为简历必须有有效内容的核心模块，缺一不可。\n")
 	sb.WriteString("3. 空简历判定：核心必填模块均无有效内容，直接判定为无效空简历，强制执行后续兜底扣分规则。\n")
 
@@ -1439,6 +1489,9 @@ func buildJDMatchPrompt(content map[string]interface{}, jdText, targetTitle, com
 	resumeJSON, _ := json.Marshal(sanitizeAIResumeContent(content))
 	return fmt.Sprintf(`你是资深招聘顾问和简历优化专家，请基于候选人简历与目标岗位 JD 做匹配分析。
 
+【隐私保护声明 — 必须遵守】
+简历中以 [NAME_N]、[PHONE_N]、[EMAIL_N]、[ADDR_N]、[URL_N]、[ID_N]、[CODE_N]、[COMP_N]、[SALARY_N] 等固定格式出现的内容均为已填写真实信息的隐私脱敏标记，不是缺失、不是占位、不是无效内容。你必须在分析中将其视为已填写的有效信息，禁止将这些标记判定为"未填写""占位符""缺失""不完整"等质量问题。
+
 【输出格式强制规则】
 1. 必须使用 JSON Lines 格式输出，每行一个完整 JSON 对象，每行以换行符结尾。
 2. 禁止输出 Markdown、解释性文字、代码块或任何非 JSON 内容。
@@ -1479,6 +1532,9 @@ func buildJDMatchPrompt(content map[string]interface{}, jdText, targetTitle, com
 func buildJDScorePrompt(content map[string]interface{}, jdText, targetTitle, companyName string) string {
 	resumeJSON, _ := json.Marshal(sanitizeAIResumeContent(content))
 	return fmt.Sprintf(`你是资深招聘需求分析专家，请将目标岗位 JD 解析为结构化 JSON，并给出简历匹配概述。
+
+【隐私保护声明 — 必须遵守】
+简历中以 [NAME_N]、[PHONE_N]、[EMAIL_N] 等固定格式出现的内容均为已填写真实信息的隐私脱敏标记，禁止将其判定为无效或缺失。
 
 【强制规则】
 1. 只返回一个 JSON 对象，禁止 Markdown、代码块、注释或额外说明。
@@ -1533,6 +1589,9 @@ func buildCoverLetterPrompt(content map[string]interface{}, jdText, jobTitle, co
 
 	return fmt.Sprintf(`你是资深职业顾问，请基于候选人简历和目标岗位信息生成专业求职信或投递邮件正文。
 
+【隐私保护声明 — 必须遵守】
+简历中以 [NAME_N]、[PHONE_N]、[EMAIL_N] 等固定格式出现的内容均为已填写真实信息的隐私脱敏标记。生成的求职信中可以保留这些脱敏标记，禁止将其视为缺失或错误。
+
 【强制规则】
 1. 只返回一个 JSON 对象，禁止输出 Markdown、代码块、注释或额外说明。
 2. 不编造简历中不存在的经历、公司、奖项或数据。
@@ -1569,6 +1628,9 @@ func buildCoverLetterPrompt(content map[string]interface{}, jdText, jobTitle, co
 
 func buildSuggestPrompt(moduleType, fieldKey, content string) string {
 	return fmt.Sprintf(`你是资深简历润色专家，严格遵循以下规则提供修改建议，禁止任何违规输出。
+
+【隐私保护声明 — 必须遵守】
+原文中以 [NAME_N]、[PHONE_N]、[EMAIL_N] 等固定格式出现的内容为隐私脱敏标记，润色时必须原样保留这些标记，禁止修改或删除。
 
 【核心规则】
 1. 结合模块类型和字段特性给出针对性建议，不同模块润色重点不同：
