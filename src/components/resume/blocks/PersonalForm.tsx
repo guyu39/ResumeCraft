@@ -76,18 +76,25 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
   const extraInfos = data.extraInfos ?? []
 
   const addExtraInfo = () => {
-    update('extraInfos', [...extraInfos, { id: `extra-${Date.now()}`, title: '', value: '' }])
+    // 使用函数式更新，基于 store 中最新 extraInfos 构造更新，避免陈旧闭包
+    updateModuleData(moduleId, (prev) => {
+      const prevExtra = (prev as PersonalData).extraInfos ?? []
+      return { extraInfos: [...prevExtra, { id: `extra-${Date.now()}`, title: '', value: '' }] }
+    })
   }
 
   const removeExtraInfo = (id: string) => {
-    update('extraInfos', extraInfos.filter((item) => item.id !== id))
+    updateModuleData(moduleId, (prev) => {
+      const prevExtra = (prev as PersonalData).extraInfos ?? []
+      return { extraInfos: prevExtra.filter((item) => item.id !== id) }
+    })
   }
 
   const updateExtraInfo = (id: string, partial: { title?: string; value?: string }) => {
-    update(
-      'extraInfos',
-      extraInfos.map((item) => (item.id === id ? { ...item, ...partial } : item))
-    )
+    updateModuleData(moduleId, (prev) => {
+      const prevExtra = (prev as PersonalData).extraInfos ?? []
+      return { extraInfos: prevExtra.map((item) => (item.id === id ? { ...item, ...partial } : item)) }
+    })
   }
 
   const handleBlur = (field: keyof FieldErrors) => {

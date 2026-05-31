@@ -66,7 +66,10 @@ const EducationForm: React.FC<EducationFormProps> = ({ moduleId, items }) => {
   }
 
   const updateItem = (id: string, partial: Partial<EducationItem>) => {
-    update(items.map((item) => (item.id === id ? { ...item, ...partial } : item)))
+    // 使用函数式更新，基于 store 中最新数据构造更新，避免陈旧闭包
+    updateModuleData(moduleId, (prev) => ({
+      items: ((prev as { items: EducationItem[] }).items ?? items).map((item) => (item.id === id ? { ...item, ...partial } : item)),
+    }) as unknown as Partial<{ items: EducationItem[] }>)
   }
 
   const handleDateRangeChange = (id: string, start: string, end: string) => {

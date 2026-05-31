@@ -369,9 +369,13 @@ export async function flushToCloud(): Promise<boolean> {
 // ---------- 防抖保存 ----------
 const debouncedSave = debounce((resume: Resume) => {
   saveToStorage(resume)
-  // 标记脏数据：有未落库的修改
-  useResumeStore.getState().markDirty()
 }, 2000)
+
+// 标记脏数据 + 防抖保存到 localStorage
+function markDirtyAndSave(resume: Resume) {
+  useResumeStore.getState().markDirty()
+  debouncedSave(resume)
+}
 
 // 强制刷新：退出前立即保存到 localStorage
 function flushDraft() {
@@ -430,9 +434,10 @@ interface ResumeStoreActions {
   setActiveModule: (moduleId: string | null) => void
 
   // 更新指定模块的数据（深度合并）
+  // 支持直接传 partial 或函数式更新 (prev => partial)
   updateModuleData: <T extends ModuleData>(
     moduleId: string,
-    data: Partial<T>
+    data: Partial<T> | ((prev: ModuleData) => Partial<T>)
   ) => void
 
   // 更新指定模块标题
@@ -534,7 +539,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         modules,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -547,7 +552,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         template,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -576,7 +581,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         styleSettings: merged,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -589,7 +594,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         themeColor: color,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -612,7 +617,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         styleSettings: merged,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -623,13 +628,18 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   },
 
   // ---------- updateModuleData ----------
+  // 支持两种调用方式：
+  // 1. 直接传 partial：updateModuleData(id, { content: 'new' })
+  // 2. 函数式更新：updateModuleData(id, prev => ({ items: prev.items.map(...) }))
+  //    函数式更新基于 store 中最新数据构造更新，避免陈旧闭包覆盖问题
   updateModuleData: (moduleId, data) => {
     set((state) => {
       const modules = state.resume.modules.map((m) => {
         if (m.id !== moduleId) return m
+        const resolvedData = typeof data === 'function' ? data(m.data) : data
         const updatedData = {
           ...m.data,
-          ...data,
+          ...resolvedData,
         } as ModuleData
         return { ...m, data: updatedData }
       })
@@ -638,7 +648,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         modules,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -656,7 +666,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         modules,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -682,7 +692,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         modules,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next, activeModuleId: newModule.id }
     })
   },
@@ -706,7 +716,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         modules,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next, activeModuleId: nextActiveId }
     })
   },
@@ -724,7 +734,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         modules,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -741,7 +751,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         modules,
         updatedAt: Date.now(),
       }
-      debouncedSave(next)
+      markDirtyAndSave(next)
       return { resume: next }
     })
   },
@@ -798,7 +808,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
     if (!normalizedTitle) return
     set((state) => {
       const updated = { ...state.resume, title: normalizedTitle, updatedAt: Date.now() }
-      saveToStorage(updated)
+      markDirtyAndSave(updated)
       return { resume: updated }
     })
   },

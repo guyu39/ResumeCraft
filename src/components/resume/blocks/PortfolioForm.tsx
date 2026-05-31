@@ -35,7 +35,10 @@ const PortfolioForm: React.FC<PortfolioFormProps> = ({ moduleId, items }) => {
   }
 
   const updateItem = (id: string, partial: Partial<PortfolioItem>) => {
-    update(items.map((item) => (item.id === id ? { ...item, ...partial } : item)))
+    // 使用函数式更新，基于 store 中最新数据构造更新，避免陈旧闭包
+    updateModuleData(moduleId, (prev) => ({
+      items: ((prev as { items: PortfolioItem[] }).items ?? items).map((item) => (item.id === id ? { ...item, ...partial } : item)),
+    }) as unknown as Partial<{ items: PortfolioItem[] }>)
   }
 
   return (

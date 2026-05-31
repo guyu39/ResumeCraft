@@ -20,7 +20,8 @@ const SkillsForm: React.FC<SkillsFormProps> = ({ moduleId, data }) => {
   const content = data.content ?? ''
 
   const updateContent = (next: string) => {
-    updateModuleData(moduleId, { ...data, content: next } as unknown as Partial<SkillsData>)
+    // 使用函数式更新，避免陈旧闭包覆盖 store 中的其他字段
+    updateModuleData(moduleId, (prev) => ({ ...prev, content: next } as unknown as Partial<SkillsData>))
   }
 
   return (

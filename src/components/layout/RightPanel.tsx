@@ -1428,7 +1428,7 @@ const RightPanel: React.FC = () => {
                         className="flex-1 overflow-y-auto no-scrollbar px-5 py-4 editor-form-shell"
                     >
                         {activeModule ? (
-                            <div className="pb-8">
+                            <div className="pb-8" key={activeModule.id}>
                                 {renderModuleForm(
                                     activeModule.type,
                                     activeModule.id,

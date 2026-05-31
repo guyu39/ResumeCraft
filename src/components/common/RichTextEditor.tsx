@@ -7,8 +7,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered } from 'lucide-react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import Underline from '@tiptap/extension-underline'
-import Link from '@tiptap/extension-link'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import type { ModuleType } from '@/types/resume'
@@ -111,12 +109,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
     const editor = useEditor({
         extensions: [
-            StarterKit,
-            Underline,
-            Link.configure({
-                openOnClick: false,
-                autolink: true,
-                defaultProtocol: 'https',
+            StarterKit.configure({
+                link: {
+                    openOnClick: false,
+                    autolink: true,
+                    defaultProtocol: 'https',
+                },
             }),
         ],
         content: 转为编辑器HTML(value),
@@ -160,13 +158,32 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         },
     })
 
+    const editorReadyRef = useRef(false)
+
+    // 挂载/重挂载时强制同步 —— tiptap 的 content 参数是劝告性的，
+    // 在 React 18 StrictMode 下编辑器可能被创建-销毁-重建，初始 content 不保证生效。
+    // 需要在 editor 首次就绪后显式 setContent，不做比较、直接覆盖。
     useEffect(() => {
-        if (!editor) return
-        const next = 转为编辑器HTML(value)
-        if (editor.getHTML() !== next) {
-            editor.commands.setContent(next, { emitUpdate: false })
-            上次合法HTML引用.current = next
-        }
+      if (!editor) {
+        editorReadyRef.current = false
+        return
+      }
+      const next = 转为编辑器HTML(value)
+      editor.commands.setContent(next, { emitUpdate: false })
+      上次合法HTML引用.current = next
+      editorReadyRef.current = true
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor])
+
+    // 外部 value 变化时比较同步 —— 仅在 editor 就绪后生效，
+    // 用于处理 store 数据被外部更新（AI 生成、快照恢复等）的场景
+    useEffect(() => {
+      if (!editor || !editorReadyRef.current) return
+      const next = 转为编辑器HTML(value)
+      if (editor.getHTML() !== next) {
+        editor.commands.setContent(next, { emitUpdate: false })
+        上次合法HTML引用.current = next
+      }
     }, [editor, value])
 
     useEffect(() => {

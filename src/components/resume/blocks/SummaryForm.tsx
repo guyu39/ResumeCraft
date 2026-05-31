@@ -19,7 +19,8 @@ const SummaryForm: React.FC<SummaryFormProps> = ({ moduleId, data }) => {
   const { t } = useI18n()
 
   const update = (content: string) => {
-    updateModuleData(moduleId, { content } as unknown as Partial<SummaryData>)
+    // 使用函数式更新，避免陈旧闭包覆盖 store 中的其他字段
+    updateModuleData(moduleId, (prev) => ({ ...prev, content }) as unknown as Partial<SummaryData>)
   }
 
   const charCount = data.content.length

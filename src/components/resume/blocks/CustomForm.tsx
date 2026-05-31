@@ -24,15 +24,22 @@ const CustomForm: React.FC<CustomFormProps> = ({ moduleId, data }) => {
   const buildCustomModuleTitle = (name: string) => name.trim() || '自定义模块'
 
   const updateData = (partial: Partial<CustomData>) => {
-    const nextData = { ...data, ...partial }
-    updateModuleData(moduleId, nextData as unknown as Partial<CustomData>)
+    // 使用函数式更新，基于 store 中最新数据构造更新，避免陈旧闭包
+    updateModuleData(moduleId, (prev) => {
+      const prevData = prev as CustomData
+      return { ...prevData, ...partial }
+    })
     if (typeof partial.title === 'string') {
       updateModuleTitle(moduleId, buildCustomModuleTitle(partial.title))
     }
   }
 
   const updateItem = (id: string, partial: Partial<CustomItem>) => {
-    updateData({ items: data.items.map((item) => (item.id === id ? { ...item, ...partial } : item)) })
+    // 使用函数式更新，基于 store 中最新数据构造更新，避免陈旧闭包
+    updateModuleData(moduleId, (prev) => {
+      const prevData = prev as CustomData
+      return { items: (prevData.items ?? data.items).map((item) => (item.id === id ? { ...item, ...partial } : item)) }
+    })
   }
 
   const addItem = () => {
