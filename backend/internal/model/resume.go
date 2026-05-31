@@ -1,5 +1,7 @@
 package model
 
+import "encoding/json"
+
 // ResumeListItem 简历列表项
 type ResumeListItem struct {
 	ID        string `json:"id"`
@@ -11,9 +13,10 @@ type ResumeListItem struct {
 
 // ResumeContent 简历内容结构（内部使用）
 type ResumeContent struct {
-	ThemeColor    string                   `json:"themeColor"`
-	StyleSettings ResumeStyleSettings      `json:"styleSettings"`
-	Modules       []map[string]interface{} `json:"modules"`
+	ThemeColor        string                   `json:"themeColor"`
+	StyleSettings     ResumeStyleSettings      `json:"styleSettings"`
+	Modules           []map[string]interface{} `json:"modules"`
+	BasedOnSnapshotID *string                  `json:"basedOnSnapshotId,omitempty"`
 }
 
 // ResumeStyleSettings 简历样式设置
@@ -33,17 +36,19 @@ type ResumeStyleSettings struct {
 
 // ResumeDetail 简历详情（与前端 Resume 类型对齐）
 type ResumeDetail struct {
-	ID               string                   `json:"id"`
-	Title            string                   `json:"title"`
-	Locale           string                   `json:"locale"`
-	Template         string                   `json:"template"`
-	ThemeColor       string                   `json:"themeColor"`
-	StyleSettings    ResumeStyleSettings      `json:"styleSettings"`
-	Modules          []map[string]interface{} `json:"modules"`
-	LatestVersionID  *string                  `json:"latestVersionId"`
-	LatestSnapshotID *string                  `json:"latestSnapshotId,omitempty"` // 最新的 manual/default 快照 ID
-	UpdatedAt        int64                    `json:"updatedAt"`                  // 前端期望时间戳
-	CreatedAt        int64                    `json:"createdAt"`                  // 前端期望时间戳
+	ID                string                     `json:"id"`
+	Title             string                     `json:"title"`
+	Locale            string                     `json:"locale"`
+	Template          string                     `json:"template"`
+	ThemeColor        string                     `json:"themeColor"`
+	StyleSettings     ResumeStyleSettings        `json:"styleSettings"`
+	Modules           []map[string]interface{}   `json:"modules"`
+	LatestVersionID   *string                    `json:"latestVersionId"`
+	LatestSnapshotID  *string                    `json:"latestSnapshotId,omitempty"`  // 最新的 manual/default 快照 ID
+	BasedOnSnapshotID *string                    `json:"basedOnSnapshotId,omitempty"` // 当前编辑基于的快照 ID
+	SnapshotDrafts    map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`    // 快照专属草稿 Map<snapshotId, DraftContent>
+	UpdatedAt         int64                      `json:"updatedAt"`                   // 前端期望时间戳
+	CreatedAt         int64                      `json:"createdAt"`                   // 前端期望时间戳
 }
 
 // CreateResumeRequest 创建简历请求
@@ -58,12 +63,13 @@ type CreateResumeRequest struct {
 
 // UpdateResumeRequest 更新简历请求
 type UpdateResumeRequest struct {
-	Title             string                   `json:"title" binding:"max=255"`
-	ThemeColor        string                   `json:"themeColor"`
-	StyleSettings     *ResumeStyleSettings     `json:"styleSettings"`
-	Modules           []map[string]interface{} `json:"modules"`
-	ClientUpdatedAt   int64                    `json:"clientUpdatedAt"`
-	BasedOnSnapshotID *string                  `json:"basedOnSnapshotId,omitempty"` // 当前编辑基于的快照 ID
+	Title             string                     `json:"title" binding:"max=255"`
+	ThemeColor        string                     `json:"themeColor"`
+	StyleSettings     *ResumeStyleSettings       `json:"styleSettings"`
+	Modules           []map[string]interface{}   `json:"modules"`
+	ClientUpdatedAt   int64                      `json:"clientUpdatedAt"`
+	BasedOnSnapshotID *string                    `json:"basedOnSnapshotId,omitempty"` // 当前编辑基于的快照 ID
+	SnapshotDrafts    map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`    // 快照专属草稿批量更新
 }
 
 // Pagination 分页信息

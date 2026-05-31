@@ -16,6 +16,22 @@ function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 }
 
+/** 从云端响应恢复快照专属草稿到 localStorage + 恢复 basedOnSnapshotId */
+function restoreCloudSnapshotData(cloudResume: any) {
+  // 恢复快照草稿到 localStorage（确保重入后可被 handleSelectSnapshot 读取）
+  if (cloudResume?.snapshotDrafts && typeof cloudResume.snapshotDrafts === 'object') {
+    for (const [snapshotId, draft] of Object.entries(cloudResume.snapshotDrafts)) {
+      try {
+        localStorage.setItem(`resumecraft_snapshot_draft_${snapshotId}`, JSON.stringify(draft))
+      } catch { /* ignore */ }
+    }
+  }
+  // 恢复 basedOnSnapshotId，使 handleSnapshotsLoaded 能选中正确的快照
+  if (cloudResume?.basedOnSnapshotId) {
+    useResumeStore.getState().setBasedOnSnapshotId(cloudResume.basedOnSnapshotId)
+  }
+}
+
 const App: React.FC = () => {
   const { initResume, loadFromStorage } = useResumeStore()
   const { isAuthenticated, checkAuth, logout } = useAuthStore()
@@ -76,6 +92,9 @@ const App: React.FC = () => {
           // 自动加载第一份简历
           const firstResume = await resumeApi.get(result.items[0].id)
           if (firstResume) {
+            // 先恢复快照草稿和 basedOnSnapshotId（必须在 initResume 之前，
+            // 否则 initResume → saveToStorage 会用 null 覆盖 basedOnSnapshotId）
+            restoreCloudSnapshotData(firstResume)
             initResume({
               id: firstResume.id,
               title: firstResume.title,
@@ -94,6 +113,8 @@ const App: React.FC = () => {
           try {
             const currentResume = await resumeApi.get(currentId)
             if (currentResume) {
+              // 先恢复快照草稿和 basedOnSnapshotId（必须在 initResume 之前）
+              restoreCloudSnapshotData(currentResume)
               initResume({
                 id: currentResume.id,
                 title: currentResume.title,

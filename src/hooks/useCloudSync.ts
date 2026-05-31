@@ -22,6 +22,26 @@ function serializeResume(r: Resume): string {
   return JSON.stringify({ title: r.title, themeColor: r.themeColor, styleSettings: r.styleSettings, modules: r.modules })
 }
 
+/** 收集 localStorage 中所有快照专属草稿 → Map<snapshotId, DraftContent> */
+function collectSnapshotDrafts(): Record<string, unknown> {
+  const drafts: Record<string, unknown> = {}
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('resumecraft_snapshot_draft_')) {
+        const snapshotId = key.slice('resumecraft_snapshot_draft_'.length)
+        const raw = localStorage.getItem(key)
+        if (raw) {
+          try {
+            drafts[snapshotId] = JSON.parse(raw)
+          } catch { /* 忽略损坏的草稿 */ }
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return drafts
+}
+
 export function useCloudSync() {
   const resume = useResumeStore((s) => s.resume)
   const isDirty = useResumeStore((s) => s.isDirty)
@@ -68,11 +88,13 @@ export function useCloudSync() {
 
     // beforeunload 场景：fetch + keepalive + auth header
     if (useBeacon) {
+      const snapshotDrafts = collectSnapshotDrafts()
       const body = JSON.stringify({
         title: resume.title, themeColor: resume.themeColor,
         styleSettings: resume.styleSettings, modules: resume.modules,
         clientUpdatedAt: Date.now(),
         basedOnSnapshotId: basedOnSnapshotId || undefined,
+        snapshotDrafts: Object.keys(snapshotDrafts).length > 0 ? snapshotDrafts : undefined,
       })
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       const token = localStorage.getItem('accessToken')
@@ -86,11 +108,13 @@ export function useCloudSync() {
     setSaveStatus('saving')
 
     try {
+      const snapshotDrafts = collectSnapshotDrafts()
       const resp = await resumeApi.update(targetId, {
         title: resume.title, themeColor: resume.themeColor,
         styleSettings: resume.styleSettings, modules: resume.modules,
         clientUpdatedAt: Date.now(),
         basedOnSnapshotId: basedOnSnapshotId || undefined,
+        snapshotDrafts: Object.keys(snapshotDrafts).length > 0 ? snapshotDrafts : undefined,
       })
       lastSyncedDataRef.current = currentData
       setLastSyncedAt(Date.now())

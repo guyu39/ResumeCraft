@@ -177,15 +177,20 @@ func (r *repository) Create(ctx context.Context, userID string, req model.Create
 func (r *repository) GetByID(ctx context.Context, userID, resumeID string) (*model.ResumeDetail, error) {
 	var detail model.ResumeDetail
 	var contentJSON []byte
+	var snapshotDraftsJSON []byte
 	var updatedAt, createdAt time.Time
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, title, locale, template, content, latest_version_id, updated_at, created_at
+		SELECT id, title, locale, template, content, latest_version_id,
+		       based_on_snapshot_id, COALESCE(snapshot_drafts, '{}'),
+		       updated_at, created_at
 		FROM resumes
 		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 	`, resumeID, userID).Scan(
 		&detail.ID, &detail.Title, &detail.Locale, &detail.Template,
-		&contentJSON, &detail.LatestVersionID, &updatedAt, &createdAt,
+		&contentJSON, &detail.LatestVersionID,
+		&detail.BasedOnSnapshotID, &snapshotDraftsJSON,
+		&updatedAt, &createdAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -205,6 +210,14 @@ func (r *repository) GetByID(ctx context.Context, userID, resumeID string) (*mod
 	detail.Modules = content.Modules
 	detail.UpdatedAt = updatedAt.UnixMilli()
 	detail.CreatedAt = createdAt.UnixMilli()
+
+	// 解析快照草稿
+	if len(snapshotDraftsJSON) > 0 && string(snapshotDraftsJSON) != "{}" {
+		var drafts map[string]json.RawMessage
+		if err := json.Unmarshal(snapshotDraftsJSON, &drafts); err == nil {
+			detail.SnapshotDrafts = drafts
+		}
+	}
 
 	// 查询最新的 manual 或 default 快照 ID（用于前端进入时定位当前快照）
 	var latestSnapshotID *string
@@ -264,6 +277,38 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		}
 		updates = append(updates, fmt.Sprintf("content = $%d", argIdx))
 		args = append(args, contentJSON)
+		argIdx++
+	}
+
+	// 更新 based_on_snapshot_id（追踪当前编辑基于的快照）
+	if req.BasedOnSnapshotID != nil {
+		updates = append(updates, fmt.Sprintf("based_on_snapshot_id = $%d", argIdx))
+		args = append(args, *req.BasedOnSnapshotID)
+		argIdx++
+	}
+
+	// 批量更新快照专属草稿：与现有 snapshot_drafts 合并（upsert 语义）
+	if req.SnapshotDrafts != nil && len(req.SnapshotDrafts) > 0 {
+		var existingDrafts map[string]json.RawMessage
+		var existingDraftsJSON []byte
+		_ = r.pool.QueryRow(ctx, "SELECT COALESCE(snapshot_drafts, '{}') FROM resumes WHERE id = $1", resumeID).Scan(&existingDraftsJSON)
+		if len(existingDraftsJSON) > 0 {
+			json.Unmarshal(existingDraftsJSON, &existingDrafts)
+		}
+		if existingDrafts == nil {
+			existingDrafts = make(map[string]json.RawMessage)
+		}
+
+		for k, v := range req.SnapshotDrafts {
+			existingDrafts[k] = v
+		}
+
+		mergedJSON, err := json.Marshal(existingDrafts)
+		if err != nil {
+			return nil, fmt.Errorf("marshal snapshot_drafts: %w", err)
+		}
+		updates = append(updates, fmt.Sprintf("snapshot_drafts = $%d", argIdx))
+		args = append(args, mergedJSON)
 		argIdx++
 	}
 

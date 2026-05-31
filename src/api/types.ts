@@ -95,6 +95,8 @@ export interface ResumeDetail {
   modules: unknown[]
   latestVersionId: string
   latestSnapshotId?: string // 最新的 manual/default 快照 ID
+  basedOnSnapshotId?: string // 当前编辑基于的快照 ID
+  snapshotDrafts?: Record<string, unknown> // 快照专属草稿 Map<snapshotId, DraftContent>
   updatedAt: number
   createdAt: number
 }
@@ -115,6 +117,7 @@ export interface UpdateResumeRequest {
   modules?: unknown[]
   clientUpdatedAt?: number
   basedOnSnapshotId?: string // 当前编辑基于的快照 ID
+  snapshotDrafts?: Record<string, unknown> // 快照专属草稿批量更新
 }
 
 export interface ResumeUpdateResponse {
