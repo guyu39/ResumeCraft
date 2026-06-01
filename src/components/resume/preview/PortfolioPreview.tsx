@@ -11,14 +11,15 @@ interface PortfolioPreviewProps {
   items: PortfolioItem[]
   themeColor: string
   title?: string
+  moduleId?: string
 }
 
-const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({ items, themeColor, title = '作品' }) => {
+const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({ items, themeColor, title = '作品', moduleId }) => {
   const { t } = useI18n()
   const validItems = items.filter((item) => item.title || item.url)
 
   return (
-    <ModuleSection title={title} themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {validItems.length === 0 ? (
         <p className="text-[9pt] text-gray-300 italic">{t('portfolio.fillPortfolio')}</p>
       ) : (

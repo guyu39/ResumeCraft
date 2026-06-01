@@ -12,9 +12,10 @@ interface ProjectPreviewProps {
   items: ProjectItem[]
   themeColor: string
   title?: string
+  moduleId?: string
 }
 
-const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor, title = '项目经历' }) => {
+const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor, title = '项目经历', moduleId }) => {
   const { t } = useI18n()
   const validItems = items.filter((item) => item.name || item.role)
 
@@ -33,7 +34,7 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor, titl
   }
 
   return (
-    <ModuleSection title={title} themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {validItems.length === 0 ? (
         <p className="text-[9pt] text-gray-300 italic">{t('project.fillProject')}</p>
       ) : (

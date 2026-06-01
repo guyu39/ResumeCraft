@@ -142,6 +142,16 @@ body {
   font-size: calc(26pt * var(--resume-font-scale)) !important;
 }
 
+/* 预览区点击跳转：hover 时轻微高亮，提示可点击 */
+.resume-preview-content [data-module-id] {
+  transition: background-color 0.15s ease;
+  border-radius: 4px;
+}
+
+.resume-preview-content [data-module-id]:hover {
+  background-color: rgba(37, 99, 235, 0.04);
+}
+
 /* 打印样式优化 */
 @media print {
   body {

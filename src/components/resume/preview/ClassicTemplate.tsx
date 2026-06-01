@@ -45,25 +45,25 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({ resume }) => {
     const { type, id, data, title } = module
     switch (type) {
       case 'education':
-        return <EducationPreview key={id} items={(data as { items: EducationItem[] }).items} themeColor={themeColor} title={title} />
+        return <EducationPreview key={id} moduleId={id} items={(data as { items: EducationItem[] }).items} themeColor={themeColor} title={title} />
       case 'work':
-        return <WorkPreview key={id} items={(data as { items: WorkItem[] }).items} themeColor={themeColor} title={title} />
+        return <WorkPreview key={id} moduleId={id} items={(data as { items: WorkItem[] }).items} themeColor={themeColor} title={title} />
       case 'project':
-        return <ProjectPreview key={id} items={(data as { items: ProjectItem[] }).items} themeColor={themeColor} title={title} />
+        return <ProjectPreview key={id} moduleId={id} items={(data as { items: ProjectItem[] }).items} themeColor={themeColor} title={title} />
       case 'skills':
-        return <SkillsPreview key={id} data={data as SkillsData} themeColor={themeColor} title={title} />
+        return <SkillsPreview key={id} moduleId={id} data={data as SkillsData} themeColor={themeColor} title={title} />
       case 'awards':
-        return <AwardsPreview key={id} items={(data as { items: AwardItem[] }).items} themeColor={themeColor} title={title} />
+        return <AwardsPreview key={id} moduleId={id} items={(data as { items: AwardItem[] }).items} themeColor={themeColor} title={title} />
       case 'summary':
-        return <SummaryPreview key={id} data={data as SummaryData} themeColor={themeColor} title={title} />
+        return <SummaryPreview key={id} moduleId={id} data={data as SummaryData} themeColor={themeColor} title={title} />
       case 'certificates':
-        return <CertificatesPreview key={id} items={(data as { items: CertificateItem[] }).items} themeColor={themeColor} title={title} />
+        return <CertificatesPreview key={id} moduleId={id} items={(data as { items: CertificateItem[] }).items} themeColor={themeColor} title={title} />
       case 'portfolio':
-        return <PortfolioPreview key={id} items={(data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={title} />
+        return <PortfolioPreview key={id} moduleId={id} items={(data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={title} />
       case 'languages':
-        return <LanguagesPreview key={id} items={(data as { items: LanguageItem[] }).items} themeColor={themeColor} title={title} />
+        return <LanguagesPreview key={id} moduleId={id} items={(data as { items: LanguageItem[] }).items} themeColor={themeColor} title={title} />
       case 'custom':
-        return <CustomPreview key={id} data={data as CustomData} themeColor={themeColor} title={title} />
+        return <CustomPreview key={id} moduleId={id} data={data as CustomData} themeColor={themeColor} title={title} />
       default:
         return null
     }
@@ -93,7 +93,7 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({ resume }) => {
       }}
     >
       {personalModule && (
-        <PersonalPreview data={personalModule.data as PersonalData} themeColor={themeColor} />
+        <PersonalPreview moduleId={personalModule.id} data={personalModule.data as PersonalData} themeColor={themeColor} />
       )}
       {otherModules.map(renderModule)}
     </div>

@@ -7,11 +7,12 @@ import React from 'react'
 interface ModuleSectionProps {
   title: string
   themeColor: string
+  moduleId?: string
   children: React.ReactNode
 }
 
-const ModuleSection: React.FC<ModuleSectionProps> = ({ title, themeColor, children }) => (
-  <div data-page-break-candidate style={{ marginBottom: 'var(--module-spacing, 20px)' }}>
+const ModuleSection: React.FC<ModuleSectionProps> = ({ title, themeColor, moduleId, children }) => (
+  <div data-page-break-candidate data-module-id={moduleId} style={{ marginBottom: 'var(--module-spacing, 20px)' }}>
     <div className="resume-module-title mb-2.5">
       <div
         className="resume-module-title-marker w-1 h-4 rounded-full flex-shrink-0"

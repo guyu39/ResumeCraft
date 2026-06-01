@@ -10,9 +10,10 @@ import { useI18n } from '@/hooks/useI18n'
 interface PersonalPreviewProps {
   data: PersonalData
   themeColor: string
+  moduleId?: string
 }
 
-const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) => {
+const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, moduleId }) => {
   const { t, te, locale } = useI18n()
 
   const {
@@ -67,7 +68,7 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor }) =
   ]
 
   return (
-    <div className="flex items-start gap-4 mb-2">
+    <div className="flex items-start gap-4 mb-2" data-module-id={moduleId}>
       {/* 左侧：姓名 + 求职意向 + 联系方式 */}
       <div className="flex-1 min-w-0">
         <h1 className="text-[22pt] font-bold mb-0.5" style={{ color: themeColor }}>

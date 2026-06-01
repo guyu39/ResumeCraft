@@ -15,7 +15,7 @@ const FIT_BOOST_RATIO = 1.3
 const MAX_PREVIEW_SCALE = 1.3
 
 const CenterPanel: React.FC = () => {
-  const { resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, isDirty, markClean, setSnapshots: setStoreSnapshots } = useResumeStore()
+  const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, isDirty, markClean, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
   const [contentHeight, setContentHeight] = useState(A4_HEIGHT_PX)
@@ -50,6 +50,20 @@ const CenterPanel: React.FC = () => {
   }, [viewportSize])
 
   const finalScale = Math.min(autoFitScale * FIT_BOOST_RATIO, MAX_PREVIEW_SCALE)
+
+  // 预览区点击 → 跳转到对应模块编辑
+  const handlePreviewClick = useCallback((e: React.MouseEvent) => {
+    // 从点击目标向上查找最近的 data-module-id 元素
+    let target = e.target as HTMLElement | null
+    while (target && target !== e.currentTarget) {
+      const moduleId = target.getAttribute('data-module-id')
+      if (moduleId) {
+        setActiveModule(moduleId)
+        return
+      }
+      target = target.parentElement
+    }
+  }, [setActiveModule])
 
   // 点击节点 → 切换快照。快照是不可变时间点，但支持每个快照独立的本地草稿：
   // - 切走时：将当前编辑保存到快照专属 localStorage key，而非云DB
@@ -178,7 +192,7 @@ const CenterPanel: React.FC = () => {
       )}
 
       {/* 简历画布区域 */}
-      <div ref={viewportRef} className="flex-1 overflow-auto no-scrollbar flex items-start justify-center pt-8 pb-12 px-8">
+      <div ref={viewportRef} className="flex-1 overflow-auto no-scrollbar flex items-start justify-center pt-8 pb-12 px-8 cursor-pointer" onClick={handlePreviewClick}>
         <div className="flex-shrink-0"
           style={{ width: `${A4_WIDTH_PX * finalScale}px`, minHeight: `${Math.max(A4_HEIGHT_PX, contentHeight) * finalScale}px` }}>
           <div

@@ -11,14 +11,15 @@ interface AwardsPreviewProps {
   items: AwardItem[]
   themeColor: string
   title?: string
+  moduleId?: string
 }
 
-const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor, title = '荣誉奖项' }) => {
+const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor, title = '荣誉奖项', moduleId }) => {
   const { t, te } = useI18n()
   const validItems = items.filter((item) => item.name)
 
   return (
-    <ModuleSection title={title} themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {validItems.length === 0 ? (
         <p className="text-[9pt] text-gray-300 italic">{t('awards.fillAwards')}</p>
       ) : (

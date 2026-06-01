@@ -13,9 +13,10 @@ interface EducationPreviewProps {
   themeColor: string
   compact?: boolean
   title?: string
+  moduleId?: string
 }
 
-const EducationPreview: React.FC<EducationPreviewProps> = ({ items, themeColor, compact = false, title = '教育经历' }) => {
+const EducationPreview: React.FC<EducationPreviewProps> = ({ items, themeColor, compact = false, title = '教育经历', moduleId }) => {
   const { t, te } = useI18n()
   const validItems = items.filter((item) => item.school || item.major || item.schoolExperience)
 
@@ -34,7 +35,7 @@ const EducationPreview: React.FC<EducationPreviewProps> = ({ items, themeColor, 
   }
 
   return (
-    <ModuleSection title={title} themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {validItems.length === 0 ? (
         <p className="text-[9pt] text-gray-300 italic">{t('education.fillEducation')}</p>
       ) : (

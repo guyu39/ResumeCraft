@@ -13,9 +13,10 @@ interface SkillsPreviewProps {
   data: SkillsData
   themeColor: string
   title?: string
+  moduleId?: string
 }
 
-const SkillsPreview: React.FC<SkillsPreviewProps> = ({ data, themeColor, title = '专业技能' }) => {
+const SkillsPreview: React.FC<SkillsPreviewProps> = ({ data, themeColor, title = '专业技能', moduleId }) => {
   const { t } = useI18n()
   const content = data.content?.trim() ?? ''
   const fallbackItems = data.items ?? []
@@ -24,14 +25,14 @@ const SkillsPreview: React.FC<SkillsPreviewProps> = ({ data, themeColor, title =
 
   if (!renderText) {
     return (
-      <ModuleSection title={title} themeColor={themeColor}>
+      <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
         <p className="text-[9pt] text-gray-300 italic">{t('skills.fillSkills')}</p>
       </ModuleSection>
     )
   }
 
   return (
-    <ModuleSection title={title} themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       <RichTextPreview text={renderText} className="text-[9.5pt] text-gray-700" />
     </ModuleSection>
   )

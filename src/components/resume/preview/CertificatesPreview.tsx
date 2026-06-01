@@ -11,14 +11,15 @@ interface CertificatesPreviewProps {
   items: CertificateItem[]
   themeColor: string
   title?: string
+  moduleId?: string
 }
 
-const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeColor, title = '证书资质' }) => {
+const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeColor, title = '证书资质', moduleId }) => {
   const { t } = useI18n()
   const validItems = items.filter((item) => item.name)
 
   return (
-    <ModuleSection title={title} themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {validItems.length === 0 ? (
         <p className="text-[9pt] text-gray-300 italic">{t('certificates.fillCerts')}</p>
       ) : (

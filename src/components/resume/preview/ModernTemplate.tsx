@@ -91,7 +91,7 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
     <div className="h-full" style={{ background: `${themeColor}08`, borderRight: `2px solid ${themeColor}30` }}>
       <div className="py-4 pr-4">
         {personalModule?.visible !== false && personalData && (
-          <div className="text-center mb-4">
+          <div className="text-center mb-4" data-module-id={personalModule?.id}>
             {personalData.avatar && (
               <img
                 src={personalData.avatar}
@@ -112,7 +112,7 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
         )}
 
         {personalModule?.visible !== false && personalLines.length > 0 && (
-          <div className="mb-4">
+          <div className="mb-4" data-module-id={personalModule?.id}>
             <SidebarSection title={isEn ? 'Personal Information' : '个人信息'} themeColor={themeColor}>
               <div className="space-y-1">
                 {personalLines.map((line) => (
@@ -125,19 +125,19 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
 
         {skillsModule?.visible !== false && skillsData && (
           <div className="mb-4">
-            <SkillsPreview data={skillsData} themeColor={themeColor} title={skillsModule?.title} />
+            <SkillsPreview data={skillsData} themeColor={themeColor} title={skillsModule?.title} moduleId={skillsModule?.id} />
           </div>
         )}
 
         {summaryModule?.visible !== false && summaryData && (
           <div className="mb-4">
-            <SummaryPreview data={summaryData} themeColor={themeColor} title={summaryModule?.title} />
+            <SummaryPreview data={summaryData} themeColor={themeColor} title={summaryModule?.title} moduleId={summaryModule?.id} />
           </div>
         )}
 
         {languagesModule?.visible !== false && languagesItems.length > 0 && (
           <div className="mb-4">
-            <LanguagesPreview items={languagesItems} themeColor={themeColor} title={languagesModule?.title} />
+            <LanguagesPreview items={languagesItems} themeColor={themeColor} title={languagesModule?.title} moduleId={languagesModule?.id} />
           </div>
         )}
       </div>
@@ -168,19 +168,19 @@ const RightModules: React.FC<{ resume: Resume }> = ({ resume }) => {
   const render = (m: typeof modules[number]) => {
     switch (m.type) {
       case 'education':
-        return <EducationPreview key={m.id} items={(m.data as { items: EducationItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <EducationPreview key={m.id} moduleId={m.id} items={(m.data as { items: EducationItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'work':
-        return <WorkPreview key={m.id} items={(m.data as { items: WorkItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <WorkPreview key={m.id} moduleId={m.id} items={(m.data as { items: WorkItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'project':
-        return <ProjectPreview key={m.id} items={(m.data as { items: ProjectItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <ProjectPreview key={m.id} moduleId={m.id} items={(m.data as { items: ProjectItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'awards':
-        return <AwardsPreview key={m.id} items={(m.data as { items: AwardItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <AwardsPreview key={m.id} moduleId={m.id} items={(m.data as { items: AwardItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'certificates':
-        return <CertificatesPreview key={m.id} items={(m.data as { items: CertificateItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <CertificatesPreview key={m.id} moduleId={m.id} items={(m.data as { items: CertificateItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'portfolio':
-        return <PortfolioPreview key={m.id} items={(m.data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <PortfolioPreview key={m.id} moduleId={m.id} items={(m.data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'custom':
-        return <CustomPreview key={m.id} data={m.data as CustomData} themeColor={themeColor} title={m.title} />
+        return <CustomPreview key={m.id} moduleId={m.id} data={m.data as CustomData} themeColor={themeColor} title={m.title} />
       default:
         return null
     }

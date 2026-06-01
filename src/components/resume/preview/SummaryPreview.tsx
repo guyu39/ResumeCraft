@@ -12,13 +12,14 @@ interface SummaryPreviewProps {
   data: SummaryData
   themeColor: string
   title?: string
+  moduleId?: string
 }
 
-const SummaryPreview: React.FC<SummaryPreviewProps> = ({ data, themeColor, title = '自我评价' }) => {
+const SummaryPreview: React.FC<SummaryPreviewProps> = ({ data, themeColor, title = '自我评价', moduleId }) => {
   const { t } = useI18n()
 
   return (
-    <ModuleSection title={title} themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {data.content ? (
         <RichTextPreview
           text={data.content}

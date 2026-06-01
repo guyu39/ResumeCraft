@@ -82,25 +82,25 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
   const renderModule = (m: typeof modules[number]) => {
     switch (m.type) {
       case 'education':
-        return <EducationPreview key={m.id} items={(m.data as { items: EducationItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <EducationPreview key={m.id} moduleId={m.id} items={(m.data as { items: EducationItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'work':
-        return <WorkPreview key={m.id} items={(m.data as { items: WorkItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <WorkPreview key={m.id} moduleId={m.id} items={(m.data as { items: WorkItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'project':
-        return <ProjectPreview key={m.id} items={(m.data as { items: ProjectItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <ProjectPreview key={m.id} moduleId={m.id} items={(m.data as { items: ProjectItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'skills':
-        return <SkillsPreview key={m.id} data={m.data as SkillsData} themeColor={themeColor} title={m.title} />
+        return <SkillsPreview key={m.id} moduleId={m.id} data={m.data as SkillsData} themeColor={themeColor} title={m.title} />
       case 'awards':
-        return <AwardsPreview key={m.id} items={(m.data as { items: AwardItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <AwardsPreview key={m.id} moduleId={m.id} items={(m.data as { items: AwardItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'summary':
-        return <SummaryPreview key={m.id} data={m.data as SummaryData} themeColor={themeColor} title={m.title} />
+        return <SummaryPreview key={m.id} moduleId={m.id} data={m.data as SummaryData} themeColor={themeColor} title={m.title} />
       case 'certificates':
-        return <CertificatesPreview key={m.id} items={(m.data as { items: CertificateItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <CertificatesPreview key={m.id} moduleId={m.id} items={(m.data as { items: CertificateItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'portfolio':
-        return <PortfolioPreview key={m.id} items={(m.data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <PortfolioPreview key={m.id} moduleId={m.id} items={(m.data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'languages':
-        return <LanguagesPreview key={m.id} items={(m.data as { items: LanguageItem[] }).items} themeColor={themeColor} title={m.title} />
+        return <LanguagesPreview key={m.id} moduleId={m.id} items={(m.data as { items: LanguageItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'custom':
-        return <CustomPreview key={m.id} data={m.data as CustomData} themeColor={themeColor} title={m.title} />
+        return <CustomPreview key={m.id} moduleId={m.id} data={m.data as CustomData} themeColor={themeColor} title={m.title} />
       default:
         return null
     }
@@ -129,7 +129,7 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
         ['--module-title-color' as string]: themeColor,
       }}
     >
-      <div className="relative mb-1 pr-[92px]">
+      <div className="relative mb-1 pr-[92px]" data-module-id={modules.find(m => m.type === 'personal')?.id}>
         <div className="min-w-0">
           <h1 className="text-[22pt] font-extrabold tracking-tight leading-tight" style={{ color: themeColor }}>
             {personalData?.name || (isEn ? 'Your Name' : '你的姓名')}
@@ -149,7 +149,7 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
       </div>
 
       {personalLines.length > 0 && (
-        <div className="mb-5 grid grid-cols-2 gap-x-5 gap-y-0.5 text-[8.9pt] text-gray-500">
+        <div className="mb-5 grid grid-cols-2 gap-x-5 gap-y-0.5 text-[8.9pt] text-gray-500" data-module-id={modules.find(m => m.type === 'personal')?.id}>
           {personalLines.map((line) => (
             <span key={line} className="block min-w-0 break-all leading-tight">{line}</span>
           ))}

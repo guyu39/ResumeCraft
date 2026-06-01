@@ -12,9 +12,10 @@ interface WorkPreviewProps {
   items: WorkItem[]
   themeColor: string
   title?: string
+  moduleId?: string
 }
 
-const WorkPreview: React.FC<WorkPreviewProps> = ({ items, themeColor, title = '工作经历' }) => {
+const WorkPreview: React.FC<WorkPreviewProps> = ({ items, themeColor, title = '工作经历', moduleId }) => {
   const { t, te } = useI18n()
   const validItems = items.filter((item) => item.company || item.position)
 
@@ -33,7 +34,7 @@ const WorkPreview: React.FC<WorkPreviewProps> = ({ items, themeColor, title = '�
   }
 
   return (
-    <ModuleSection title={title} themeColor={themeColor}>
+    <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {validItems.length === 0 ? (
         <p className="text-[9pt] text-gray-300 italic">{t('work.fillDescription')}</p>
       ) : (
