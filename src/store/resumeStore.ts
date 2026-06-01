@@ -817,7 +817,13 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   setPreviewResume: (r: Resume | null) => set({ previewResume: r }),
   clearPreviewResume: () => set({ previewResume: null, activeSnapshotId: null }),
   setActiveSnapshotId: (id: string | null) => set({ activeSnapshotId: id }),
-  setBasedOnSnapshotId: (id: string | null) => set({ basedOnSnapshotId: id, activeSnapshotId: id }),
+  setBasedOnSnapshotId: (id: string | null) => {
+    set({ basedOnSnapshotId: id, activeSnapshotId: id })
+    // 持久化到 localStorage，作为云端列缺失时的 fallback
+    if (id) {
+      try { localStorage.setItem('resumecraft_active_snapshot_id', id) } catch { /* ignore */ }
+    }
+  },
   setSnapshots: (items: Array<{ id: string; label?: string; snapshotType: string }>) => set({ snapshots: items }),
   triggerSnapshotRefresh: () => set((s) => ({ snapshotVersion: s.snapshotVersion + 1 })),
 

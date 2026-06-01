@@ -44,12 +44,10 @@ function collectSnapshotDrafts(): Record<string, unknown> {
 
 export function useCloudSync() {
   const resume = useResumeStore((s) => s.resume)
-  const isDirty = useResumeStore((s) => s.isDirty)
   const basedOnSnapshotId = useResumeStore((s) => s.basedOnSnapshotId)
   const setBasedOnSnapshotId = useResumeStore((s) => s.setBasedOnSnapshotId)
   const lastSavedAt = useResumeStore((s) => s.lastSavedAt)
   const markSaved = useResumeStore((s) => s.markSaved)
-  const markClean = useResumeStore((s) => s.markClean)
   const { isAuthenticated } = useAuthStore()
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -66,16 +64,9 @@ export function useCloudSync() {
 
     const currentData = serializeResume(resume)
 
-    // 脏标记去重：无修改则跳过
-    if (!isDirty) {
-      console.log('[CloudSync] isDirty=false，跳过')
-      return true
-    }
-
-    // 内容去重：与上次落库相同则跳过
+    // 内容去重：与上次落库相同则跳过（比 isDirty 更可靠，不依赖额外状态维护）
     if (currentData === lastSyncedDataRef.current) {
       console.log('[CloudSync] 数据无变化，跳过')
-      markClean()
       setSaveStatus('synced')
       return true
     }
@@ -100,7 +91,7 @@ export function useCloudSync() {
       const token = localStorage.getItem('accessToken')
       if (token) headers['Authorization'] = `Bearer ${token}`
       fetch(`/api/resumes/${targetId}`, { method: 'PUT', headers, body, keepalive: true }).catch(() => { })
-      markClean()
+      lastSyncedDataRef.current = currentData
       return true
     }
 
@@ -120,7 +111,6 @@ export function useCloudSync() {
       setLastSyncedAt(Date.now())
       setSaveStatus('synced')
       markSaved()
-      markClean()
       // 同步后端返回的最新快照 ID
       if (resp?.latestSnapshotId) {
         setBasedOnSnapshotId(resp.latestSnapshotId)
@@ -133,7 +123,7 @@ export function useCloudSync() {
     } finally {
       isSyncingRef.current = false
     }
-  }, [resume, isAuthenticated, isDirty, basedOnSnapshotId, markSaved, markClean, setBasedOnSnapshotId])
+  }, [resume, isAuthenticated, basedOnSnapshotId, markSaved, setBasedOnSnapshotId])
 
   // ========== 事件驱动：退出/刷新 ==========
   useEffect(() => {
@@ -155,7 +145,7 @@ export function useCloudSync() {
     if (!isAuthenticated) return
 
     const handleVisibility = () => {
-      if (document.hidden && isDirty) {
+      if (document.hidden) {
         console.log('[CloudSync] 切后台，触发保存')
         saveToCloud()
       }
@@ -163,7 +153,7 @@ export function useCloudSync() {
 
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [isAuthenticated, isDirty, saveToCloud])
+  }, [isAuthenticated, saveToCloud])
 
   // ========== 监听内容变化，重置状态 ==========
   useEffect(() => {

@@ -15,7 +15,7 @@ const FIT_BOOST_RATIO = 1.3
 const MAX_PREVIEW_SCALE = 1.3
 
 const CenterPanel: React.FC = () => {
-  const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, isDirty, markClean, setSnapshots: setStoreSnapshots } = useResumeStore()
+  const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, isDirty, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
   const [contentHeight, setContentHeight] = useState(A4_HEIGHT_PX)
@@ -82,7 +82,8 @@ const CenterPanel: React.FC = () => {
           savedAt: Date.now(),
         }))
       } catch { /* ignore */ }
-      markClean()
+      // 注意：不调用 markClean()！
+      // isDirty 跟踪的是"相对于云端的修改"，保存到 localStorage 草稿不等于同步到云端
     }
 
     // ② 进入目标快照：优先加载快照专属本地草稿
@@ -119,7 +120,7 @@ const CenterPanel: React.FC = () => {
         setBasedOnSnapshotId(snapshot.id)
       }
     } catch { /* ignore */ }
-  }, [resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, isDirty, markClean])
+  }, [resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, isDirty])
 
   // 对比：tooltip 点击「对比」触发
   const handleCompareSnapshot = useCallback(async (snapshotId: string) => {
@@ -138,33 +139,38 @@ const CenterPanel: React.FC = () => {
     setStoreSnapshots(items.map((s) => ({ id: s.id, label: s.label, snapshotType: s.snapshotType })))
     if (items.length > 0) {
       const currentValid = activeSnapshotId && items.some((s) => s.id === activeSnapshotId)
-      if (!currentValid) {
-        // 优先使用 basedOnSnapshotId（重入时从云端恢复的上次编辑快照）
+
+      // 确定目标快照 ID
+      let targetId: string
+      if (currentValid) {
+        targetId = activeSnapshotId!
+      } else {
         const preferredId = basedOnSnapshotId || activeSnapshotId
         const preferredValid = preferredId && items.some((s) => s.id === preferredId)
-        const targetId = preferredValid ? preferredId! : items[0].id
+        targetId = preferredValid ? preferredId! : items[0].id
         setActiveSnapshotId(targetId)
         setBasedOnSnapshotId(targetId)
-
-        // 重入时：尝试加载目标快照的本地草稿（从云端恢复或浏览器遗留）
-        const draftKey = `resumecraft_snapshot_draft_${targetId}`
-        try {
-          const raw = localStorage.getItem(draftKey)
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            if (parsed.modules) {
-              initResume({
-                ...resume,
-                modules: parsed.modules as Resume['modules'],
-                themeColor: (parsed.themeColor as Resume['themeColor']) ?? resume.themeColor,
-                styleSettings: (parsed.styleSettings as Resume['styleSettings']) ?? resume.styleSettings,
-              })
-            }
-          }
-        } catch { /* ignore */ }
       }
+
+      // 无论 currentValid 是否为 true，都尝试加载本地草稿（刷新后云数据可能过期）
+      const draftKey = `resumecraft_snapshot_draft_${targetId}`
+      try {
+        const raw = localStorage.getItem(draftKey)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed.modules) {
+            const current = useResumeStore.getState()
+            current.initResume({
+              ...current.resume,
+              modules: parsed.modules as Resume['modules'],
+              themeColor: (parsed.themeColor as Resume['themeColor']) ?? current.resume.themeColor,
+              styleSettings: (parsed.styleSettings as Resume['styleSettings']) ?? current.resume.styleSettings,
+            })
+          }
+        }
+      } catch { /* ignore */ }
     }
-  }, [activeSnapshotId, basedOnSnapshotId, setActiveSnapshotId, setBasedOnSnapshotId, setStoreSnapshots, resume, initResume])
+  }, [activeSnapshotId, basedOnSnapshotId, setActiveSnapshotId, setBasedOnSnapshotId, setStoreSnapshots])
 
   return (
     <div className="flex flex-col h-full">

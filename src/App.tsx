@@ -27,8 +27,18 @@ function restoreCloudSnapshotData(cloudResume: any) {
     }
   }
   // 恢复 basedOnSnapshotId，使 handleSnapshotsLoaded 能选中正确的快照
-  if (cloudResume?.basedOnSnapshotId) {
-    useResumeStore.getState().setBasedOnSnapshotId(cloudResume.basedOnSnapshotId)
+  // 优先级：云端 > localStorage fallback（迁移未执行时 based_on_snapshot_id 列为 null）
+  const cloudId = cloudResume?.basedOnSnapshotId
+  if (cloudId) {
+    useResumeStore.getState().setBasedOnSnapshotId(cloudId)
+  } else {
+    // fallback：从 localStorage 恢复上次编辑的快照 ID
+    try {
+      const localId = localStorage.getItem('resumecraft_active_snapshot_id')
+      if (localId) {
+        useResumeStore.getState().setBasedOnSnapshotId(localId)
+      }
+    } catch { /* ignore */ }
   }
 }
 
@@ -129,8 +139,17 @@ const App: React.FC = () => {
                 ; (window as any).__cloudSyncSetCloudId?.(currentResume.id)
             }
           } catch (err) {
-            console.error('[App] 加载当前云端简历失败:', err)
+            console.error('[App] 加载当前云端简历失败，回退到本地:', err)
+            loadFromStorage()
+            // 如果本地加载的简历 ID 是有效 UUID，通知 useCloudSync
+            const localId = useResumeStore.getState().resume.id
+            if (localId && isValidUUID(localId)) {
+              ;(window as any).__cloudSyncSetCloudId?.(localId)
+            }
           }
+        } else if (currentId) {
+          // 本地简历 ID（非 UUID 格式），从 localStorage 加载
+          loadFromStorage()
         }
       } catch (err) {
         console.error('[App] 加载云端简历失败:', err)
