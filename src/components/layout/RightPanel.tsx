@@ -42,6 +42,7 @@ import CertificatesForm from '@/components/resume/blocks/CertificatesForm'
 import PortfolioForm from '@/components/resume/blocks/PortfolioForm'
 import LanguagesForm from '@/components/resume/blocks/LanguagesForm'
 import CustomForm from '@/components/resume/blocks/CustomForm'
+import AIEngineeringForm from '@/components/resume/blocks/AIEngineeringForm'
 
 // 设置面板组件
 import ThemeColorPicker from '@/components/common/ThemeColorPicker'
@@ -149,6 +150,8 @@ const renderModuleForm = (
             return <PortfolioForm moduleId={moduleId} items={data.items} />
         case 'languages':
             return <LanguagesForm moduleId={moduleId} items={data.items} />
+        case 'ai-engineering':
+            return <AIEngineeringForm moduleId={moduleId} data={data} />
         case 'custom':
             return <CustomForm moduleId={moduleId} data={data} />
         default:

@@ -53,7 +53,7 @@ export type SkillDisplayMode = 'tags' | 'bars'
 export type ModuleType =
   | 'personal' | 'education' | 'work' | 'project'
   | 'skills' | 'awards' | 'summary'
-  | 'certificates' | 'portfolio' | 'languages' | 'custom'
+  | 'certificates' | 'portfolio' | 'languages' | 'custom' | 'ai-engineering'
 
 /** 模块元信息 */
 export interface ModuleMeta {
@@ -81,6 +81,7 @@ export const MODULE_META_LIST: ModuleMeta[] = [
   { type: 'awards', label: '荣誉奖项', icon: '🏆', maxCount: 1, category: 'achievement' },
   { type: 'certificates', label: '证书资质', icon: '📜', maxCount: 1, category: 'achievement' },
   { type: 'portfolio', label: '作品链接', icon: '🔗', maxCount: 1, category: 'link' },
+  { type: 'ai-engineering', label: 'AI 工程', icon: '🤖', maxCount: 0, category: 'special' },
   { type: 'custom', label: '自定义模块', icon: '✨', maxCount: 0, category: 'special' },
 ]
 
@@ -97,6 +98,7 @@ export const MODULE_TITLES_BY_LOCALE: Record<ResumeLocale, Record<ModuleType, st
     awards: '荣誉奖项',
     certificates: '证书资质',
     portfolio: '作品链接',
+    'ai-engineering': 'AI 工程',
     custom: '自定义模块',
   },
   'en-US': {
@@ -110,6 +112,7 @@ export const MODULE_TITLES_BY_LOCALE: Record<ResumeLocale, Record<ModuleType, st
     awards: 'Awards & Honors',
     certificates: 'Certifications',
     portfolio: 'Portfolio',
+    'ai-engineering': 'AI Engineering',
     custom: 'Custom',
   },
 }
@@ -195,6 +198,60 @@ export interface SummaryData {
   content: string
 }
 
+// ---------- AI 工程 ----------
+export const AI_PRACTICE_PLACEHOLDER = '例如：基于 RAG 的企业知识库建设及全链路研发提效'
+
+export const AI_TOOLCHAIN_PLACEHOLDER = '例如 Cursor, OpenClaw, Qdrant, React, Java WebFlux...'
+
+export type AIStandard =
+  | 'doc-first'       // 技术文档与接口设计先行（必选）
+  | 'prompt-guided'   // 阶段性 Prompt 引导
+  | 'multi-compare'   // 多套 AI 方案对比选型
+  | 'security-audit'  // 安全与并发漏洞人工核验
+
+export const AI_STANDARD_OPTIONS: { value: AIStandard; label: string; required?: boolean; desc: string }[] = [
+  { value: 'doc-first', label: '文档与接口先行', required: true, desc: '技术文档与接口设计先行，严格约束代码生成边界，避免 AI 幻觉与架构失控' },
+  { value: 'prompt-guided', label: 'Prompt 分阶段引导', desc: '将复杂任务拆解为多阶段 Prompt，逐步引导 AI 输出方案→编码→风险改造' },
+  { value: 'multi-compare', label: '多方案对比选型', desc: '生成多套 AI 方案，从成本、可维护性、安全性等维度做工程选型' },
+  { value: 'security-audit', label: '安全与并发核验', desc: '对 AI 生成代码进行安全、并发、兼容性、数据一致性人工核查' },
+]
+
+export const AI_STANDARD_LABELS: Record<AIStandard, string> = {
+  'doc-first': '文档与接口先行',
+  'prompt-guided': 'Prompt 分阶段引导',
+  'multi-compare': '多方案对比选型',
+  'security-audit': '安全与并发核验',
+}
+
+export const AI_STANDARD_LABELS_EN: Record<AIStandard, string> = {
+  'doc-first': 'Doc & Interface First',
+  'prompt-guided': 'Phased Prompt Guidance',
+  'multi-compare': 'Multi-Solution Comparison',
+  'security-audit': 'Security & Concurrency Audit',
+}
+
+export interface AIEfficiencyMetric {
+  label: string
+  value: string
+}
+
+export interface AIEngineeringItem {
+  id: string
+  practiceName: string
+  role: string
+  timeRange: string
+  projectUrl: string
+  toolchain: string[]
+  standards: AIStandard[]
+  scenario: string
+  efficiency: AIEfficiencyMetric[]
+  assets: string[]
+}
+
+export interface AIEngineeringData {
+  items: AIEngineeringItem[]
+}
+
 export interface CertificateItem {
   id: string
   name: string
@@ -235,6 +292,7 @@ export type ModuleData =
   | SkillsData
   | { items: AwardItem[] }
   | SummaryData
+  | AIEngineeringData
   | { items: CertificateItem[] }
   | { items: PortfolioItem[] }
   | { items: LanguageItem[] }

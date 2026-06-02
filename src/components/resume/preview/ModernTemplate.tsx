@@ -18,6 +18,7 @@ import {
   PortfolioItem,
   LanguageItem,
   CustomData,
+  AIEngineeringData,
 } from '@/types/resume'
 import EducationPreview from './EducationPreview'
 import WorkPreview from './WorkPreview'
@@ -29,6 +30,7 @@ import CertificatesPreview from './CertificatesPreview'
 import PortfolioPreview from './PortfolioPreview'
 import LanguagesPreview from './LanguagesPreview'
 import CustomPreview from './CustomPreview'
+import AIEngineeringPreview from './AIEngineeringPreview'
 
 interface ModernTemplateProps {
   resume: Resume
@@ -181,6 +183,8 @@ const RightModules: React.FC<{ resume: Resume }> = ({ resume }) => {
         return <PortfolioPreview key={m.id} moduleId={m.id} items={(m.data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={m.title} />
       case 'custom':
         return <CustomPreview key={m.id} moduleId={m.id} data={m.data as CustomData} themeColor={themeColor} title={m.title} />
+      case 'ai-engineering':
+        return <AIEngineeringPreview key={m.id} moduleId={m.id} data={m.data as AIEngineeringData} themeColor={themeColor} title={m.title} />
       default:
         return null
     }

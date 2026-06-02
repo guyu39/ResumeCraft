@@ -21,6 +21,7 @@ import {
   SkillsData,
   AwardItem,
   SummaryData,
+  AIEngineeringData,
   CertificateItem,
   PortfolioItem,
   LanguageItem,
@@ -206,6 +207,22 @@ function createDefaultModuleData(type: ModuleType): ModuleData {
           },
         ],
       } satisfies CustomData
+
+    case 'ai-engineering':
+      return {
+        items: [{
+          id: generateId(),
+          practiceName: '',
+          role: '',
+          timeRange: '',
+          projectUrl: '',
+          toolchain: [],
+          standards: ['doc-first'],
+          scenario: '',
+          efficiency: [{ label: '', value: '' }],
+          assets: [],
+        }],
+      } satisfies AIEngineeringData
 
     default:
       return { items: [] } as ModuleData

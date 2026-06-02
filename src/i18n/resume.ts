@@ -287,6 +287,9 @@ const dict: I18nDict = {
   'translate.translating': { 'zh-CN': '翻译中...', 'en-US': 'Translating...' },
   'translate.start': { 'zh-CN': '开始翻译', 'en-US': 'Start Translation' },
   'translate.createCopy': { 'zh-CN': '创建翻译副本', 'en-US': 'Create Translated Copy' },
+
+  // AI 工程
+  'ai-engineering.empty': { 'zh-CN': '添加 AI 辅助研发实践经历', 'en-US': 'Add AI-assisted development practices' },
 }
 
 export default dict

@@ -17,6 +17,7 @@ import {
   PortfolioItem,
   LanguageItem,
   CustomData,
+  AIEngineeringData,
 } from '@/types/resume'
 import PersonalPreview from './PersonalPreview'
 import EducationPreview from './EducationPreview'
@@ -29,6 +30,7 @@ import CertificatesPreview from './CertificatesPreview'
 import PortfolioPreview from './PortfolioPreview'
 import LanguagesPreview from './LanguagesPreview'
 import CustomPreview from './CustomPreview'
+import AIEngineeringPreview from './AIEngineeringPreview'
 
 interface ClassicTemplateProps {
   resume: Resume
@@ -64,6 +66,8 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({ resume }) => {
         return <LanguagesPreview key={id} moduleId={id} items={(data as { items: LanguageItem[] }).items} themeColor={themeColor} title={title} />
       case 'custom':
         return <CustomPreview key={id} moduleId={id} data={data as CustomData} themeColor={themeColor} title={title} />
+      case 'ai-engineering':
+        return <AIEngineeringPreview key={id} moduleId={id} data={data as AIEngineeringData} themeColor={themeColor} title={title} />
       default:
         return null
     }
