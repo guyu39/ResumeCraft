@@ -13,6 +13,7 @@ import type { Resume } from '@/types/resume'
 const FIT_PADDING_PX = 24
 const FIT_BOOST_RATIO = 1.3
 const MAX_PREVIEW_SCALE = 1.3
+const MIN_READABLE_SCALE = 0.6 // 低于此阈值提示用户折叠侧栏
 
 /** 提取文本行（处理 HTML）：优先按 <li> 拆分，否则按换行 */
 function extractLines(html: string): { lines: string[]; isList: boolean; wrapper: string[] } {
@@ -112,7 +113,6 @@ const CenterPanel: React.FC = () => {
   const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, isDirty, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
-  const [contentHeight, setContentHeight] = useState(A4_HEIGHT_PX)
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null)
   const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([])
   const [, setSnapshotsLoaded] = useState(false)
@@ -298,13 +298,19 @@ const CenterPanel: React.FC = () => {
         </div>
       </div>
 
+      {/* 缩放过低警告 */}
+      {finalScale < MIN_READABLE_SCALE && (
+        <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 text-amber-700 text-xs px-4 py-1.5 flex items-center justify-center gap-2">
+          ⚠️ 预览区过窄（{Math.round(finalScale * 100)}%），建议折叠侧边栏以获得完整视图
+        </div>
+      )}
+
       {/* 简历画布区域 */}
       <div ref={viewportRef} className="flex-1 overflow-auto no-scrollbar flex items-start justify-center pt-8 pb-12 px-8 cursor-pointer" onClick={handlePreviewClick}>
         <div className="flex-shrink-0"
-          style={{ width: `${A4_WIDTH_PX * finalScale}px`, minHeight: `${Math.max(A4_HEIGHT_PX, contentHeight) * finalScale}px` }}>
+          style={{ width: `${A4_WIDTH_PX * finalScale}px` }}>
           <div
             style={{ width: `${A4_WIDTH_PX}px`, transform: `scale(${finalScale})`, transformOrigin: 'top left' }}
-            ref={(node) => { if (!node) return; setContentHeight(node.scrollHeight) }}
           >
             <PagedResumePaper resume={displayResume} />
           </div>

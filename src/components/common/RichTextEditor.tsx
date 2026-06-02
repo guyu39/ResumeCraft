@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered } from 'lucide-react'
+import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Replace } from 'lucide-react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useResumeStore } from '@/store/resumeStore'
@@ -168,15 +168,15 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     // 在 React 18 StrictMode 下编辑器可能被创建-销毁-重建，初始 content 不保证生效。
     // 需要在 editor 首次就绪后显式 setContent，不做比较、直接覆盖。
     useEffect(() => {
-      if (!editor) {
-        editorReadyRef.current = false
-        return
-      }
-      const next = 转为编辑器HTML(value)
-      editor.commands.setContent(next, { emitUpdate: false })
-      上次合法HTML引用.current = next
-      editorReadyRef.current = true
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (!editor) {
+            editorReadyRef.current = false
+            return
+        }
+        const next = 转为编辑器HTML(value)
+        editor.commands.setContent(next, { emitUpdate: false })
+        上次合法HTML引用.current = next
+        editorReadyRef.current = true
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor])
 
     // 外部 value 变化时同步 —— 仅在 editor 就绪后生效。
@@ -184,11 +184,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     // - value 与 lastEditorHtml 相同 → 来源于编辑器内部（用户打字）→ 跳过
     // - value 不同 → 来源于外部注入（快照切换、AI 生成等）→ 强制同步
     useEffect(() => {
-      if (!editor || !editorReadyRef.current) return
-      const next = 转为编辑器HTML(value)
-      if (value === lastEditorHtml.current) return
-      editor.commands.setContent(next, { emitUpdate: false })
-      上次合法HTML引用.current = next
+        if (!editor || !editorReadyRef.current) return
+        const next = 转为编辑器HTML(value)
+        if (value === lastEditorHtml.current) return
+        editor.commands.setContent(next, { emitUpdate: false })
+        上次合法HTML引用.current = next
     }, [editor, value])
 
     useEffect(() => {
@@ -382,7 +382,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                         key: 'bullet-rewrite',
                         title: 'Bullet 重写',
                         label: Bullet重写加载中 ? '重写中...' : '重写',
-                        icon: Sparkles,
+                        icon: Replace,
                         active: Bullet重写面板显示,
                         onClick: 打开Bullet重写,
                         disabled: Bullet重写加载中,
@@ -392,7 +392,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             {
                 key: 'bold',
                 title: '加粗（Ctrl/Cmd + B）',
-                label: '加粗',
                 icon: Bold,
                 active: editor?.isActive('bold') ?? false,
                 onClick: () => editor?.chain().focus().toggleBold().run(),
@@ -400,7 +399,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             {
                 key: 'italic',
                 title: '斜体（Ctrl/Cmd + I）',
-                label: '斜体',
                 icon: Italic,
                 active: editor?.isActive('italic') ?? false,
                 onClick: () => editor?.chain().focus().toggleItalic().run(),
@@ -408,7 +406,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             {
                 key: 'underline',
                 title: '下划线（Ctrl/Cmd + U）',
-                label: '下划线',
                 icon: UnderlineIcon,
                 active: editor?.isActive('underline') ?? false,
                 onClick: () => editor?.chain().focus().toggleUnderline().run(),
@@ -416,7 +413,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             {
                 key: 'link',
                 title: '插入链接（Ctrl/Cmd + K）',
-                label: '链接',
                 icon: Link2,
                 active: editor?.isActive('link') ?? false,
                 onClick: 打开链接弹窗,
@@ -424,7 +420,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             {
                 key: 'bullet',
                 title: '无序列表（Ctrl/Cmd + Shift + 8）',
-                label: '无序列表',
                 icon: List,
                 active: editor?.isActive('bulletList') ?? false,
                 onClick: () => editor?.chain().focus().toggleBulletList().run(),
@@ -432,7 +427,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             {
                 key: 'ordered',
                 title: '有序列表（Ctrl/Cmd + Shift + 7）',
-                label: '有序列表',
                 icon: ListOrdered,
                 active: editor?.isActive('orderedList') ?? false,
                 onClick: () => editor?.chain().focus().toggleOrderedList().run(),
@@ -443,7 +437,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
     return (
         <div className="rounded-md border border-gray-200 bg-white overflow-hidden">
-            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50 overflow-hidden">
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50 overflow-x-auto no-scrollbar flex-nowrap">
                 {按钮列表.map((item) => (
                     <button
                         key={item.key}
@@ -458,7 +452,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                             }`}
                     >
                         <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="truncate">{item.label}</span>
+                        {'label' in item && <span className="truncate">{item.label}</span>}
                     </button>
                 ))}
             </div>
