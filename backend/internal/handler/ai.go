@@ -620,3 +620,32 @@ func (h *Handler) TranslateResume(c *gin.Context) {
 
 	response.JSONSuccess(c, result)
 }
+
+// EnhanceContent AI 增强场景描述（抽取指标 / 补全风控 / 转STAR）
+// POST /api/ai/enhance
+func (h *Handler) EnhanceContent(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.EnhanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	result, err := h.aiService.Enhance(c.Request.Context(), userID.(string), req)
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[ai] EnhanceContent(%s) error: %v", req.Operation, err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "AI 增强失败")
+		return
+	}
+
+	response.JSONSuccess(c, result)
+}

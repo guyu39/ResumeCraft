@@ -441,3 +441,23 @@ type TranslateResponse struct {
 	Model                  string                   `json:"model"`
 	Warnings               []string                 `json:"warnings"`
 }
+
+// EnhanceOperation AI 增强操作类型
+type EnhanceOperation string
+
+const (
+	EnhanceMetrics EnhanceOperation = "metrics" // 抽取量化指标
+	EnhanceRisk    EnhanceOperation = "risk"    // 补全风控描述
+	EnhanceStar    EnhanceOperation = "star"    // 转化为 STAR 工作流
+)
+
+// EnhanceRequest AI 增强请求
+type EnhanceRequest struct {
+	Scenario  string           `json:"scenario" binding:"required"`
+	Operation EnhanceOperation `json:"operation" binding:"required,oneof=metrics risk star"`
+}
+
+// EnhanceResponse AI 增强响应
+type EnhanceResponse struct {
+	Result string `json:"result"`
+}

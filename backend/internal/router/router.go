@@ -81,6 +81,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 					aiGroup.POST("/cover-letter", aiLimiter, h.GenerateCoverLetter)
 					aiGroup.POST("/suggest", aiLimiter, h.SuggestContent)
 					aiGroup.POST("/translate", aiLimiter, h.TranslateResume)
+					aiGroup.POST("/enhance", aiLimiter, h.EnhanceContent)
 				} else {
 					aiGroup.POST("/evaluate/stream", h.EvaluateResumeStream)
 					aiGroup.POST("/jd-match/stream", h.JDMatchStream)
@@ -89,6 +90,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 					aiGroup.POST("/cover-letter", h.GenerateCoverLetter)
 					aiGroup.POST("/suggest", h.SuggestContent)
 					aiGroup.POST("/translate", h.TranslateResume)
+					aiGroup.POST("/enhance", h.EnhanceContent)
 				}
 
 				aiGroup.GET("/suggest-records", h.ListSuggestRecords)

@@ -5,6 +5,7 @@
 import React, { useCallback, useState } from 'react'
 import { Plus, X, Sparkles, ShieldCheck, RefreshCw, Trash2 } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
+import { aiApi } from '@/api/ai'
 import RichTextEditor from '@/components/common/RichTextEditor'
 import YearMonthRangePicker from '@/components/common/YearMonthRangePicker'
 import type { AIEngineeringData, AIEngineeringItem, AIStandard, AIEfficiencyMetric } from '@/types/resume'
@@ -75,7 +76,46 @@ const AIEngineeringForm: React.FC<Props> = ({ moduleId, data }) => {
 
   // ---- AI magic ----
   const [aiBusy, setAiBusy] = useState<'metrics' | 'risk' | 'star' | null>(null)
-  const handleMagic = (a: typeof aiBusy) => { setAiBusy(a); console.log(`[AI Magic] ${a}`, item.scenario); setTimeout(() => setAiBusy(null), 800) }
+  const [aiError, setAiError] = useState('')
+
+  const handleMagic = async (op: 'metrics' | 'risk' | 'star') => {
+    const scenario = item.scenario?.trim()
+    if (!scenario) { setAiError('请先填写场景描述'); return }
+    setAiError('')
+    setAiBusy(op)
+    try {
+      const res = await aiApi.enhance({ scenario, operation: op })
+      switch (op) {
+        case 'metrics': {
+          // 解析 "指标名: 数值" 格式
+          const lines = res.result.split('\n').filter(Boolean)
+          const metrics = lines
+            .map(line => {
+              const idx = line.indexOf(':')
+              if (idx === -1) return null
+              return { label: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() }
+            })
+            .filter((m): m is { label: string; value: string } => m !== null)
+          if (metrics.length > 0) {
+            updateItem({ efficiency: metrics })
+          } else {
+            updateItem({ scenario: item.scenario + '\n\n【AI 量化指标】\n' + res.result })
+          }
+          break
+        }
+        case 'risk':
+          updateItem({ scenario: res.result })
+          break
+        case 'star':
+          updateItem({ scenario: res.result })
+          break
+      }
+    } catch {
+      setAiError('AI 服务调用失败，请检查 AI 配置')
+    } finally {
+      setAiBusy(null)
+    }
+  }
 
   return (
     <div className="editor-form-root space-y-4">
@@ -159,6 +199,7 @@ const AIEngineeringForm: React.FC<Props> = ({ moduleId, data }) => {
             <button onClick={() => handleMagic('risk')} disabled={!!aiBusy} className="flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-lg border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 disabled:opacity-50"><ShieldCheck className="w-3 h-3" />{aiBusy === 'risk' ? '生成中...' : '补全风控描述'}</button>
             <button onClick={() => handleMagic('star')} disabled={!!aiBusy} className="flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-lg border border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50"><RefreshCw className="w-3 h-3" />{aiBusy === 'star' ? '转换中...' : '转化为 STAR 工作流'}</button>
           </div>
+          {aiError && <p className="text-[10px] text-red-400 mb-1">{aiError}</p>}
           <RichTextEditor value={item.scenario} onChange={val => updateItem({ scenario: val })} placeholder="描述具体的业务场景或技术痛点..." />
         </div>
         <div>

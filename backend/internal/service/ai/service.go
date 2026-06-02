@@ -58,6 +58,9 @@ type Service interface {
 
 	// 简历翻译
 	Translate(ctx context.Context, userID string, req model.TranslateRequest, resumeContent map[string]interface{}) (*model.TranslateResponse, error)
+
+	// AI 增强（e.g. 抽取指标、补全风控、转STAR）
+	Enhance(ctx context.Context, userID string, req model.EnhanceRequest) (*model.EnhanceResponse, error)
 }
 
 type service struct {
@@ -2034,4 +2037,101 @@ func (s *service) SaveParserConfig(ctx context.Context, userID string, req model
 	}
 
 	return s.parserCfgRepo.Upsert(ctx, cfg)
+}
+
+// ============ AI 增强（抽取指标 / 补全风控 / 转STAR） ============
+
+// Enhance 基于场景描述执行 AI 增强
+func (s *service) Enhance(ctx context.Context, userID string, req model.EnhanceRequest) (*model.EnhanceResponse, error) {
+	cfg, err := s.cfgRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+	if !cfg.Enabled {
+		return nil, fmt.Errorf("AI 功能未启用")
+	}
+
+	apiKey, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt API key")
+	}
+
+	prompt := buildEnhancePrompt(req)
+	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
+		APIKey:    apiKey,
+		BaseURL:   cfg.BaseURL,
+		Model:     cfg.DefaultModel,
+		Prompt:    prompt,
+		TimeoutMs: cfg.TimeoutMs,
+	})
+	if err != nil {
+		log.Printf("[ai] Enhance(%s) failed: %v", req.Operation, err)
+		return nil, ErrAIRequestFailed
+	}
+
+	return &model.EnhanceResponse{Result: strings.TrimSpace(result.Text)}, nil
+}
+
+func buildEnhancePrompt(req model.EnhanceRequest) string {
+	switch req.Operation {
+	case model.EnhanceMetrics:
+		return buildMetricsPrompt(req.Scenario)
+	case model.EnhanceRisk:
+		return buildRiskPrompt(req.Scenario)
+	case model.EnhanceStar:
+		return buildStarPrompt(req.Scenario)
+	default:
+		return ""
+	}
+}
+
+func buildMetricsPrompt(scenario string) string {
+	return fmt.Sprintf(`你是一位技术管理专家，擅长从项目描述中提取可量化的效率/质量指标。
+
+请阅读以下场景描述，提取其中已明确量化或隐含可量化的指标，如果原文缺乏具体数据，请根据行业经验给出合理估算值，并注明"（估算）"。
+
+【输出要求】
+只输出 3-5 行，每行格式：指标名: 数值
+每行不要有多余解释。直接输出结果文本，不要套 JSON、Markdown 或代码块。
+
+场景描述：
+%s`, scenario)
+}
+
+func buildRiskPrompt(scenario string) string {
+	return fmt.Sprintf(`你是一位资深质量保障与风控专家，擅长从技术方案中识别潜在风险并给出对策。
+
+请阅读以下场景描述，在不改变原有内容核心逻辑的前提下，**在其末尾补充 1-2 句关于风险识别与质量保障的内容**。侧重说明如何通过哪些手段（如自动化测试、code review、灰度发布、监控告警等）来降低风险、保障线上质量。
+
+【输出要求】
+使用 HTML 格式输出（即将被填充到富文本编辑器中），不要使用 Markdown。
+- 输出完整的场景描述（含原文 + 补充内容）
+- 关键动作和手段用 <strong>...</strong> 加粗
+- 确保原文语义不变，补充内容自然衔接
+不要输出任何额外说明，不要包裹在代码块中。
+
+场景描述：
+%s`, scenario)
+}
+
+func buildStarPrompt(scenario string) string {
+	return fmt.Sprintf(`你是一位资深简历撰写顾问，擅长将项目描述重构为 STAR（Situation-Task-Action-Result）工作流格式。
+
+请将以下场景描述改写为 STAR 结构，使内容更具说服力和面试可读性。
+
+【STAR 结构要求】
+- S (Situation)：一句话交代背景与面临的挑战
+- T (Task)：明确你承担的任务目标
+- A (Action)：你采取的具体行动与技术手段
+- R (Result)：带来的具体结果，尽可能量化
+
+【输出要求】
+使用 HTML 格式输出（即将被填充到富文本编辑器中），不要使用 Markdown。
+- 用 <strong>...</strong> 标注关键动词和量化数据
+- 每个字母段用 <p><strong>S (Situation)</strong>：...</p> 的格式
+- 段落之间自然换行
+不要输出任何额外说明，不要包裹在代码块中。
+
+场景描述：
+%s`, scenario)
 }

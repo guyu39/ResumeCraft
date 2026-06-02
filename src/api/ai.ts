@@ -608,6 +608,10 @@ export const aiApi = {
     // 简历翻译
     translate: (data: TranslateRequest) =>
         apiClient.post<TranslateResponse>('/ai/translate', data, { auth: true }),
+
+    // AI 增强（抽取指标 / 补全风控 / 转STAR）
+    enhance: (data: EnhanceRequest) =>
+        apiClient.post<EnhanceResponse>('/ai/enhance', data, { auth: true }),
 }
 
 export interface ParserConfigRequest {
@@ -676,4 +680,17 @@ export interface TranslateResponse {
     conversationId: string
     model: string
     warnings: string[]
+}
+
+// ============================================================
+// AI 增强 API
+// ============================================================
+
+export interface EnhanceRequest {
+    scenario: string
+    operation: 'metrics' | 'risk' | 'star'
+}
+
+export interface EnhanceResponse {
+    result: string
 }
