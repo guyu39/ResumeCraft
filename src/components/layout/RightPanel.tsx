@@ -1204,7 +1204,7 @@ const RightPanel: React.FC = () => {
                     <button
                         onClick={() => setShowSnapshotDialog(true)}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 hover:text-slate-700 transition-colors flex-shrink-0"
-                        title="新建简历版本"
+                        title="新建简历版本 · 记录当前版本以便对比和回溯"
                     >
 
                         <span className="truncate">新建版本</span>
@@ -1224,7 +1224,7 @@ const RightPanel: React.FC = () => {
                             : 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
                         }
           `}
-                    title="简历设置"
+                    title="简历设置 · 如遇内容被切割可调整间距"
                 >
                     <Settings className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">{showSettings ? '收起' : '设置'}</span>

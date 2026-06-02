@@ -115,13 +115,13 @@ const CenterPanel: React.FC = () => {
   const [contentHeight, setContentHeight] = useState(A4_HEIGHT_PX)
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null)
   const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([])
-  const [snapshotsLoaded, setSnapshotsLoaded] = useState(false)
+  const [, setSnapshotsLoaded] = useState(false)
   const isServerResume = resume?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id)
 
   const displayResume = resume
 
-  // 当前活跃快照的标签名
-  const activeSnapshotLabel = activeSnapshotId
+  // 当前活跃快照的标签名（仅在有快照数据时显示）
+  const activeSnapshotLabel = activeSnapshotId && snapshots.length > 0
     ? snapshots.find((s) => s.id === activeSnapshotId)?.label || `v${snapshots.find((s) => s.id === activeSnapshotId)?.versionNo}`
     : null
 
@@ -293,20 +293,10 @@ const CenterPanel: React.FC = () => {
             <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded">{activeSnapshotLabel}</span>
           )}
         </div>
-        {/* 切割提示 */}
-        <div className="flex-shrink-0 text-center py-1.5 text-xs text-amber-600 border-b border-amber-100 bg-amber-50/40 rounded-md">        如遇内容被切割，可通过增加换行、或前往「设置」调整间距解决
-        </div>
         <div className="text-xs text-gray-500">
           实际 {Math.round(finalScale * 100)}% · A4 纸张
         </div>
       </div>
-
-      {/* 无快照提示：显示在工具栏下而非时间线内 */}
-      {isServerResume && snapshotsLoaded && snapshots.length === 0 && (
-        <div className="flex-shrink-0 text-center py-1.5 text-xs text-gray-400 bg-gray-50 border-b border-gray-100">
-          点击右上角「新建版本」记录当前版本
-        </div>
-      )}
 
       {/* 简历画布区域 */}
       <div ref={viewportRef} className="flex-1 overflow-auto no-scrollbar flex items-start justify-center pt-8 pb-12 px-8 cursor-pointer" onClick={handlePreviewClick}>
