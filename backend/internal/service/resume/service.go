@@ -188,5 +188,5 @@ func (s *service) GetSnapshotDetail(ctx context.Context, snapshotID, userID stri
 }
 
 func (s *service) DiffSnapshots(ctx context.Context, userID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error) {
-	return s.repo.DiffSnapshots(ctx, req.SnapshotAID, req.SnapshotBID)
+	return s.repo.DiffSnapshots(ctx, req.SnapshotAID, req.SnapshotBID, req.CurrentModules, req.ComparisonModules)
 }

@@ -180,6 +180,8 @@ type DiffStats struct {
 
 // DiffSnapshotsRequest 对比请求
 type DiffSnapshotsRequest struct {
-	SnapshotAID string `json:"snapshotAId" binding:"required"`
-	SnapshotBID string `json:"snapshotBId" binding:"required"`
+	SnapshotAID       string                   `json:"snapshotAId" binding:"required"`
+	SnapshotBID       string                   `json:"snapshotBId" binding:"required"`
+	CurrentModules    []map[string]interface{} `json:"currentModules,omitempty"`    // 当前快照的 modules（含草稿），为空则从 DB 取
+	ComparisonModules []map[string]interface{} `json:"comparisonModules,omitempty"` // 对比快照的 modules（含草稿），为空则从 DB 取
 }

@@ -36,7 +36,7 @@ type Repository interface {
 	UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error
 	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
 	GetSnapshotDetail(ctx context.Context, snapshotID string) (*model.VersionSnapshot, []byte, error)
-	DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string) (*model.DiffResult, error)
+	DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string, currentModules, comparisonModules []map[string]interface{}) (*model.DiffResult, error)
 }
 
 type repository struct {
@@ -663,26 +663,38 @@ func (r *repository) GetSnapshotDetail(ctx context.Context, snapshotID string) (
 }
 
 // DiffSnapshots 对比两个快照（逐字段比较）
-func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string) (*model.DiffResult, error) {
-	_, contentA, err := r.GetSnapshotDetail(ctx, snapshotAID)
-	if err != nil {
-		return nil, err
-	}
-	_, contentB, err := r.GetSnapshotDetail(ctx, snapshotBID)
-	if err != nil {
-		return nil, err
+// currentModules/comparisonModules: 若提供则替代 DB 内容（含草稿修改）
+func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string, currentModules, comparisonModules []map[string]interface{}) (*model.DiffResult, error) {
+	var modulesA, modulesB []map[string]interface{}
+
+	if len(currentModules) > 0 {
+		modulesA = currentModules
+	} else {
+		_, contentA, err := r.GetSnapshotDetail(ctx, snapshotAID)
+		if err != nil {
+			return nil, err
+		}
+		var dataA map[string]interface{}
+		if err := json.Unmarshal(contentA, &dataA); err != nil {
+			return nil, fmt.Errorf("unmarshal snapshot A: %w", err)
+		}
+		modulesA = extractModules(dataA)
 	}
 
-	var dataA, dataB map[string]interface{}
-	if err := json.Unmarshal(contentA, &dataA); err != nil {
-		return nil, fmt.Errorf("unmarshal snapshot A: %w", err)
-	}
-	if err := json.Unmarshal(contentB, &dataB); err != nil {
-		return nil, fmt.Errorf("unmarshal snapshot B: %w", err)
+	if len(comparisonModules) > 0 {
+		modulesB = comparisonModules
+	} else {
+		_, contentB, err := r.GetSnapshotDetail(ctx, snapshotBID)
+		if err != nil {
+			return nil, err
+		}
+		var dataB map[string]interface{}
+		if err := json.Unmarshal(contentB, &dataB); err != nil {
+			return nil, fmt.Errorf("unmarshal snapshot B: %w", err)
+		}
+		modulesB = extractModules(dataB)
 	}
 
-	modulesA := extractModules(dataA)
-	modulesB := extractModules(dataB)
 	moduleMapA := buildModuleMap(modulesA)
 	moduleMapB := buildModuleMap(modulesB)
 
@@ -746,7 +758,7 @@ func buildModuleMap(modules []map[string]interface{}) map[string]map[string]inte
 	return result
 }
 
-// compareModuleFields 比较两个模块的所有 data 字段
+// compareModuleFields 比较两个模块的所有 data 字段，递归处理嵌套数组
 func compareModuleFields(modA, modB map[string]interface{}) []model.FieldDiff {
 	dataA, _ := modA["data"].(map[string]interface{})
 	dataB, _ := modB["data"].(map[string]interface{})
@@ -761,9 +773,45 @@ func compareModuleFields(modA, modB map[string]interface{}) []model.FieldDiff {
 	modID, _ := modA["id"].(string)
 
 	var diffs []model.FieldDiff
-	allKeys := mergedKeys(dataA, dataB)
 
-	for _, key := range allKeys {
+	// 处理 items 字段：逐项递归比较
+	itemsA, hasItemsA := dataA["items"]
+	itemsB, hasItemsB := dataB["items"]
+	if hasItemsA || hasItemsB {
+		arrA := toItemArray(itemsA)
+		arrB := toItemArray(itemsB)
+		itemMapA := buildItemMap(arrA)
+		itemMapB := buildItemMap(arrB)
+
+		// 比较 A 中的每个 item
+		for id, itemA := range itemMapA {
+			itemB, exists := itemMapB[id]
+			if !exists {
+				diffs = append(diffs, model.FieldDiff{
+					ModuleType: modType, ModuleInstanceID: modID,
+					Field: itemLabel(itemA), Before: itemLabel(itemA), After: "已删除",
+				})
+				continue
+			}
+			itemDiffs := compareItemFields(itemA, itemB, modType, modID)
+			diffs = append(diffs, itemDiffs...)
+		}
+		// B 中有而 A 没有的 item
+		for id, itemB := range itemMapB {
+			if _, exists := itemMapA[id]; !exists {
+				diffs = append(diffs, model.FieldDiff{
+					ModuleType: modType, ModuleInstanceID: modID,
+					Field: "新增条目", Before: "不存在", After: itemLabel(itemB),
+				})
+			}
+		}
+	}
+
+	// 处理其他顶层标量字段
+	for _, key := range mergedKeys(dataA, dataB) {
+		if key == "items" {
+			continue // 已在上方递归处理
+		}
 		va := fieldToString(dataA[key])
 		vb := fieldToString(dataB[key])
 		if va == vb {
@@ -776,14 +824,86 @@ func compareModuleFields(modA, modB map[string]interface{}) []model.FieldDiff {
 			vb = "(空)"
 		}
 		diffs = append(diffs, model.FieldDiff{
-			ModuleType:       modType,
-			ModuleInstanceID: modID,
-			Field:            fieldLabel(key),
-			Before:           va,
-			After:            vb,
+			ModuleType: modType, ModuleInstanceID: modID,
+			Field: fieldLabel(key), Before: va, After: vb,
 		})
 	}
 	return diffs
+}
+
+// toItemArray 将 data["items"] 转为 []map[string]interface{}
+func toItemArray(v interface{}) []map[string]interface{} {
+	if v == nil {
+		return nil
+	}
+	arr, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	result := make([]map[string]interface{}, 0, len(arr))
+	for _, item := range arr {
+		if m, ok := item.(map[string]interface{}); ok {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
+// buildItemMap 构建 id → item map（用于按 id 匹配对比）
+func buildItemMap(items []map[string]interface{}) map[string]map[string]interface{} {
+	result := make(map[string]map[string]interface{})
+	for _, item := range items {
+		if id, ok := item["id"].(string); ok {
+			result[id] = item
+		}
+	}
+	return result
+}
+
+// compareItemFields 逐字段比较两个 item，返回 diff 列表
+func compareItemFields(itemA, itemB map[string]interface{}, modType, modID string) []model.FieldDiff {
+	var diffs []model.FieldDiff
+	itemLabelStr := itemLabel(itemA)
+	allKeys := mergedKeys(itemA, itemB)
+	for _, key := range allKeys {
+		va := fieldToString(itemA[key])
+		vb := fieldToString(itemB[key])
+		if va == vb {
+			continue
+		}
+		if va == "" {
+			va = "(空)"
+		}
+		if vb == "" {
+			vb = "(空)"
+		}
+		diffs = append(diffs, model.FieldDiff{
+			ModuleType: modType, ModuleInstanceID: modID,
+			Field:  itemLabelStr + " · " + fieldLabel(key),
+			Before: va, After: vb,
+		})
+	}
+	return diffs
+}
+
+// itemLabel 返回 item 的显示名称
+func itemLabel(item map[string]interface{}) string {
+	if name, ok := item["name"].(string); ok && name != "" {
+		return name
+	}
+	if company, ok := item["company"].(string); ok && company != "" {
+		return company
+	}
+	if school, ok := item["school"].(string); ok && school != "" {
+		return school
+	}
+	if title, ok := item["title"].(string); ok && title != "" {
+		return title
+	}
+	if id, ok := item["id"].(string); ok {
+		return id
+	}
+	return "(未命名)"
 }
 
 // fieldToString 将任意类型转为可比较的字符串

@@ -301,3 +301,22 @@ body {
 .editor-form-root .grid {
   row-gap: 14px;
 }
+
+/* 差异对比弹窗 HTML 渲染样式 */
+.diff-content ul,
+.diff-content ol {
+  list-style-type: none;
+  padding-left: 0.25rem;
+  margin: 0.25rem 0;
+}
+
+.diff-content li {
+  margin: 0.15rem 0;
+  line-height: 1.5;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.diff-content p {
+  margin: 0.2rem 0;
+}

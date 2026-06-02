@@ -14,6 +14,100 @@ const FIT_PADDING_PX = 24
 const FIT_BOOST_RATIO = 1.3
 const MAX_PREVIEW_SCALE = 1.3
 
+/** 提取文本行（处理 HTML）：优先按 <li> 拆分，否则按换行 */
+function extractLines(html: string): { lines: string[]; isList: boolean; wrapper: string[] } {
+  const str = html || ''
+  const ulMatch = str.match(/<ul[^>]*>([\s\S]*)<\/ul>/i) || str.match(/<ol[^>]*>([\s\S]*)<\/ol>/i)
+  if (ulMatch) {
+    const prefix = str.slice(0, str.indexOf(ulMatch[0]))
+    const suffix = str.slice(str.indexOf(ulMatch[0]) + ulMatch[0].length)
+    const items: string[] = []
+    const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi
+    let m: RegExpExecArray | null
+    while ((m = liRegex.exec(ulMatch[1])) !== null) {
+      items.push(m[0])
+    }
+    return { lines: items, isList: true, wrapper: [prefix, `<ul>`, `</ul>`, suffix] }
+  }
+  // 纯文本：按行拆分
+  const textLines = str.split(/\n/).filter((l) => l.trim() !== '')
+  return { lines: textLines.length > 0 ? textLines : [str], isList: false, wrapper: [str] }
+}
+
+/** 简单的文本标准化（用于比较去重） */
+function norm(s: string): string {
+  return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+}
+
+/** 生成 git 风格统一 diff HTML（+ 新增绿色，- 删除红色） */
+function renderUnifiedDiffHtml(before: string, after: string): string {
+  const a = extractLines(before)
+  const b = extractLines(after)
+
+  // 比较行并生成 diff
+  const aNorm = a.lines.map(norm)
+  const bNorm = b.lines.map(norm)
+  const usedB = new Set<number>()
+  const pairs: Array<{ type: '-' | '+' | '='; line: string }> = []
+
+  // 匹配共同行
+  const matchedA = new Set<number>()
+  for (let i = 0; i < aNorm.length; i++) {
+    for (let j = 0; j < bNorm.length; j++) {
+      if (!usedB.has(j) && aNorm[i] === bNorm[j]) {
+        matchedA.add(i)
+        usedB.add(j)
+        break
+      }
+    }
+  }
+
+  // 生成 diff：当前快照的行
+  for (let i = 0; i < a.lines.length; i++) {
+    if (matchedA.has(i)) {
+      // 找到匹配的 B 行
+      for (let j = 0; j < b.lines.length; j++) {
+        if (aNorm[i] === bNorm[j]) {
+          pairs.push({ type: '=', line: a.lines[i] })
+          break
+        }
+      }
+    } else {
+      pairs.push({ type: '-', line: a.lines[i] })
+    }
+  }
+  // 新增的行
+  for (let j = 0; j < b.lines.length; j++) {
+    if (!usedB.has(j)) {
+      pairs.push({ type: '+', line: b.lines[j] })
+    }
+  }
+
+  // 渲染为 HTML
+  if (a.isList) {
+    const diffParts = pairs.map((p) => {
+      const color = p.type === '-' ? '#fecaca' : p.type === '+' ? '#bbf7d0' : 'transparent'
+      const prefix = p.type === '-' ? '<span style="color:#dc2626;font-weight:bold;margin-right:4px">−</span>' :
+        p.type === '+' ? '<span style="color:#16a34a;font-weight:bold;margin-right:4px">+</span>' : ''
+      return `<li style="background:${color};padding:1px 4px;border-radius:2px;margin:1px 0">${prefix}${p.line.replace(/<\/?li[^>]*>/gi, '')}</li>`
+    })
+    return a.wrapper[0] + a.wrapper[1] + diffParts.join('') + a.wrapper[2] + (a.wrapper[3] || '')
+  }
+
+  // 纯文本 diff
+  return pairs
+    .map((p) => {
+      const color = p.type === '-' ? 'background:#fecaca;' : p.type === '+' ? 'background:#bbf7d0;' : ''
+      const prefix = p.type === '-' ? '<b style="color:#dc2626">− </b>' : p.type === '+' ? '<b style="color:#16a34a">+ </b>' : '  '
+      return `<div style="${color}padding:1px 4px;border-radius:2px;margin:1px 0;font-family:monospace;white-space:pre-wrap">${prefix}${escapeHtml(p.line)}</div>`
+    })
+    .join('')
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 const CenterPanel: React.FC = () => {
   const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, isDirty, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -126,10 +220,27 @@ const CenterPanel: React.FC = () => {
   const handleCompareSnapshot = useCallback(async (snapshotId: string) => {
     if (!activeSnapshotId || activeSnapshotId === snapshotId) return
     try {
-      const result = await resumeApi.diffSnapshots(resume.id, activeSnapshotId, snapshotId)
+      // 加载对比快照的本地草稿（如果有修改但未落库）
+      let comparisonModules: unknown[] | undefined
+      const comparisonDraftKey = `resumecraft_snapshot_draft_${snapshotId}`
+      try {
+        const raw = localStorage.getItem(comparisonDraftKey)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed.modules) {
+            comparisonModules = parsed.modules
+          }
+        }
+      } catch { /* ignore */ }
+      // 将当前模块（含草稿）和对比快照模块（含草稿，如有）都传给后端
+      const result = await resumeApi.diffSnapshots(
+        resume.id, activeSnapshotId, snapshotId,
+        resume.modules as unknown[],
+        comparisonModules,
+      )
       setDiffResult(result)
     } catch { /* ignore */ }
-  }, [resume.id, activeSnapshotId])
+  }, [resume.id, resume.modules, activeSnapshotId])
 
   // 首次加载快照列表（用于显示标签名 + 自动选中最新快照）
   const handleSnapshotsLoaded = useCallback((items: SnapshotListItem[]) => {
@@ -225,50 +336,55 @@ const CenterPanel: React.FC = () => {
       )}
 
       {/* 差异对比弹窗 */}
-      {diffResult && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => setDiffResult(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-[600px] max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-xl">
-              <h3 className="text-base font-semibold text-gray-800">
-                版本对比：{diffResult.snapshotA.label || `v${diffResult.snapshotA.versionNo}`} vs {diffResult.snapshotB.label || `v${diffResult.snapshotB.versionNo}`}
-              </h3>
-              <button className="text-gray-400 hover:text-gray-600 text-lg" onClick={() => setDiffResult(null)}>✕</button>
-            </div>
-            <div className="px-6 py-4">
-              <div className="flex gap-4 mb-4 text-xs text-gray-500">
-                <span>新增 {diffResult.stats.modulesAdded}</span>
-                <span>删除 {diffResult.stats.modulesRemoved}</span>
-                <span>修改 {diffResult.stats.modulesModified}</span>
-                <span>字段 {diffResult.stats.fieldsChanged}</span>
+      {diffResult && (() => {
+        const labelA = activeSnapshotId === diffResult.snapshotA.id
+          ? (diffResult.snapshotA.label || `v${diffResult.snapshotA.versionNo}`)
+          : (diffResult.snapshotB.label || `v${diffResult.snapshotB.versionNo}`)
+        const labelB = activeSnapshotId === diffResult.snapshotA.id
+          ? (diffResult.snapshotB.label || `v${diffResult.snapshotB.versionNo}`)
+          : (diffResult.snapshotA.label || `v${diffResult.snapshotA.versionNo}`)
+        return createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => setDiffResult(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-[640px] max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-xl">
+                <h3 className="text-base font-semibold text-gray-800">
+                  对比：「<span className="text-green-600">{labelA}</span>」vs 「<span className="text-red-600">{labelB}</span>」
+                </h3>
+                <button className="text-gray-400 hover:text-gray-600 text-lg" onClick={() => setDiffResult(null)}>✕</button>
               </div>
-              {diffResult.diffs.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">两个版本内容相同</p>
-              ) : (
-                <div className="space-y-3">
-                  {diffResult.diffs.map((d, i) => (
-                    <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm">
-                      <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
-                        <span className="font-medium text-gray-600">{d.moduleType}</span><span>·</span><span>{d.field}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-xs mt-2">
-                        <div className="bg-red-50 rounded p-2">
-                          <div className="text-red-400 mb-0.5">旧版</div>
-                          <div className="text-gray-700 whitespace-pre-wrap">{d.before}</div>
-                        </div>
-                        <div className="bg-green-50 rounded p-2">
-                          <div className="text-green-500 mb-0.5">新版</div>
-                          <div className="text-gray-700 whitespace-pre-wrap">{d.after}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+              <div className="px-6 py-4">
+                <div className="flex gap-4 mb-3 text-xs text-gray-500">
+                  <span style={{ color: '#dc2626' }}>− 删除 {diffResult.stats.modulesRemoved}</span>
+                  <span style={{ color: '#16a34a' }}>+ 新增 {diffResult.stats.modulesAdded}</span>
+                  <span>修改 {diffResult.stats.modulesModified}</span>
+                  <span>字段 {diffResult.stats.fieldsChanged}</span>
                 </div>
-              )}
+
+                {diffResult.diffs.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-8">两个版本内容相同</p>
+                ) : (
+                  <div className="space-y-3">
+                    {diffResult.diffs.map((d, i) => {
+                      // before = 对比快照（旧），after = 当前快照（新）→ + 绿底 = 当前新增
+                      const before = activeSnapshotId === diffResult.snapshotA.id ? String(d.after ?? '') : String(d.before ?? '')
+                      const after = activeSnapshotId === diffResult.snapshotA.id ? String(d.before ?? '') : String(d.after ?? '')
+                      return (
+                        <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm">
+                          <div className="flex items-center gap-2 text-xs text-gray-400 mb-2">
+                            <span className="font-medium text-gray-600">{d.moduleType}</span><span>·</span><span>{d.field}</span>
+                          </div>
+                          <div className="diff-content text-xs" dangerouslySetInnerHTML={{ __html: renderUnifiedDiffHtml(before, after) }} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )
+      })()}
     </div>
   )
 }

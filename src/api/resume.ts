@@ -80,10 +80,12 @@ export const resumeApi = {
       `/resumes/${resumeId}/snapshots/${snapshotId}/restore`
     ),
 
-  diffSnapshots: (resumeId: string, aId: string, bId: string) =>
+  diffSnapshots: (resumeId: string, aId: string, bId: string, currentModules?: unknown[], comparisonModules?: unknown[]) =>
     apiClient.post<DiffResult>(`/resumes/${resumeId}/snapshots/diff`, {
       snapshotAId: aId,
       snapshotBId: bId,
+      currentModules: currentModules || undefined,
+      comparisonModules: comparisonModules || undefined,
     }),
 }
 
