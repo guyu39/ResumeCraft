@@ -702,6 +702,10 @@ func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID
 	stats := model.DiffStats{}
 
 	for id, modA := range moduleMapA {
+		// 跳过个人信息模块（diff 不比较）
+		if t, _ := modA["type"].(string); t == "personal" {
+			continue
+		}
 		modB, exists := moduleMapB[id]
 		if !exists {
 			stats.ModulesRemoved++
@@ -723,6 +727,10 @@ func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID
 		}
 	}
 	for id, modB := range moduleMapB {
+		// 跳过个人信息模块（diff 不比较）
+		if t, _ := modB["type"].(string); t == "personal" {
+			continue
+		}
 		if _, exists := moduleMapA[id]; !exists {
 			stats.ModulesAdded++
 			diffs = append(diffs, model.FieldDiff{
