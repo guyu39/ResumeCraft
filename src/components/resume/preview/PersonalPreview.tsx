@@ -61,7 +61,9 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, mod
     ...(educationDisplay ? [{ value: `${t('label.education')}${sep}${educationDisplay}` }] : []),
     ...(politicsDisplay ? [{ value: `${t('label.politics')}${sep}${politicsDisplay}` }] : []),
     ...(workYearsDisplay ? [{ value: `${t('label.workYears')}${sep}${workYearsDisplay}` }] : []),
-    ...(personalAccount?.platform && personalAccount?.url ? [{ value: `${personalAccount.platform}${sep}${personalAccount.url}` }] : []),
+    ...(personalAccount?.platform && personalAccount?.url
+      ? [{ value: `${personalAccount.platform}${sep}`, link: personalAccount.url }]
+      : []),
     ...((extraInfos ?? [])
       .filter((item) => item.title && item.value)
       .map((item) => ({ value: `${item.title}${sep}${item.value}` }))),
@@ -80,6 +82,17 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, mod
             {contacts.map((c, i) => (
               <span key={i} className="block min-w-0 break-all leading-relaxed">
                 {c.value}
+                {'link' in c && (
+                  <a
+                    href={c.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="!no-underline border-b border-dotted hover:underline"
+                    style={{ color: themeColor, borderColor: themeColor }}
+                  >
+                    {c.link}
+                  </a>
+                )}
               </span>
             ))}
           </div>
