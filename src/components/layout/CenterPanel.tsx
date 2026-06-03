@@ -4,9 +4,11 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import PagedResumePaper, { A4_HEIGHT_PX, A4_WIDTH_PX } from '@/components/resume/PagedResumePaper'
 import SnapshotTimeline from '@/components/common/SnapshotTimeline'
+import type { NoticeItem } from '@/components/common/NoticeCenter'
 import { resumeApi, type SnapshotListItem, type DiffResult } from '@/api/resume'
 import type { Resume } from '@/types/resume'
 
@@ -14,6 +16,10 @@ const FIT_PADDING_PX = 24
 const FIT_BOOST_RATIO = 1.3
 const MAX_PREVIEW_SCALE = 1.3
 const MIN_READABLE_SCALE = 0.6 // 低于此阈值提示用户折叠侧栏
+
+interface CenterPanelProps {
+  workspaceNotices?: NoticeItem[]
+}
 
 /** 提取文本行（处理 HTML）：优先按 <li> 拆分，否则按换行 */
 function extractLines(html: string): { lines: string[]; isList: boolean; wrapper: string[] } {
@@ -109,7 +115,7 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-const CenterPanel: React.FC = () => {
+const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
   const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, isDirty, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
@@ -144,6 +150,18 @@ const CenterPanel: React.FC = () => {
   }, [viewportSize])
 
   const finalScale = Math.min(autoFitScale * FIT_BOOST_RATIO, MAX_PREVIEW_SCALE)
+  const headerNotices = useMemo(() => {
+    const list = [...workspaceNotices]
+    if (list.length === 0 && finalScale < MIN_READABLE_SCALE) {
+      list.push({
+        id: 'preview-scale-warning',
+        tone: 'warning' as const,
+        title: `预览区偏窄（${Math.round(finalScale * 100)}%）`,
+        description: '建议折叠一侧边栏',
+      })
+    }
+    return list
+  }, [workspaceNotices, finalScale])
 
   // 预览区点击 → 跳转到对应模块编辑
   const handlePreviewClick = useCallback((e: React.MouseEvent) => {
@@ -293,17 +311,33 @@ const CenterPanel: React.FC = () => {
             <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded">{activeSnapshotLabel}</span>
           )}
         </div>
+        {headerNotices.length > 0 && (
+          <div className="mx-4 min-w-0 flex-1 flex justify-center gap-2 flex-wrap">
+            {headerNotices.map((n) => (
+              <div key={n.id} className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+                n.tone === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : n.tone === 'error'
+                    ? 'border-rose-200 bg-rose-50 text-rose-700'
+                    : n.tone === 'warning'
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-sky-200 bg-sky-50 text-sky-700'
+              }`}>
+                <span className="flex-shrink-0">
+                  {n.tone === 'success' ? <CheckCircle2 className="h-3.5 w-3.5" /> :
+                    n.tone === 'error' ? <XCircle className="h-3.5 w-3.5" /> :
+                      n.tone === 'warning' ? <AlertTriangle className="h-3.5 w-3.5" /> :
+                        <Info className="h-3.5 w-3.5" />}
+                </span>
+                <span className="truncate">{n.title}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="text-xs text-gray-500">
           实际 {Math.round(finalScale * 100)}% · A4 纸张
         </div>
       </div>
-
-      {/* 缩放过低警告 */}
-      {finalScale < MIN_READABLE_SCALE && (
-        <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 text-amber-700 text-xs px-4 py-1.5 flex items-center justify-center gap-2">
-          ⚠️ 预览区过窄（{Math.round(finalScale * 100)}%），建议折叠侧边栏以获得完整视图
-        </div>
-      )}
 
       {/* 简历画布区域 */}
       <div ref={viewportRef} className="flex-1 overflow-auto no-scrollbar flex items-start justify-center pt-8 pb-12 px-8 cursor-pointer" onClick={handlePreviewClick}>

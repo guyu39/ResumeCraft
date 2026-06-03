@@ -32,7 +32,6 @@ docker/postgres-logs/
 docker/minio-data/
 
 # Misc
-.claude/
 *.local
 
 # workbuddy

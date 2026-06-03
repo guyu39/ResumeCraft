@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Replace, Pencil } from 'lucide-react'
+import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Pencil } from 'lucide-react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useResumeStore } from '@/store/resumeStore'

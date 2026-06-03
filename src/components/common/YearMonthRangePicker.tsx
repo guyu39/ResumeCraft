@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useMemo } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import NoticeCenter from './NoticeCenter'
 import YearMonthPicker from './YearMonthPicker'
 
 interface YearMonthRangePickerProps {
@@ -59,10 +59,17 @@ const YearMonthRangePicker: React.FC<YearMonthRangePickerProps> = ({
       </div>
 
       {dateError && (
-        <div className="flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
-          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-          <p className="text-sm font-medium text-red-600">{dateError}</p>
-        </div>
+        <NoticeCenter
+          compact
+          items={[
+            {
+              id: 'date-range-error',
+              tone: 'error',
+              title: '时间范围有冲突',
+              description: dateError,
+            },
+          ]}
+        />
       )}
     </div>
   )

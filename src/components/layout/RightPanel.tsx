@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Download, Globe, Settings, Sparkles, X } from 'lucide-react'
+import { Download, Globe, Settings, Sparkles, X } from 'lucide-react'
 import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
@@ -43,6 +43,7 @@ import PortfolioForm from '@/components/resume/blocks/PortfolioForm'
 import LanguagesForm from '@/components/resume/blocks/LanguagesForm'
 import CustomForm from '@/components/resume/blocks/CustomForm'
 import AIEngineeringForm from '@/components/resume/blocks/AIEngineeringForm'
+import NoticeCenter, { type NoticeItem } from '@/components/common/NoticeCenter'
 
 // 设置面板组件
 import ThemeColorPicker from '@/components/common/ThemeColorPicker'
@@ -807,10 +808,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
 
 // ---------- 右栏主组件 ----------
 const RightPanel: React.FC = () => {
-    const { resume, activeModuleId, lastSavedAt, setActiveModule, activeSnapshotId, triggerSnapshotRefresh, setBasedOnSnapshotId } = useResumeStore()
+    const { resume, activeModuleId, setActiveModule, activeSnapshotId, triggerSnapshotRefresh, setBasedOnSnapshotId } = useResumeStore()
     const { isAuthenticated } = useAuthStore()
     const formRef = useRef<HTMLDivElement>(null)
-    const [showSaved, setShowSaved] = useState(false)
     const [showSettings, setShowSettings] = useState(false)
     const [showSnapshotDialog, setShowSnapshotDialog] = useState(false)
     const [snapshotLabel, setSnapshotLabel] = useState('')
@@ -1083,15 +1083,6 @@ const RightPanel: React.FC = () => {
         ? MODULE_META_LIST.find((m) => m.type === activeModule.type)
         : null
 
-    // 保存提示（显示 2 秒后自动消失）
-    useEffect(() => {
-        if (!lastSavedAt) return
-
-        setShowSaved(true)
-        const timer = window.setTimeout(() => setShowSaved(false), 2000)
-        return () => window.clearTimeout(timer)
-    }, [lastSavedAt])
-
     // 切换模块时滚动到顶部
     useEffect(() => {
         formRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1190,23 +1181,31 @@ const RightPanel: React.FC = () => {
         }
     }, [])
 
+    const 编辑提醒 = useMemo<NoticeItem[]>(() => {
+        const notices: NoticeItem[] = []
+
+        if (exportError) {
+            notices.push({
+                id: 'export-error',
+                tone: 'error',
+                title: 'PDF 导出失败',
+                description: exportError,
+            })
+        }
+
+        return notices
+    }, [exportError])
+
     return (
         <div className="flex flex-col h-full">
             {/* 顶部操作栏 */}
-            <div className="relative flex-shrink-0 flex items-center justify-end gap-2 px-4 py-3 border-b border-gray-100 bg-white z-10 overflow-hidden">
-                {/* 自动保存状态（固定在顶部左侧，不占按钮布局） */}
-                {showSaved && (
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700 animate-fade-in">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                        已保存
-                    </div>
-                )}
-
-                {/* 保存按钮 */}
+            <div className="flex-shrink-0 border-b border-slate-200/70 bg-white/80 px-4 py-3 backdrop-blur">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    {/* 保存按钮 */}
                 {resume.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id) && (
                     <button
                         onClick={() => setShowSnapshotDialog(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 hover:text-slate-700 transition-colors flex-shrink-0"
+                        className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/85 px-3.5 py-2 text-sm text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-800"
                         title="新建简历版本 · 记录当前版本以便对比和回溯"
                     >
 
@@ -1221,16 +1220,17 @@ const RightPanel: React.FC = () => {
                         setShowAIEvaluation(false)
                     }}
                     className={`
-            flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors flex-shrink min-w-0
+            flex flex-shrink items-center justify-center rounded-xl border px-2.5 py-2 text-sm shadow-sm transition-colors
             ${showSettings
-                            ? 'border-primary text-primary bg-primary/5'
-                            : 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                            ? 'border-primary/30 bg-primary/10 text-primary'
+                            : 'border-slate-200 bg-white/85 text-slate-600 hover:bg-slate-50 hover:text-slate-800'
                         }
           `}
                     title="简历设置 · 如遇内容被切割可调整间距"
+                    aria-label="简历设置"
                 >
+                    <span className="truncate">设置</span>
                     <Settings className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">{showSettings ? '收起' : '设置'}</span>
                 </button>
 
                 <button
@@ -1251,9 +1251,9 @@ const RightPanel: React.FC = () => {
                     }}
                     disabled={hasDateErrors}
                     title={hasDateErrors ? '请先修正日期范围错误' : undefined}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors flex-shrink min-w-0 ${hasDateErrors
-                        ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                    className={`flex min-w-0 flex-shrink items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm shadow-sm transition-colors ${hasDateErrors
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                        : 'border-slate-200 bg-white/85 text-slate-600 hover:bg-slate-50 hover:text-slate-800'
                         }`}
                 >
                     <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
@@ -1272,46 +1272,22 @@ const RightPanel: React.FC = () => {
                     onClick={handleExport}
                     disabled={exporting || hasDateErrors}
                     title={hasDateErrors ? '请先修正日期范围错误' : undefined}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors flex-shrink min-w-0 ${hasDateErrors
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'text-white bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait'
+                    className={`flex min-w-0 flex-shrink items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm transition-colors ${hasDateErrors
+                        ? 'cursor-not-allowed bg-slate-300 text-slate-500'
+                        : 'bg-primary text-white shadow-[0_10px_20px_rgba(37,99,235,0.24)] hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60'
                         }`}
                 >
                     <Download className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">{exporting ? '导出中...' : '导出PDF'}</span>
                 </button>
+                </div>
+                {编辑提醒.length > 0 && (
+                    <NoticeCenter items={编辑提醒.slice(0, 1)} compact className="mt-2" />
+                )}
             </div>
 
-            {/* 日期范围校验错误横幅 */}
-            {hasDateErrors && (
-                <div className="flex-shrink-0 mx-4 mt-2 space-y-1.5">
-                    {dateErrors.map((err) => (
-                        <div
-                            key={err.moduleId}
-                            className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg"
-                        >
-                            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                            <div className="text-sm text-amber-800">
-                                <span className="font-semibold">{err.moduleTitle}</span>
-                                {err.itemIndexes.length > 0 && (
-                                    <span> 第{err.itemIndexes.map(i => i + 1).join('、')}条</span>
-                                )}
-                                ：结束时间不能早于开始时间，请修正后再导出或评估。
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* 导出错误提示 */}
-            {exportError && (
-                <div className="flex-shrink-0 mx-4 mt-2 px-3 py-2 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600">
-                    ⚠ {exportError}
-                </div>
-            )}
-
             {showSettings ? (
-                <div className="flex-1 bg-gray-50/90 px-4 py-4 overflow-y-auto no-scrollbar">
+                <div className="flex-1 overflow-y-auto bg-gray-50/70 px-4 py-4 no-scrollbar">
                     <div className="max-w-[96%] mx-auto">
                         <SettingsPanel onClose={() => setShowSettings(false)} initialAIConfig={aiConfigFromServer ?? null} />
                     </div>

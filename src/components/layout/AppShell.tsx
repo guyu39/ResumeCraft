@@ -9,7 +9,9 @@ import CenterPanel from './CenterPanel'
 import RightPanel from './RightPanel.tsx'
 import { useCloudSync } from '@/hooks/useCloudSync'
 import { usePendingParse } from '@/hooks/usePendingParse'
-import { X, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import type { NoticeItem } from '@/components/common/NoticeCenter'
+import { useResumeStore } from '@/store/resumeStore'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 const STORAGE_KEY_LEFT = 'resumecraft_panel_left_width'
 const STORAGE_KEY_RIGHT = 'resumecraft_panel_right_width'
@@ -50,6 +52,9 @@ const AppShell: React.FC = () => {
   const [拖拽中, 设置拖拽中] = React.useState<'left' | 'right' | null>(null)
   // 保存折叠前的宽度，以便恢复
   const 左栏恢复宽度Ref = React.useRef(initial.left)
+  const 左栏宽度Ref = React.useRef(initial.left)
+  const 右栏宽度Ref = React.useRef(initial.right)
+  const resume = useResumeStore((s) => s.resume)
 
   // 云端同步
   const { saveStatus } = useCloudSync()
@@ -77,16 +82,77 @@ const AppShell: React.FC = () => {
     if (右栏宽度 > 0) localStorage.setItem(STORAGE_KEY_RIGHT, String(右栏宽度))
   }, [右栏宽度])
 
+  React.useEffect(() => {
+    左栏宽度Ref.current = 左栏宽度
+  }, [左栏宽度])
+
+  React.useEffect(() => {
+    右栏宽度Ref.current = 右栏宽度
+  }, [右栏宽度])
+
   const 开始拖拽 = (方向: 'left' | 'right', event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
     window.getSelection()?.removeAllRanges()
     设置拖拽中(方向)
   }
 
-  // 记录保存状态供 UI 使用
-  React.useEffect(() => {
-    console.log('[AppShell] 保存状态:', saveStatus)
-  }, [saveStatus])
+  const 工作区通知 = React.useMemo<NoticeItem[]>(() => {
+    const items: NoticeItem[] = []
+    const 日期冲突模块列表 = resume.modules.filter((mod) => {
+      if (mod.type !== 'education' && mod.type !== 'work' && mod.type !== 'project') return false
+      const modItems = (mod.data as { items?: Array<{ startDate?: string; endDate?: string }> }).items
+      return modItems?.some((item) => item.startDate && item.endDate && item.endDate !== '至今' && item.startDate > item.endDate)
+    })
+
+    if (日期冲突模块列表.length > 0) {
+      items.push({
+        id: 'date-range-conflict',
+        tone: 'warning',
+        title: `${日期冲突模块列表.map((m) => m.title).join('、')} 时间范围冲突`,
+        description: '存在结束时间早于开始时间的记录，请先修正。',
+      })
+    }
+
+    if (parseStatus === 'parsing') {
+      items.push({
+        id: 'parse-running',
+        tone: 'info',
+        title: '正在解析导入的简历',
+        description: '系统正在识别 PDF / Word 内容，识别完成后会自动填充到编辑器。',
+      })
+    }
+
+    if (parseStatus === 'done') {
+      items.push({
+        id: 'parse-done',
+        tone: 'success',
+        title: '简历解析完成',
+        description: '可以开始检查结构、补充字段并继续编辑。',
+        onClose: dismissParse,
+      })
+    }
+
+    if (parseStatus === 'error') {
+      items.push({
+        id: 'parse-error',
+        tone: 'error',
+        title: '简历解析失败',
+        description: parseError || '请稍后重试，或切换文件重新导入。',
+        onClose: dismissParse,
+      })
+    }
+
+    if (saveStatus === 'error') {
+      items.push({
+        id: 'cloud-sync-error',
+        tone: 'warning',
+        title: '云端同步异常',
+        description: '本地编辑仍然保留，建议稍后继续操作并等待自动重试。',
+      })
+    }
+
+    return items
+  }, [dismissParse, parseError, parseStatus, resume.modules, saveStatus])
 
   React.useEffect(() => {
     if (!拖拽中) return
@@ -102,16 +168,18 @@ const AppShell: React.FC = () => {
       window.getSelection()?.removeAllRanges()
 
       if (拖拽中 === 'left') {
-        const 可用最大左栏 = Math.min(MAX_LEFT, window.innerWidth - 右栏宽度 - MIDDLE_MIN)
+        const 可用最大左栏 = Math.min(MAX_LEFT, window.innerWidth - 右栏宽度Ref.current - MIDDLE_MIN)
         const 新宽度 = Math.max(MIN_LEFT, Math.min(可用最大左栏, e.clientX))
+        左栏宽度Ref.current = 新宽度
         设置左栏宽度(新宽度)
         return
       }
 
       if (拖拽中 === 'right') {
         const 从右侧计算 = window.innerWidth - e.clientX
-        const 可用最大右栏 = Math.min(MAX_RIGHT, window.innerWidth - 左栏宽度 - MIDDLE_MIN)
+        const 可用最大右栏 = Math.min(MAX_RIGHT, window.innerWidth - 左栏宽度Ref.current - MIDDLE_MIN)
         const 新宽度 = Math.max(MIN_RIGHT, Math.min(可用最大右栏, 从右侧计算))
+        右栏宽度Ref.current = 新宽度
         设置右栏宽度(新宽度)
       }
     }
@@ -134,7 +202,7 @@ const AppShell: React.FC = () => {
       window.removeEventListener('mousemove', 处理鼠标移动)
       window.removeEventListener('mouseup', 处理鼠标抬起)
     }
-  }, [拖拽中, 左栏宽度, 右栏宽度])
+  }, [拖拽中])
 
   // 窗口尺寸变化时自动缩放侧栏（P2: resize 监听）
   React.useEffect(() => {
@@ -152,33 +220,13 @@ const AppShell: React.FC = () => {
   }, [左栏宽度, 右栏宽度])
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_20%_15%,#f7f9ff_0%,#edf2ff_35%,#e8edf5_100%)] p-3">
-      {/* 后台解析进度提示 */}
-      {parseStatus !== 'idle' && (
-        <div className={`mb-2 flex items-center justify-between rounded-xl px-4 py-2.5 text-sm shadow-sm transition-colors ${
-          parseStatus === 'parsing' ? 'bg-blue-50 text-blue-700' :
-          parseStatus === 'done' ? 'bg-green-50 text-green-700' :
-          'bg-red-50 text-red-600'
-        }`}>
-          <div className="flex items-center gap-2">
-            {parseStatus === 'parsing' && <Loader2 className="h-4 w-4 animate-spin" />}
-            <span>
-              {parseStatus === 'parsing' && '正在解析简历，请稍候...'}
-              {parseStatus === 'done' && '简历解析完成'}
-              {parseStatus === 'error' && (parseError || '简历解析失败')}
-            </span>
-          </div>
-          {(parseStatus === 'done' || parseStatus === 'error') && (
-            <button onClick={dismissParse} className="ml-3 rounded p-0.5 hover:bg-black/10">
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      )}
-      <div className="flex flex-1 w-full overflow-hidden gap-2">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.14),transparent_22%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_48%,#edf2f8_100%)] p-3">
+      <div className="flex flex-1 w-full overflow-hidden gap-3">
         {/* 左栏 — 模块管理面板 */}
         <aside
-          className="flex-shrink-0 flex flex-col bg-white/92 border border-white/70 rounded-2xl shadow-[0_8px_30px_rgba(16,24,40,0.08)] overflow-hidden backdrop-blur transition-all duration-200"
+          className={`flex-shrink-0 flex flex-col bg-white/80 border border-white/75 rounded-[24px] shadow-[0_18px_44px_rgba(15,23,42,0.08)] overflow-hidden backdrop-blur-xl ${
+            拖拽中 === 'left' ? '' : 'transition-[width,opacity] duration-200'
+          }`}
           style={{ width: `${左栏折叠 ? 0 : 左栏宽度}px`, opacity: 左栏折叠 ? 0 : 1 }}
         >
           {!左栏折叠 && <LeftPanel />}
@@ -193,7 +241,7 @@ const AppShell: React.FC = () => {
           />
           <button
             onClick={切换左栏折叠}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white border border-gray-300 shadow-sm flex items-center justify-center z-10"
+            className="absolute top-1/2 left-1/2 z-10 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/95 shadow-md"
             style={{ opacity: 左栏折叠 ? 1 : undefined, transition: 'opacity 0.15s' }}
             title={左栏折叠 ? '展开左栏' : '折叠左栏'}
           >
@@ -202,8 +250,8 @@ const AppShell: React.FC = () => {
         </div>
 
         {/* 中栏 flex:1 — 简历实时预览 */}
-        <main className="flex-1 flex flex-col overflow-hidden rounded-2xl border border-white/70 bg-white/72 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur" style={{ minWidth: `${MIDDLE_MIN}px` }}>
-          <CenterPanel />
+        <main className="flex-1 flex flex-col overflow-hidden rounded-[28px] border border-white/75 bg-white/68 shadow-[0_20px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl" style={{ minWidth: `${MIDDLE_MIN}px` }}>
+          <CenterPanel workspaceNotices={工作区通知} />
         </main>
 
         {/* 右拖拽条 */}
@@ -215,7 +263,7 @@ const AppShell: React.FC = () => {
 
         {/* 右栏 — 编辑表单 */}
         <aside
-          className="flex-shrink-0 flex flex-col bg-white/95 border border-white/70 rounded-2xl shadow-[0_8px_30px_rgba(16,24,40,0.08)] overflow-hidden backdrop-blur"
+          className="flex-shrink-0 flex flex-col bg-white/84 border border-white/75 rounded-[24px] shadow-[0_18px_44px_rgba(15,23,42,0.08)] overflow-hidden backdrop-blur-xl"
           style={{ width: `${右栏宽度}px` }}
         >
           <RightPanel />
