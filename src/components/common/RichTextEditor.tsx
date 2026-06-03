@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Replace } from 'lucide-react'
+import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Replace, Pencil } from 'lucide-react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useResumeStore } from '@/store/resumeStore'
@@ -382,7 +382,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                         key: 'bullet-rewrite',
                         title: 'Bullet 重写',
                         label: Bullet重写加载中 ? '重写中...' : '重写',
-                        icon: Replace,
+                        icon: Pencil,
                         active: Bullet重写面板显示,
                         onClick: 打开Bullet重写,
                         disabled: Bullet重写加载中,
