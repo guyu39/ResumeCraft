@@ -61,10 +61,10 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor, titl
                       href={item.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center rounded px-1.5 py-[1px] text-[8.5pt] font-medium no-underline"
-                      style={{ color: themeColor, backgroundColor: `${themeColor}14`, textDecoration: 'none' }}
+                      className="inline-block max-w-[280px] truncate align-bottom text-[8.5pt] border-b border-dotted hover:underline"
+                      style={{ color: themeColor, borderColor: themeColor }}
                     >
-                      {t('label.projectLink')}
+                      {item.link}
                     </a>
                   </>
                 )}

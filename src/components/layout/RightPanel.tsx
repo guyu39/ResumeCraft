@@ -1202,65 +1202,69 @@ const RightPanel: React.FC = () => {
             <div className="flex-shrink-0 border-b border-slate-200/70 bg-white/80 px-4 py-3 backdrop-blur">
                 <div className="flex flex-wrap items-center justify-end gap-2">
                     {/* 保存按钮 */}
-                {resume.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id) && (
+                    {resume.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id) && (
+                        <button
+                            onClick={() => setShowSnapshotDialog(true)}
+                            className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/85 px-3.5 py-2 text-sm text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-800"
+                            title="新建简历版本 · 记录当前版本以便对比和回溯"
+                        >
+
+                            <span className="truncate">新建版本</span>
+                        </button>
+                    )}
+
+                    {/* 设置按钮 */}
+
                     <button
-                        onClick={() => setShowSnapshotDialog(true)}
-                        className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/85 px-3.5 py-2 text-sm text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-800"
-                        title="新建简历版本 · 记录当前版本以便对比和回溯"
-                    >
 
-                        <span className="truncate">新建版本</span>
-                    </button>
-                )}
-
-                {/* 设置按钮 */}
-                <button
-                    onClick={() => {
-                        setShowSettings((v) => !v)
-                        setShowAIEvaluation(false)
-                    }}
-                    className={`
-            flex flex-shrink items-center justify-center rounded-xl border px-2.5 py-2 text-sm shadow-sm transition-colors
-            ${showSettings
-                            ? 'border-primary/30 bg-primary/10 text-primary'
-                            : 'border-slate-200 bg-white/85 text-slate-600 hover:bg-slate-50 hover:text-slate-800'
-                        }
-          `}
-                    title="简历设置 · 如遇内容被切割可调整间距"
-                    aria-label="简历设置"
-                >
-                    <span className="truncate">设置</span>
-                    <Settings className="w-3.5 h-3.5 flex-shrink-0" />
-                </button>
-
-                <button
-                    onClick={() => {
-                        if (hasDateErrors) return
-                        if (!isAuthenticated) {
-                            const currentPath = window.location.pathname
-                            window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
-                            window.location.reload()
-                            return
-                        }
-                        if (showAIEvaluation) {
+                        onClick={() => {
+                            setShowSettings((v) => !v)
                             setShowAIEvaluation(false)
-                        } else {
-                            setShowSettings(false)
-                            setShowAIEvaluation(true)
-                        }
-                    }}
-                    disabled={hasDateErrors}
-                    title={hasDateErrors ? '请先修正日期范围错误' : undefined}
-                    className={`flex min-w-0 flex-shrink items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm shadow-sm transition-colors ${hasDateErrors
-                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                        : 'border-slate-200 bg-white/85 text-slate-600 hover:bg-slate-50 hover:text-slate-800'
-                        }`}
-                >
-                    <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">{showAIEvaluation ? '返回编辑' : evaluating ? '评估中...' : 'AI评估'}</span>
-                </button>
+                        }}
+                        className={`
+            flex flex-shrink items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-sm shadow-sm transition-colors
+            ${showSettings
+                                ? 'border-primary/30 bg-primary/10 text-primary'
+                                : 'border-slate-200 bg-white/85 text-slate-600 hover:bg-slate-50 hover:text-slate-800'
+                            }
+                            
+          `}
 
-                {/* <button
+                        title="简历设置 · 如遇内容被切割可调整间距"
+                        aria-label="简历设置"
+                    >
+                        <Settings className="w-3.5 h-3.5 flex-shrink-0" />
+                        设置
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            if (hasDateErrors) return
+                            if (!isAuthenticated) {
+                                const currentPath = window.location.pathname
+                                window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
+                                window.location.reload()
+                                return
+                            }
+                            if (showAIEvaluation) {
+                                setShowAIEvaluation(false)
+                            } else {
+                                setShowSettings(false)
+                                setShowAIEvaluation(true)
+                            }
+                        }}
+                        disabled={hasDateErrors}
+                        title={hasDateErrors ? '请先修正日期范围错误' : undefined}
+                        className={`flex min-w-0 flex-shrink items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm shadow-sm transition-colors ${hasDateErrors
+                            ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                            : 'border-slate-200 bg-white/85 text-slate-600 hover:bg-slate-50 hover:text-slate-800'
+                            }`}
+                    >
+                        <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{showAIEvaluation ? '返回编辑' : evaluating ? '评估中...' : 'AI评估'}</span>
+                    </button>
+
+                    {/* <button
                     onClick={handlePreview}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 transition-colors flex-shrink min-w-0"
                 >
@@ -1268,18 +1272,18 @@ const RightPanel: React.FC = () => {
                     <span className="truncate">预览</span>
                 </button> */}
 
-                <button
-                    onClick={handleExport}
-                    disabled={exporting || hasDateErrors}
-                    title={hasDateErrors ? '请先修正日期范围错误' : undefined}
-                    className={`flex min-w-0 flex-shrink items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm transition-colors ${hasDateErrors
-                        ? 'cursor-not-allowed bg-slate-300 text-slate-500'
-                        : 'bg-primary text-white shadow-[0_10px_20px_rgba(37,99,235,0.24)] hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60'
-                        }`}
-                >
-                    <Download className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">{exporting ? '导出中...' : '导出PDF'}</span>
-                </button>
+                    <button
+                        onClick={handleExport}
+                        disabled={exporting || hasDateErrors}
+                        title={hasDateErrors ? '请先修正日期范围错误' : undefined}
+                        className={`flex min-w-0 flex-shrink items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm transition-colors ${hasDateErrors
+                            ? 'cursor-not-allowed bg-slate-300 text-slate-500'
+                            : 'bg-primary text-white shadow-[0_10px_20px_rgba(37,99,235,0.24)] hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60'
+                            }`}
+                    >
+                        <Download className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{exporting ? '导出中...' : '导出PDF'}</span>
+                    </button>
                 </div>
                 {编辑提醒.length > 0 && (
                     <NoticeCenter items={编辑提醒.slice(0, 1)} compact className="mt-2" />

@@ -256,7 +256,12 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
           <TextInput value={data.email} onChange={(v) => update('email', v)} onBlur={() => handleBlur('email')} placeholder="example@email.com" error={hasError('email')} type="email" />
         </FormField>
         <FormField label={t('personal.personalAccount')}>
-          <TextInput value={data.personalAccount ?? ''} onChange={(v) => update('personalAccount', v)} placeholder={t('personal.personalAccountPlaceholder')} />
+          <div className="grid grid-cols-[auto_1fr] gap-2 items-center">
+            <span className="text-xs text-gray-500 whitespace-nowrap">社交平台：</span>
+            <TextInput value={data.personalAccount?.platform ?? ''} onChange={(v) => update('personalAccount', { ...data.personalAccount, platform: v })} placeholder="GitHub / LinkedIn / 个人网站" />
+            <span className="text-xs text-gray-500 whitespace-nowrap">账号地址：</span>
+            <TextInput value={data.personalAccount?.url ?? ''} onChange={(v) => update('personalAccount', { ...data.personalAccount, url: v })} placeholder="https://github.com/yourname" />
+          </div>
         </FormField>
         <FormField label={t('personal.city')}>
           <TextInput value={data.city} onChange={(v) => update('city', v)} placeholder={t('personal.cityPlaceholder')} />

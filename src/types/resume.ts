@@ -127,7 +127,7 @@ export interface PersonalData {
   gender: string
   education: string
   extraInfos: Array<{ id: string; title: string; value: string }>
-  personalAccount: string
+  personalAccount: { platform: string; url: string }
   city: string      // 所在城市（选填）
   avatar: string
   avatarShape?: 'circle' | 'square'

@@ -61,7 +61,7 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, mod
     ...(educationDisplay ? [{ value: `${t('label.education')}${sep}${educationDisplay}` }] : []),
     ...(politicsDisplay ? [{ value: `${t('label.politics')}${sep}${politicsDisplay}` }] : []),
     ...(workYearsDisplay ? [{ value: `${t('label.workYears')}${sep}${workYearsDisplay}` }] : []),
-    ...(personalAccount ? [{ value: `${t('label.personalAccount')}${sep}${personalAccount}` }] : []),
+    ...(personalAccount?.platform && personalAccount?.url ? [{ value: `${personalAccount.platform}${sep}${personalAccount.url}` }] : []),
     ...((extraInfos ?? [])
       .filter((item) => item.title && item.value)
       .map((item) => ({ value: `${item.title}${sep}${item.value}` }))),
