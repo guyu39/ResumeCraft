@@ -4,6 +4,16 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-lucide': ['lucide-react'],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api/ark': {

@@ -12,9 +12,11 @@ interface LanguagesPreviewProps {
   themeColor: string
   title?: string
   moduleId?: string
+  renderItemCommentIcon?: (itemIndex: number) => React.ReactNode
+  renderItemCommentPanel?: (itemIndex: number) => React.ReactNode
 }
 
-const LanguagesPreview: React.FC<LanguagesPreviewProps> = ({ items, themeColor, title = '语言能力', moduleId }) => {
+const LanguagesPreview: React.FC<LanguagesPreviewProps> = ({ items, themeColor, title = '语言能力', moduleId, renderItemCommentIcon, renderItemCommentPanel }) => {
   const { t, te } = useI18n()
   const validItems = items.filter((item) => item.language)
 
@@ -24,17 +26,23 @@ const LanguagesPreview: React.FC<LanguagesPreviewProps> = ({ items, themeColor, 
         <p className="text-[9pt] text-gray-300 italic">{t('languages.fillLanguages')}</p>
       ) : (
         <div className="space-y-1.5">
-          {validItems.map((item) => (
-            <div key={item.id} className="flex items-center gap-2">
-              <span className="text-[9.5pt] text-gray-700 w-20 flex-shrink-0">🌐 {item.language}</span>
-              {item.level && (
-                <span
-                  className="text-[9pt] px-2 py-0.5 rounded"
-                  style={{ backgroundColor: `${themeColor}18`, color: themeColor }}
-                >
-                  {te(item.level)}
-                </span>
-              )}
+          {validItems.map((item, index) => (
+            <div key={item.id}>
+              <div className={renderItemCommentIcon ? "flex items-center gap-1.5" : "flex items-center gap-2"}>
+                {renderItemCommentIcon && (
+                  <div className="flex-shrink-0">{renderItemCommentIcon(index)}</div>
+                )}
+                <span className="text-[9.5pt] text-gray-700 w-20 flex-shrink-0">🌐 {item.language}</span>
+                {item.level && (
+                  <span
+                    className="text-[9pt] px-2 py-0.5 rounded"
+                    style={{ backgroundColor: `${themeColor}18`, color: themeColor }}
+                  >
+                    {te(item.level)}
+                  </span>
+                )}
+              </div>
+              {renderItemCommentPanel?.(index)}
             </div>
           ))}
         </div>

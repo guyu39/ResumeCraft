@@ -133,3 +133,85 @@ export interface DiffStats {
   modulesModified: number
   fieldsChanged: number
 }
+
+// ============ 分享链接 ============
+
+export interface ShareLink {
+  id: string
+  resumeId: string
+  token: string
+  createdBy: string
+  expiresAt?: number
+  viewCount: number
+  isActive: boolean
+  createdAt: number
+  shareUrl?: string
+}
+
+export interface ShareComment {
+  id: string
+  shareId: string
+  authorName: string
+  content: string
+  moduleId: string
+  itemIndex: number
+  createdAt: number
+}
+
+export interface ShareResumeView {
+  title: string
+  locale: string
+  themeColor: string
+  modules: unknown[]
+  shareInfo: ShareLink
+  comments: ShareComment[]
+}
+
+export interface AIAnalysisResponse {
+  summary: string
+  strengths: string[]
+  weaknesses: string[]
+  suggestions: string[]
+}
+
+export const shareApi = {
+  create: (resumeId: string, expiresIn?: number) =>
+    apiClient.post<ShareLink>(`/resumes/${resumeId}/share`, { resumeId, expiresIn: expiresIn ?? 0 }, { auth: true }),
+
+  list: (resumeId: string) =>
+    apiClient.get<{ items: ShareLink[] }>(`/resumes/${resumeId}/shares`, { auth: true }),
+
+  deactivate: (resumeId: string, shareId: string) =>
+    apiClient.delete<{ deactivated: boolean }>(`/resumes/${resumeId}/shares/${shareId}`, { auth: true }),
+
+  view: (token: string) =>
+    apiClient.get<ShareResumeView>(`/share/${token}`),
+
+  addComment: (token: string, content: string, authorName?: string, moduleId?: string, itemIndex?: number) =>
+    apiClient.post<ShareComment>(`/share/${token}/comments`, { content, authorName: authorName || '', moduleId: moduleId || '', itemIndex: itemIndex ?? 0 }),
+
+  listComments: (token: string) =>
+    apiClient.get<{ items: ShareComment[] }>(`/share/${token}/comments`),
+
+  analyze: (token: string) =>
+    apiClient.post<AIAnalysisResponse>(`/share/${token}/analyze`),
+
+  generateRequirementDoc: (token: string) =>
+    apiClient.post<{ document: string }>(`/share/${token}/requirement-doc`),
+
+  downloadPDF: async (token: string, html: string, filename: string) => {
+    const res = await fetch(`/api/share/${token}/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html, filename }),
+    })
+    if (!res.ok) throw new Error('PDF download failed')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${filename}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+}

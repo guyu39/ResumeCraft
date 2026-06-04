@@ -13,9 +13,11 @@ interface WorkPreviewProps {
   themeColor: string
   title?: string
   moduleId?: string
+  renderItemCommentIcon?: (itemIndex: number) => React.ReactNode
+  renderItemCommentPanel?: (itemIndex: number) => React.ReactNode
 }
 
-const WorkPreview: React.FC<WorkPreviewProps> = ({ items, themeColor, title = '工作经历', moduleId }) => {
+const WorkPreview: React.FC<WorkPreviewProps> = ({ items, themeColor, title = '工作经历', moduleId, renderItemCommentIcon, renderItemCommentPanel }) => {
   const { t, te } = useI18n()
   const validItems = items.filter((item) => item.company || item.position)
 
@@ -33,44 +35,58 @@ const WorkPreview: React.FC<WorkPreviewProps> = ({ items, themeColor, title = '�
     return `${start} — ${end}`
   }
 
+  const renderItemContent = (item: WorkItem) => (
+    <>
+      {/* 时间和公司规模（右上） */}
+      <div className="absolute right-0 top-0 text-[9pt] text-gray-900 font-semibold text-right leading-tight">
+        <div>{renderRange(item.startDate, item.endDate)}</div>
+        {item.companySize && (
+          <div className="text-[8pt]">
+            {te(item.companySize)}
+          </div>
+        )}
+      </div>
+
+      {/* 公司/部门/职位 */}
+      <p className="text-[10pt] font-semibold text-gray-800 pr-[90px]">
+        {item.company || t('work.companyNamePreview')}
+        {item.department && (
+          <span className="font-normal text-gray-600"> / {item.department}</span>
+        )}
+        {item.position && (
+          <span className="font-normal text-gray-600"> / {item.position}</span>
+        )}
+      </p>
+
+      {/* 描述 */}
+      {item.description ? (
+        <RichTextPreview
+          text={item.description}
+          className="mt-1.5 text-[9.5pt] text-gray-700"
+        />
+      ) : (
+        <p className="text-[9pt] text-gray-300 italic mt-1">{t('work.fillDescription')}</p>
+      )}
+    </>
+  )
+
   return (
     <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {validItems.length === 0 ? (
         <p className="text-[9pt] text-gray-300 italic">{t('work.fillDescription')}</p>
       ) : (
         <div className="space-y-2">
-          {validItems.map((item) => (
-            <div key={item.id} className="relative">
-              {/* 时间和公司规模（右上） */}
-              <div className="absolute right-0 top-0 text-[9pt] text-gray-900 font-semibold text-right leading-tight">
-                <div>{renderRange(item.startDate, item.endDate)}</div>
-                {item.companySize && (
-                  <div className="text-[8pt]">
-                    {te(item.companySize)}
-                  </div>
+          {validItems.map((item, index) => (
+            <div key={item.id}>
+              <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : "relative"}>
+                {renderItemCommentIcon && (
+                  <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(index)}</div>
                 )}
+                <div className={renderItemCommentIcon ? "flex-1 relative min-w-0" : undefined}>
+                  {renderItemContent(item)}
+                </div>
               </div>
-
-              {/* 公司/部门/职位 */}
-              <p className="text-[10pt] font-semibold text-gray-800 pr-[90px]">
-                {item.company || t('work.companyNamePreview')}
-                {item.department && (
-                  <span className="font-normal text-gray-600"> / {item.department}</span>
-                )}
-                {item.position && (
-                  <span className="font-normal text-gray-600"> / {item.position}</span>
-                )}
-              </p>
-
-              {/* 描述 */}
-              {item.description ? (
-                <RichTextPreview
-                  text={item.description}
-                  className="mt-1.5 text-[9.5pt] text-gray-700"
-                />
-              ) : (
-                <p className="text-[9pt] text-gray-300 italic mt-1">{t('work.fillDescription')}</p>
-              )}
+              {renderItemCommentPanel?.(index)}
             </div>
           ))}
         </div>

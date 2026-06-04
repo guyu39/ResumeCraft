@@ -34,9 +34,19 @@ import AIEngineeringPreview from './AIEngineeringPreview'
 
 interface ClassicTemplateProps {
   resume: Resume
+  renderItemCommentIcon?: (moduleId: string, itemIndex: number) => React.ReactNode
+  renderItemCommentPanel?: (moduleId: string, itemIndex: number) => React.ReactNode
+  className?: string
+  overrideMinHeight?: string
 }
 
-const ClassicTemplate: React.FC<ClassicTemplateProps> = ({ resume }) => {
+const ClassicTemplate: React.FC<ClassicTemplateProps> = ({
+  resume,
+  renderItemCommentIcon,
+  renderItemCommentPanel,
+  className = '',
+  overrideMinHeight,
+}) => {
   const { modules, themeColor } = resume
   const styleSettings = resume.styleSettings ?? DEFAULT_RESUME_STYLE_SETTINGS
   const visibleModules = modules.filter((m) => m.visible)
@@ -45,29 +55,36 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({ resume }) => {
 
   const renderModule = (module: typeof visibleModules[number]) => {
     const { type, id, data, title } = module
+    const icon = renderItemCommentIcon
+      ? (idx: number) => renderItemCommentIcon(id, idx)
+      : undefined
+    const panel = renderItemCommentPanel
+      ? (idx: number) => renderItemCommentPanel(id, idx)
+      : undefined
+
     switch (type) {
       case 'education':
-        return <EducationPreview key={id} moduleId={id} items={(data as { items: EducationItem[] }).items} themeColor={themeColor} title={title} />
+        return <EducationPreview key={id} moduleId={id} items={(data as { items: EducationItem[] }).items} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'work':
-        return <WorkPreview key={id} moduleId={id} items={(data as { items: WorkItem[] }).items} themeColor={themeColor} title={title} />
+        return <WorkPreview key={id} moduleId={id} items={(data as { items: WorkItem[] }).items} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'project':
-        return <ProjectPreview key={id} moduleId={id} items={(data as { items: ProjectItem[] }).items} themeColor={themeColor} title={title} />
+        return <ProjectPreview key={id} moduleId={id} items={(data as { items: ProjectItem[] }).items} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'skills':
-        return <SkillsPreview key={id} moduleId={id} data={data as SkillsData} themeColor={themeColor} title={title} />
+        return <SkillsPreview key={id} moduleId={id} data={data as SkillsData} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'awards':
-        return <AwardsPreview key={id} moduleId={id} items={(data as { items: AwardItem[] }).items} themeColor={themeColor} title={title} />
+        return <AwardsPreview key={id} moduleId={id} items={(data as { items: AwardItem[] }).items} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'summary':
-        return <SummaryPreview key={id} moduleId={id} data={data as SummaryData} themeColor={themeColor} title={title} />
+        return <SummaryPreview key={id} moduleId={id} data={data as SummaryData} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'certificates':
-        return <CertificatesPreview key={id} moduleId={id} items={(data as { items: CertificateItem[] }).items} themeColor={themeColor} title={title} />
+        return <CertificatesPreview key={id} moduleId={id} items={(data as { items: CertificateItem[] }).items} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'portfolio':
-        return <PortfolioPreview key={id} moduleId={id} items={(data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={title} />
+        return <PortfolioPreview key={id} moduleId={id} items={(data as { items: PortfolioItem[] }).items} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'languages':
-        return <LanguagesPreview key={id} moduleId={id} items={(data as { items: LanguageItem[] }).items} themeColor={themeColor} title={title} />
+        return <LanguagesPreview key={id} moduleId={id} items={(data as { items: LanguageItem[] }).items} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'custom':
-        return <CustomPreview key={id} moduleId={id} data={data as CustomData} themeColor={themeColor} title={title} />
+        return <CustomPreview key={id} moduleId={id} data={data as CustomData} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       case 'ai-engineering':
-        return <AIEngineeringPreview key={id} moduleId={id} data={data as AIEngineeringData} themeColor={themeColor} title={title} />
+        return <AIEngineeringPreview key={id} moduleId={id} data={data as AIEngineeringData} themeColor={themeColor} title={title} renderItemCommentIcon={icon} renderItemCommentPanel={panel} />
       default:
         return null
     }
@@ -75,12 +92,12 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({ resume }) => {
 
   return (
     <div
-      className="w-full bg-white resume-preview-content"
+      className={`w-full bg-white resume-preview-content ${className}`}
       data-module-title-line-position={styleSettings.moduleTitleLinePosition ?? 'left'}
       data-module-title-marker-style={styleSettings.moduleTitleMarkerStyle ?? 'bar'}
       data-module-title-marker-visible={styleSettings.moduleTitleMarkerVisible === false ? 'false' : 'true'}
       style={{
-        minHeight: '842px',
+        minHeight: overrideMinHeight ?? '842px',
         padding: `${styleSettings.pagePaddingVertical}px ${styleSettings.pagePaddingHorizontal}px`,
         fontFamily: styleSettings.fontFamily,
         fontSize: `${styleSettings.fontSize}pt`,

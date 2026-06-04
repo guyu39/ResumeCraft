@@ -185,3 +185,71 @@ type DiffSnapshotsRequest struct {
 	CurrentModules    []map[string]interface{} `json:"currentModules,omitempty"`    // 当前快照的 modules（含草稿），为空则从 DB 取
 	ComparisonModules []map[string]interface{} `json:"comparisonModules,omitempty"` // 对比快照的 modules（含草稿），为空则从 DB 取
 }
+
+// ============ 分享链接 ============
+
+// ShareLink 分享链接
+type ShareLink struct {
+	ID        string `json:"id"`
+	ResumeID  string `json:"resumeId"`
+	Token     string `json:"token"`
+	CreatedBy string `json:"createdBy"`
+	ExpiresAt *int64 `json:"expiresAt,omitempty"` // Unix milli timestamp, nil = 永不过期
+	ViewCount int    `json:"viewCount"`
+	IsActive  bool   `json:"isActive"`
+	CreatedAt int64  `json:"createdAt"`
+	ShareURL  string `json:"shareUrl,omitempty"`
+}
+
+// ShareComment 分享评论
+type ShareComment struct {
+	ID         string `json:"id"`
+	ShareID    string `json:"shareId"`
+	AuthorName string `json:"authorName"`
+	Content    string `json:"content"`
+	ModuleID   string `json:"moduleId"`
+	ItemIndex  int    `json:"itemIndex"`
+	CreatedAt  int64  `json:"createdAt"`
+}
+
+// CreateShareRequest 创建分享请求
+type CreateShareRequest struct {
+	ResumeID  string `json:"resumeId" binding:"required"`
+	ExpiresIn int    `json:"expiresIn"` // 有效期天数，0 = 永不过期
+}
+
+// AddCommentRequest 添加评论请求
+type AddCommentRequest struct {
+	AuthorName string `json:"authorName"`
+	Content    string `json:"content" binding:"required"`
+	ModuleID   string `json:"moduleId"`
+	ItemIndex  int    `json:"itemIndex"`
+}
+
+// ShareResumeView 分享页简历数据（脱敏后的公开视图）
+type ShareResumeView struct {
+	Title      string                   `json:"title"`
+	Locale     string                   `json:"locale"`
+	ThemeColor string                   `json:"themeColor"`
+	Modules    []map[string]interface{} `json:"modules"`
+	ShareInfo  *ShareLink               `json:"shareInfo"`
+	Comments   []ShareComment           `json:"comments"`
+}
+
+// AIAnalysisRequest AI 分析请求
+type AIAnalysisRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+// AIAnalysisResponse AI 分析响应
+type AIAnalysisResponse struct {
+	Summary     string   `json:"summary"`
+	Strengths   []string `json:"strengths"`
+	Weaknesses  []string `json:"weaknesses"`
+	Suggestions []string `json:"suggestions"`
+}
+
+// RequirementDocRequest 需求文档生成请求
+type RequirementDocRequest struct {
+	Token string `json:"token" binding:"required"`
+}

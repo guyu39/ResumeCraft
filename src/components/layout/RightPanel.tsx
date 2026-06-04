@@ -3,10 +3,11 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Globe, Settings, Sparkles, X } from 'lucide-react'
+import { Download, Globe, Settings, Sparkles, X, Link2 } from 'lucide-react'
 import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
+import ShareModal from '@/components/resume/ShareModal'
 import { getAutoFixEnabled, setAutoFixEnabled } from '@/utils/textGuard'
 import {
     AIProviderPreset,
@@ -813,6 +814,7 @@ const RightPanel: React.FC = () => {
     const formRef = useRef<HTMLDivElement>(null)
     const [showSettings, setShowSettings] = useState(false)
     const [showSnapshotDialog, setShowSnapshotDialog] = useState(false)
+    const [shareOpen, setShareOpen] = useState(false)
     const [snapshotLabel, setSnapshotLabel] = useState('')
     const [snapshotSaving, setSnapshotSaving] = useState(false)
     const [snapshotError, setSnapshotError] = useState('')
@@ -1197,6 +1199,7 @@ const RightPanel: React.FC = () => {
     }, [exportError])
 
     return (
+        <>
         <div className="flex flex-col h-full">
             {/* 顶部操作栏 */}
             <div className="flex-shrink-0 border-b border-slate-200/70 bg-white/80 px-4 py-3 backdrop-blur">
@@ -1271,6 +1274,14 @@ const RightPanel: React.FC = () => {
                     <Eye className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">预览</span>
                 </button> */}
+
+                    <button
+                        onClick={() => setShareOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-gray-800 transition-colors flex-shrink min-w-0"
+                    >
+                        <Link2 className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">分享</span>
+                    </button>
 
                     <button
                         onClick={handleExport}
@@ -1478,6 +1489,8 @@ const RightPanel: React.FC = () => {
                 </div>
             )}
         </div>
+        {shareOpen && <ShareModal resumeId={resume.id} open={shareOpen} onClose={() => setShareOpen(false)} />}
+        </>
     )
 }
 

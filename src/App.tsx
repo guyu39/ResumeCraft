@@ -7,6 +7,7 @@ import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import AppShell from '@/components/layout/AppShell'
 import PreviewPage from '@/components/layout/PreviewPage'
+import ShareViewPage from '@/pages/ShareViewPage'
 import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
 import { resumeApi } from '@/api'
@@ -50,6 +51,7 @@ const App: React.FC = () => {
   const [showLogin, setShowLogin] = useState(false)
 
   const pathname = window.location.pathname
+  const isSharePage = pathname.startsWith('/share/')
   const isPreviewPage = pathname === '/preview'
   const isEditorPage = pathname === '/editor'
 
@@ -175,6 +177,9 @@ const App: React.FC = () => {
       </div>
     )
   }
+
+  // 分享页（公开，无需登录）
+  if (isSharePage) return <ShareViewPage />
 
   // 未登录时强制显示登录页
   if (!isAuthenticated || showLogin) {

@@ -64,6 +64,7 @@ type MessageRecord struct {
 // ConfigRepository AI 配置仓库接口
 type ConfigRepository interface {
 	GetByUserID(ctx context.Context, userID string) (*AIConfigRecord, error)
+	GetGlobalOrAny(ctx context.Context) (*AIConfigRecord, error)
 	Upsert(ctx context.Context, cfg *AIConfigRecord) error
 }
 
@@ -114,6 +115,29 @@ func (r *configRepository) GetByUserID(ctx context.Context, userID string) (*AIC
 		ORDER BY is_global ASC, created_at DESC
 		LIMIT 1
 	`, userID).Scan(
+		&cfg.ID, &cfg.UserID, &cfg.Provider, &cfg.APIKeyEncrypted, &cfg.BaseURL,
+		&cfg.DefaultModel, &cfg.EvaluateModel, &cfg.TimeoutMs, &cfg.Enabled, &cfg.IsGlobal,
+		&cfg.CreatedAt, &cfg.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrConfigNotFound
+		}
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func (r *configRepository) GetGlobalOrAny(ctx context.Context) (*AIConfigRecord, error) {
+	var cfg AIConfigRecord
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, user_id, provider, api_key_encrypted, base_url, default_model,
+		       evaluate_model, timeout_ms, enabled, is_global, created_at, updated_at
+		FROM ai_configs
+		WHERE enabled = true
+		ORDER BY is_global DESC, created_at DESC
+		LIMIT 1
+	`).Scan(
 		&cfg.ID, &cfg.UserID, &cfg.Provider, &cfg.APIKeyEncrypted, &cfg.BaseURL,
 		&cfg.DefaultModel, &cfg.EvaluateModel, &cfg.TimeoutMs, &cfg.Enabled, &cfg.IsGlobal,
 		&cfg.CreatedAt, &cfg.UpdatedAt,

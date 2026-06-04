@@ -320,3 +320,159 @@ body {
 .diff-content p {
   margin: 0.2rem 0;
 }
+
+/* ============================================================
+   分享页移动端优化样式
+   ============================================================ */
+
+/* 禁止横向滚动 */
+.share-page {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* 移动端 header 阴影收拢 */
+.share-mobile-header {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* 移动端内容区域平滑滚动 */
+.share-mobile-content {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* 移动端可点击元素最小触控尺寸 */
+.share-page button:not(.resume-preview-content button),
+.share-page a {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* 点击态反馈 */
+@media (max-width: 767px) {
+  .share-page button:active,
+  .share-page a:active {
+    opacity: 0.7;
+    transition: opacity 0.1s ease;
+  }
+}
+
+/* ============================================================
+   移动端简历模板覆盖样式
+   ============================================================ */
+@media (max-width: 767px) {
+  /* 覆盖 minHeight，取消固定高度 */
+  .mobile-resume-template {
+    min-height: auto !important;
+    padding: 12px 14px !important;
+  }
+
+  /* 流体字号：基于 320px~428px 屏幕宽度适配 */
+  .mobile-resume-template {
+    font-size: clamp(7.5pt, 3.2vw, 10pt) !important;
+  }
+
+  /* 个人头像信息区域缩小并居中 */
+  .mobile-resume-template > div[data-module-id]:first-child {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .mobile-resume-template > div[data-module-id]:first-child > div:first-child {
+    width: 100%;
+  }
+
+  .mobile-resume-template > div[data-module-id]:first-child img {
+    width: 56px !important;
+    height: auto !important;
+    margin: 0 auto 8px;
+    order: -1;
+  }
+
+  /* 个人信息 grid 在移动端改为单列 */
+  .mobile-resume-template .grid.grid-cols-2 {
+    grid-template-columns: 1fr !important;
+    gap: 0.25rem 0 !important;
+  }
+
+  /* 姓名字号缩小 */
+  .mobile-resume-template .text-\[22pt\] {
+    font-size: clamp(14pt, 5.5vw, 22pt) !important;
+  }
+
+  .mobile-resume-template .text-\[26pt\] {
+    font-size: clamp(16pt, 6.5vw, 26pt) !important;
+  }
+
+  /* 模块标题字号 */
+  .mobile-resume-template .resume-module-title-text {
+    font-size: clamp(9pt, 3.8vw, 12pt) !important;
+  }
+
+  /* 模块间距：使用 CSS 变量保底，确保模块不重叠 */
+  .mobile-resume-template [data-module-id] {
+    margin-bottom: clamp(14px, 5vw, 24px) !important;
+  }
+
+  /* 子项分隔：仅在 space-y 直接子项的顶层容器添加分隔线（不误伤评论面板） */
+  .mobile-resume-template [data-module-id] > .pl-1 > .space-y-2 > div,
+  .mobile-resume-template [data-module-id] > .pl-1 > .space-y-1\.5 > div,
+  .mobile-resume-template [data-module-id] > .pl-1 > .space-y-3\.5 > div {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  .mobile-resume-template [data-module-id] > .pl-1 > .space-y-2 > div:last-child,
+  .mobile-resume-template [data-module-id] > .pl-1 > .space-y-1\.5 > div:last-child,
+  .mobile-resume-template [data-module-id] > .pl-1 > .space-y-3\.5 > div:last-child {
+    border-bottom: none;
+  }
+
+  /* pr 保护区域在移动端缩小 */
+  .mobile-resume-template .pr-\[90px\] {
+    padding-right: 64px !important;
+  }
+
+  .mobile-resume-template .pr-\[80px\] {
+    padding-right: 58px !important;
+  }
+
+  /* 图片懒加载占位 */
+  .mobile-resume-template img:not([src]) {
+    display: none;
+  }
+}
+
+/* 中等屏幕 (428px-768px) 适度放大 */
+@media (min-width: 429px) and (max-width: 767px) {
+  .mobile-resume-template {
+    font-size: clamp(8pt, 2.5vw, 10pt) !important;
+    padding: 14px 18px !important;
+  }
+}
+
+/* ============================================================
+   通用可访问性
+   ============================================================ */
+
+/* 评论输入框触控友好 */
+.share-page input[type="text"],
+.share-page textarea {
+  min-height: 36px;
+}
+
+/* 禁用双击缩放（保留双指缩放） */
+@media (max-width: 767px) {
+  .share-page {
+    touch-action: pan-y pinch-zoom;
+  }
+}
+
+/* 评论图标 hover 过渡 */
+[data-comment-icon] {
+  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}

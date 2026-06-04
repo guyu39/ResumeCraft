@@ -56,7 +56,28 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 
 				// 导出接口
 				resumeGroup.POST("/:id/exports", h.CreateExport)
+
+				// 分享链接（需认证）
+				resumeGroup.POST("/:id/share", h.CreateShareLink)
+				resumeGroup.GET("/:id/shares", h.ListShareLinks)
+				resumeGroup.DELETE("/:id/shares/:shareId", h.DeactivateShareLink)
 			}
+		}
+
+		// 分享公开访问（无需认证）
+		if h.ResumeService() != nil {
+			shareGroup := api.Group("/share")
+			{
+				shareGroup.GET("/:token", h.ViewSharedResume)
+				shareGroup.GET("/:token/comments", h.ListComments)
+				shareGroup.POST("/:token/comments", h.AddComment)
+			}
+			// AI 分析 + 需求文档 + PDF 下载（公开访问）
+			if h.AIService() != nil {
+				shareGroup.POST("/:token/analyze", h.AnalyzeSharedResume)
+				shareGroup.POST("/:token/requirement-doc", h.GenerateRequirementDoc)
+			}
+			shareGroup.POST("/:token/pdf", h.ExportSharePDF)
 		}
 
 		// AI 接口 - 需要认证

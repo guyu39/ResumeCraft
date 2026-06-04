@@ -61,6 +61,10 @@ type Service interface {
 
 	// AI 增强（e.g. 抽取指标、补全风控、转STAR）
 	Enhance(ctx context.Context, userID string, req model.EnhanceRequest) (*model.EnhanceResponse, error)
+
+	// 简历分析与需求文档（分享页公开接口，无 userID）
+	AnalyzeResume(ctx context.Context, resumeSummary string) (*model.AIAnalysisResponse, error)
+	GenerateRequirementDoc(ctx context.Context, resumeSummary string) (string, error)
 }
 
 type service struct {
@@ -2139,4 +2143,103 @@ func buildStarPrompt(scenario string) string {
 
 场景描述：
 %s`, scenario)
+}
+
+// ============ 简历分析 & 需求文档（分享页公开接口） ============
+
+func (s *service) AnalyzeResume(ctx context.Context, resumeSummary string) (*model.AIAnalysisResponse, error) {
+	cfg, err := s.cfgRepo.GetGlobalOrAny(ctx)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+	if !cfg.Enabled {
+		return nil, fmt.Errorf("AI not enabled")
+	}
+
+	apiKey, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt api key: %w", err)
+	}
+
+	prompt := fmt.Sprintf(`你是一位资深简历分析顾问。请分析以下简历内容，给出客观专业的评价。
+
+【输出格式】
+严格按以下 JSON 格式输出，不要输出任何其他内容：
+{
+  "summary": "简历整体概览（2-3句）",
+  "strengths": ["优势1", "优势2", "优势3"],
+  "weaknesses": ["待改进1", "待改进2"],
+  "suggestions": ["优化建议1", "优化建议2", "优化建议3"]
+}
+
+简历内容：
+%s`, resumeSummary)
+
+	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
+		APIKey:    apiKey,
+		BaseURL:   cfg.BaseURL,
+		Model:     cfg.DefaultModel,
+		Prompt:    prompt,
+		TimeoutMs: cfg.TimeoutMs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ai request: %w", err)
+	}
+
+	var analysis model.AIAnalysisResponse
+	if err := json.Unmarshal([]byte(result.Text), &analysis); err != nil {
+		analysis = model.AIAnalysisResponse{
+			Summary:     result.Text,
+			Strengths:   []string{},
+			Weaknesses:  []string{},
+			Suggestions: []string{},
+		}
+	}
+
+	return &analysis, nil
+}
+
+func (s *service) GenerateRequirementDoc(ctx context.Context, resumeSummary string) (string, error) {
+	cfg, err := s.cfgRepo.GetGlobalOrAny(ctx)
+	if err != nil {
+		return "", ErrAIConfigNotFound
+	}
+	if !cfg.Enabled {
+		return "", fmt.Errorf("AI not enabled")
+	}
+
+	apiKey, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
+	if err != nil {
+		return "", fmt.Errorf("decrypt api key: %w", err)
+	}
+
+	prompt := fmt.Sprintf(`你是一位资深技术招聘专家。请根据以下候选人简历，生成一份《岗位需求与候选人匹配分析文档》，帮助面试官快速了解：
+
+1. 候选人核心竞争力
+2. 与典型岗位（如高级后端工程师/全栈工程师）的匹配度
+3. 面试中应重点考察的技术点和项目经验
+4. 建议的面试问题和考察方案
+
+用清晰的结构化文本输出（HTML格式，不要Markdown），包含以下章节：
+- 候选人画像
+- 核心优势
+- 适配岗位分析
+- 面试考察重点
+- 建议面试题（3-5个）
+
+简历内容：
+%s`, resumeSummary)
+
+	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
+		APIKey:    apiKey,
+		BaseURL:   cfg.BaseURL,
+		Model:     cfg.DefaultModel,
+		Prompt:    prompt,
+		TimeoutMs: cfg.TimeoutMs,
+	})
+	if err != nil {
+		return "", fmt.Errorf("ai request: %w", err)
+	}
+
+	return result.Text, nil
 }

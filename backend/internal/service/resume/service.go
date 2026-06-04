@@ -29,6 +29,19 @@ type Service interface {
 	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
 	GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error)
 	DiffSnapshots(ctx context.Context, userID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error)
+
+	// 分享链接
+	CreateShareLink(ctx context.Context, userID string, req model.CreateShareRequest) (*model.ShareLink, error)
+	GetShareLink(ctx context.Context, token string) (*model.ShareLink, error)
+	ListShareLinks(ctx context.Context, userID, resumeID string) ([]model.ShareLink, error)
+	DeactivateShareLink(ctx context.Context, userID, shareID string) error
+
+	// 分享评论
+	AddComment(ctx context.Context, token, authorName, content, moduleID string, itemIndex int) (*model.ShareComment, error)
+	ListComments(ctx context.Context, token string) ([]model.ShareComment, error)
+
+	// 分享视图
+	GetShareResumeView(ctx context.Context, token string) (*model.ShareResumeView, error)
 }
 
 type service struct {

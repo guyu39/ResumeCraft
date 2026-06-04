@@ -12,9 +12,11 @@ interface AwardsPreviewProps {
   themeColor: string
   title?: string
   moduleId?: string
+  renderItemCommentIcon?: (itemIndex: number) => React.ReactNode
+  renderItemCommentPanel?: (itemIndex: number) => React.ReactNode
 }
 
-const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor, title = '荣誉奖项', moduleId }) => {
+const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor, title = '荣誉奖项', moduleId, renderItemCommentIcon, renderItemCommentPanel }) => {
   const { t, te } = useI18n()
   const validItems = items.filter((item) => item.name)
 
@@ -24,22 +26,28 @@ const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor, title 
         <p className="text-[9pt] text-gray-300 italic">{t('awards.fillAwards')}</p>
       ) : (
         <div className="space-y-2">
-          {validItems.map((item) => (
-            <div key={item.id} className="flex items-start gap-3">
-              {/* 奖项名称 */}
-              <div className="flex-1 text-[9.5pt] text-gray-700">
-                <span className="font-medium">🏆 </span>
-                {item.name}
-                {item.level && (
-                  <span className="ml-1 text-[9pt] text-gray-500">（{te(item.level)}）</span>
+          {validItems.map((item, index) => (
+            <div key={item.id}>
+              <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : "flex items-start gap-3"}>
+                {renderItemCommentIcon && (
+                  <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(index)}</div>
                 )}
+                <div className="flex-1 min-w-0 flex items-start gap-3">
+                  <div className="flex-1 text-[9.5pt] text-gray-700">
+                    <span className="font-medium">🏆 </span>
+                    {item.name}
+                    {item.level && (
+                      <span className="ml-1 text-[9pt] text-gray-500">（{te(item.level)}）</span>
+                    )}
+                  </div>
+                  {item.date && (
+                    <span className="text-[9pt] text-gray-900 font-semibold flex-shrink-0">
+                      {item.date}
+                    </span>
+                  )}
+                </div>
               </div>
-              {/* 日期 */}
-              {item.date && (
-                <span className="text-[9pt] text-gray-900 font-semibold flex-shrink-0">
-                  {item.date}
-                </span>
-              )}
+              {renderItemCommentPanel?.(index)}
             </div>
           ))}
         </div>

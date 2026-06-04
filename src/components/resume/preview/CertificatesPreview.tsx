@@ -12,9 +12,11 @@ interface CertificatesPreviewProps {
   themeColor: string
   title?: string
   moduleId?: string
+  renderItemCommentIcon?: (itemIndex: number) => React.ReactNode
+  renderItemCommentPanel?: (itemIndex: number) => React.ReactNode
 }
 
-const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeColor, title = '证书资质', moduleId }) => {
+const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeColor, title = '证书资质', moduleId, renderItemCommentIcon, renderItemCommentPanel }) => {
   const { t } = useI18n()
   const validItems = items.filter((item) => item.name)
 
@@ -24,19 +26,27 @@ const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeC
         <p className="text-[9pt] text-gray-300 italic">{t('certificates.fillCerts')}</p>
       ) : (
         <div className="space-y-2">
-          {validItems.map((item) => (
-            <div key={item.id} className="flex items-start gap-3">
-              <span className="text-[9.5pt] text-gray-700 flex-1">
-                📜 {item.name}
-              </span>
-              <div className="text-right flex-shrink-0">
-                {item.date && (
-                  <span className="text-[9pt] text-gray-900 font-semibold block">{item.date}</span>
+          {validItems.map((item, index) => (
+            <div key={item.id}>
+              <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : "flex items-start gap-3"}>
+                {renderItemCommentIcon && (
+                  <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(index)}</div>
                 )}
-                {item.issuer && (
-                  <span className="text-[8pt] text-gray-400 block">{item.issuer}</span>
-                )}
+                <div className="flex-1 min-w-0 flex items-start gap-3">
+                  <span className="text-[9.5pt] text-gray-700 flex-1">
+                    📜 {item.name}
+                  </span>
+                  <div className="text-right flex-shrink-0">
+                    {item.date && (
+                      <span className="text-[9pt] text-gray-900 font-semibold block">{item.date}</span>
+                    )}
+                    {item.issuer && (
+                      <span className="text-[8pt] text-gray-400 block">{item.issuer}</span>
+                    )}
+                  </div>
+                </div>
               </div>
+              {renderItemCommentPanel?.(index)}
             </div>
           ))}
         </div>
