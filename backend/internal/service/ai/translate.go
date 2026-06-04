@@ -43,18 +43,23 @@ func (s *service) Translate(ctx context.Context, userID string, req model.Transl
 	}
 	prompt := buildTranslatePrompt(resumeContent, sourceLocale, req.TargetLocale, req.Options.KeepChineseFields)
 
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
+
 	// 3. 调用 AI（非流式）
 	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     cfg.DefaultModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 	})
 	if err != nil {
 		log.Printf("[ai] Translate failed: %v", err)
 		return nil, ErrAIRequestFailed
 	}
+	// 还原脱敏
+	result.Text = s.unmaskResponse(san, result.Text)
 
 	// 4. 解析响应
 	log.Printf("[ai] Translate AI response (first 800 chars): %s", truncateStr(result.Text, 800))

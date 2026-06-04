@@ -2057,17 +2057,22 @@ func (s *service) Enhance(ctx context.Context, userID string, req model.EnhanceR
 	}
 
 	prompt := buildEnhancePrompt(req)
+
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
 	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     cfg.DefaultModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 	})
 	if err != nil {
 		log.Printf("[ai] Enhance(%s) failed: %v", req.Operation, err)
 		return nil, ErrAIRequestFailed
 	}
+	// 还原脱敏
+	result.Text = s.unmaskResponse(san, result.Text)
 
 	return &model.EnhanceResponse{Result: strings.TrimSpace(result.Text)}, nil
 }

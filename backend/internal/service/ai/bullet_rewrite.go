@@ -27,17 +27,22 @@ func (s *service) RewriteBullet(ctx context.Context, userID string, req model.Bu
 	}
 
 	prompt := buildBulletRewritePrompt(req)
+
+	// 脱敏
+	maskedPrompt, san := s.maskPrompt(prompt)
 	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     cfg.DefaultModel,
-		Prompt:    prompt,
+		Prompt:    maskedPrompt,
 		TimeoutMs: cfg.TimeoutMs,
 	})
 	if err != nil {
 		log.Printf("[ai] RewriteBullet failed: %v", err)
 		return nil, ErrAIRequestFailed
 	}
+	// 还原脱敏
+	result.Text = s.unmaskResponse(san, result.Text)
 
 	rewriteResp, err := parseBulletRewriteResponse(result.Text)
 	if err != nil {
