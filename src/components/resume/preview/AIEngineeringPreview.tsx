@@ -29,9 +29,9 @@ const AIEngineeringPreview: React.FC<Props> = ({ data, themeColor, title = 'AI �
       <div className="space-y-3.5">
         {items.map((it, idx) => (
           <div key={it.id || idx}>
-            <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : ""}>
+            <div className="relative">
               {renderItemCommentIcon && (
-                <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(idx)}</div>
+                <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(idx)}</div>
               )}
               <div className="flex-1 min-w-0 text-[9pt]">
                 {/* 第一行：命名 + 角色 + 时间 */}

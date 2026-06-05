@@ -104,8 +104,6 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, mod
         <img
           src={avatar}
           alt={t('personal.avatar')}
-          loading="lazy"
-          decoding="async"
           className={`flex-shrink-0 object-cover border-2 ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
           style={avatarShape === 'square' ? { width: '75px', height: '103.54px', borderColor: `${themeColor}40` } : { width: '75px', aspectRatio: '1/1', borderColor: `${themeColor}40` }}
         />

@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // useExportPDF — PDF 导出逻辑（支持异步任务模式）
 // ============================================================
 
@@ -243,6 +243,7 @@ export function useSyncExport() {
           '<style>',
           'html, body { margin: 0; padding: 0; background: #fff; }',
           '* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }',
+          '[data-no-export] { display: none !important; }',
           '</style>',
           '</head>',
           '<body>',

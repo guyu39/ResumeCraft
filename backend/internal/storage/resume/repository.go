@@ -46,8 +46,9 @@ type Repository interface {
 	DeactivateShareLink(ctx context.Context, shareID, userID string) error
 
 	// 分享评论
-	AddComment(ctx context.Context, shareID, authorName, content, moduleID string, itemIndex int) (*model.ShareComment, error)
-	ListComments(ctx context.Context, shareID string) ([]model.ShareComment, error)
+	AddComment(ctx context.Context, shareID, authorName, content, moduleID, visitorID string, itemIndex int) (*model.ShareComment, error)
+	ListComments(ctx context.Context, shareID, visitorID string) ([]model.ShareComment, error)
+	ListCommentsByResume(ctx context.Context, resumeID string) ([]model.AdminCommentItem, error)
 }
 
 type repository struct {

@@ -205,6 +205,7 @@ type ShareLink struct {
 type ShareComment struct {
 	ID         string `json:"id"`
 	ShareID    string `json:"shareId"`
+	VisitorID  string `json:"-"` // 敏感字段：JSON 不序列化，仅后端使用
 	AuthorName string `json:"authorName"`
 	Content    string `json:"content"`
 	ModuleID   string `json:"moduleId"`
@@ -224,6 +225,7 @@ type AddCommentRequest struct {
 	Content    string `json:"content" binding:"required"`
 	ModuleID   string `json:"moduleId"`
 	ItemIndex  int    `json:"itemIndex"`
+	VisitorID  string `json:"visitorId"` // 访客匿名标识，前端生成
 }
 
 // ShareResumeView 分享页简历数据（脱敏后的公开视图）
@@ -252,4 +254,41 @@ type AIAnalysisResponse struct {
 // RequirementDocRequest 需求文档生成请求
 type RequirementDocRequest struct {
 	Token string `json:"token" binding:"required"`
+}
+
+// ============ 管理员评论视图 ============
+
+// AdminCommentItem 管理员视角的单条评论
+type AdminCommentItem struct {
+	ID          string `json:"id"`
+	ShareToken  string `json:"shareToken"`
+	VisitorID   string `json:"visitorId"`
+	AuthorName  string `json:"authorName"`
+	Content     string `json:"content"`
+	ModuleID    string `json:"moduleId"`
+	ModuleTitle string `json:"moduleTitle"`
+	ItemIndex   int    `json:"itemIndex"`
+	ItemLabel   string `json:"itemLabel"`
+	CreatedAt   int64  `json:"createdAt"`
+}
+
+// ModuleCommentSummary 模块评论汇总
+type ModuleCommentSummary struct {
+	ModuleID     string `json:"moduleId"`
+	ModuleTitle  string `json:"moduleTitle"`
+	CommentCount int    `json:"commentCount"`
+	VisitorCount int    `json:"visitorCount"`
+}
+
+// AdminCommentsResponse 管理员评论总览响应
+type AdminCommentsResponse struct {
+	Items   []AdminCommentItem   `json:"items"`
+	Summary AdminCommentsSummary `json:"summary"`
+}
+
+// AdminCommentsSummary 统计信息
+type AdminCommentsSummary struct {
+	TotalComments   int                    `json:"totalComments"`
+	TotalVisitors   int                    `json:"totalVisitors"`
+	ModuleBreakdown []ModuleCommentSummary `json:"moduleBreakdown"`
 }

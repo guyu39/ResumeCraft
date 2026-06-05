@@ -9,7 +9,8 @@ import { useResumeStore } from '@/store/resumeStore'
 import PagedResumePaper, { A4_HEIGHT_PX, A4_WIDTH_PX } from '@/components/resume/PagedResumePaper'
 import SnapshotTimeline from '@/components/common/SnapshotTimeline'
 import type { NoticeItem } from '@/components/common/NoticeCenter'
-import { resumeApi, type SnapshotListItem, type DiffResult } from '@/api/resume'
+import { resumeApi, type SnapshotListItem, type DiffResult, type AdminCommentItem } from '@/api/resume'
+import { AdminCommentProvider } from '@/contexts/AdminCommentContext'
 import type { Resume } from '@/types/resume'
 
 const FIT_PADDING_PX = 24
@@ -122,6 +123,8 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null)
   const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([])
   const [, setSnapshotsLoaded] = useState(false)
+  const [adminComments, setAdminComments] = useState<AdminCommentItem[]>([])
+  const [, setAdminCommentsLoading] = useState(false)
   const isServerResume = resume?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id)
 
   const displayResume = resume
@@ -176,6 +179,24 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
       target = target.parentElement
     }
   }, [setActiveModule])
+
+  // 加载管理员评论数据
+  useEffect(() => {
+    if (!isServerResume || !resume.id) return
+    let cancelled = false
+    setAdminCommentsLoading(true)
+    resumeApi.getComments(resume.id)
+      .then((res) => {
+        if (!cancelled) setAdminComments(res.items || [])
+      })
+      .catch((err) => {
+        console.error('[CenterPanel] 加载评论失败:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setAdminCommentsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [isServerResume, resume.id])
 
   // 点击节点 → 切换快照。快照是不可变时间点，但支持每个快照独立的本地草稿：
   // - 切走时：将当前编辑保存到快照专属 localStorage key，而非云DB
@@ -346,7 +367,9 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
           <div
             style={{ width: `${A4_WIDTH_PX}px`, transform: `scale(${finalScale})`, transformOrigin: 'top left' }}
           >
-            <PagedResumePaper resume={displayResume} />
+            <AdminCommentProvider comments={adminComments}>
+              <PagedResumePaper resume={displayResume} />
+            </AdminCommentProvider>
           </div>
         </div>
       </div>

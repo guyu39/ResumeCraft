@@ -28,9 +28,9 @@ const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({ items, themeColor, 
         <div className="space-y-1.5">
           {validItems.map((item, index) => (
             <div key={item.id}>
-              <div className={renderItemCommentIcon ? "flex items-center gap-1.5" : "flex items-center gap-2"}>
+              <div className="relative flex items-center gap-2">
                 {renderItemCommentIcon && (
-                  <div className="flex-shrink-0">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-12 top-0">{renderItemCommentIcon(index)}</div>
                 )}
                 <span className="text-[9pt] text-gray-700 flex-1">🔗 {item.title || item.url}</span>
                 {item.url && (

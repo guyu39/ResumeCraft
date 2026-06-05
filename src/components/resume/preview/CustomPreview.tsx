@@ -31,9 +31,9 @@ const CustomPreview: React.FC<CustomPreviewProps> = ({ data, themeColor, title: 
         <div className="space-y-3">
           {validItems.map((item, index) => (
             <div key={item.id}>
-              <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : ""}>
+              <div className="relative">
                 {renderItemCommentIcon && (
-                  <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(index)}</div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">

@@ -28,9 +28,9 @@ const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor, title 
         <div className="space-y-2">
           {validItems.map((item, index) => (
             <div key={item.id}>
-              <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : "flex items-start gap-3"}>
+              <div className="relative flex items-start gap-3">
                 {renderItemCommentIcon && (
-                  <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(index)}</div>
                 )}
                 <div className="flex-1 min-w-0 flex items-start gap-3">
                   <div className="flex-1 text-[9.5pt] text-gray-700">
@@ -39,21 +39,21 @@ const AwardsPreview: React.FC<AwardsPreviewProps> = ({ items, themeColor, title 
                     {item.level && (
                       <span className="ml-1 text-[9pt] text-gray-500">（{te(item.level)}）</span>
                     )}
-                  </div>
+                      </div>
                   {item.date && (
-                    <span className="text-[9pt] text-gray-900 font-semibold flex-shrink-0">
-                      {item.date}
-                    </span>
-                  )}
+                      <span className="text-[9pt] text-gray-900 font-semibold flex-shrink-0">
+                        {item.date}
+                      </span>
+                    )}
+                  </div>
                 </div>
+                {renderItemCommentPanel?.(index)}
               </div>
-              {renderItemCommentPanel?.(index)}
-            </div>
           ))}
-        </div>
-      )}
-    </ModuleSection>
-  )
-}
+            </div>
+          )}
+        </ModuleSection>
+      )
+      }
 
-export default AwardsPreview
+      export default AwardsPreview

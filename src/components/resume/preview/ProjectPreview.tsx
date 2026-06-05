@@ -91,11 +91,11 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor, titl
         <div className="space-y-2">
           {validItems.map((item, index) => (
             <div key={item.id}>
-              <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : "relative"}>
+              <div className="relative">
                 {renderItemCommentIcon && (
-                  <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(index)}</div>
                 )}
-                <div className={renderItemCommentIcon ? "flex-1 relative min-w-0" : undefined}>
+                <div>
                   {renderItemContent(item)}
                 </div>
               </div>

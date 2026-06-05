@@ -24,11 +24,11 @@ const SummaryPreview: React.FC<SummaryPreviewProps> = ({ data, themeColor, title
     <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}>
       {data.content ? (
         <div>
-          <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : ""}>
+          <div className="relative">
             {renderItemCommentIcon && (
-              <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(0)}</div>
+              <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(0)}</div>
             )}
-            <div className={renderItemCommentIcon ? "flex-1 min-w-0" : undefined}>
+            <div>
               <RichTextPreview
                 text={data.content}
                 className="text-[9.5pt] text-gray-700"

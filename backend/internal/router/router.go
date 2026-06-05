@@ -61,6 +61,9 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 				resumeGroup.POST("/:id/share", h.CreateShareLink)
 				resumeGroup.GET("/:id/shares", h.ListShareLinks)
 				resumeGroup.DELETE("/:id/shares/:shareId", h.DeactivateShareLink)
+
+				// 评论管理（管理员视图，需认证）
+				resumeGroup.GET("/:id/comments", h.ListAllComments)
 			}
 		}
 

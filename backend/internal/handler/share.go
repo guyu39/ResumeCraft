@@ -110,7 +110,7 @@ func (h *Handler) AddComment(c *gin.Context) {
 		return
 	}
 
-	comment, err := h.resumeService.AddComment(c.Request.Context(), token, req.AuthorName, req.Content, req.ModuleID, req.ItemIndex)
+	comment, err := h.resumeService.AddComment(c.Request.Context(), token, req.AuthorName, req.Content, req.ModuleID, req.VisitorID, req.ItemIndex)
 	if err != nil {
 		log.Printf("[share] AddComment error: %v", err)
 		response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "添加评论失败")
@@ -120,12 +120,18 @@ func (h *Handler) AddComment(c *gin.Context) {
 	response.JSONCreated(c, comment)
 }
 
-// ListComments 获取评论列表
-// GET /api/share/:token/comments
+// ListComments 获取评论列表（仅返回当前访客的评论）
+// GET /api/share/:token/comments?visitorId=xxx
 func (h *Handler) ListComments(c *gin.Context) {
 	token := c.Param("token")
+	visitorID := c.Query("visitorId")
 
-	comments, err := h.resumeService.ListComments(c.Request.Context(), token)
+	if visitorID == "" {
+		response.JSONSuccess(c, gin.H{"items": []model.ShareComment{}})
+		return
+	}
+
+	comments, err := h.resumeService.ListComments(c.Request.Context(), token, visitorID)
 	if err != nil {
 		log.Printf("[share] ListComments error: %v", err)
 		response.JSONSuccess(c, gin.H{"items": []model.ShareComment{}})
@@ -133,6 +139,22 @@ func (h *Handler) ListComments(c *gin.Context) {
 	}
 
 	response.JSONSuccess(c, gin.H{"items": comments})
+}
+
+// ListAllComments 获取简历全部评论（管理员视图，需认证）
+// GET /api/resumes/:id/comments
+func (h *Handler) ListAllComments(c *gin.Context) {
+	userID, _ := c.Get(middleware.ContextUserIDKey)
+	resumeID := c.Param("id")
+
+	result, err := h.resumeService.ListAllComments(c.Request.Context(), userID.(string), resumeID)
+	if err != nil {
+		log.Printf("[share] ListAllComments error: %v", err)
+		response.JSONError(c, http.StatusForbidden, "FORBIDDEN", "无权限查看评论")
+		return
+	}
+
+	response.JSONSuccess(c, result)
 }
 
 // AnalyzeSharedResume AI 分析分享的简历

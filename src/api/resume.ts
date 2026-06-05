@@ -17,6 +17,35 @@ export interface ListResumesParams {
   keyword?: string
 }
 
+export interface AdminCommentItem {
+  id: string
+  shareToken: string
+  visitorId: string
+  authorName: string
+  content: string
+  moduleId: string
+  moduleTitle: string
+  itemIndex: number
+  itemLabel: string
+  createdAt: number
+}
+
+export interface ModuleCommentSummary {
+  moduleId: string
+  moduleTitle: string
+  commentCount: number
+  visitorCount: number
+}
+
+export interface AdminCommentsResponse {
+  items: AdminCommentItem[]
+  summary: {
+    totalComments: number
+    totalVisitors: number
+    moduleBreakdown: ModuleCommentSummary[]
+  }
+}
+
 export const resumeApi = {
   list: (params?: ListResumesParams) => {
     const searchParams = new URLSearchParams()
@@ -87,6 +116,10 @@ export const resumeApi = {
       currentModules: currentModules || undefined,
       comparisonModules: comparisonModules || undefined,
     }),
+
+  // 评论管理（管理员视图）
+  getComments: (resumeId: string) =>
+    apiClient.get<AdminCommentsResponse>(`/resumes/${resumeId}/comments`, { auth: true }),
 }
 
 // ---------- 快照相关类型 ----------
@@ -187,11 +220,11 @@ export const shareApi = {
   view: (token: string) =>
     apiClient.get<ShareResumeView>(`/share/${token}`),
 
-  addComment: (token: string, content: string, authorName?: string, moduleId?: string, itemIndex?: number) =>
-    apiClient.post<ShareComment>(`/share/${token}/comments`, { content, authorName: authorName || '', moduleId: moduleId || '', itemIndex: itemIndex ?? 0 }),
+  addComment: (token: string, content: string, authorName?: string, moduleId?: string, itemIndex?: number, visitorId?: string) =>
+    apiClient.post<ShareComment>(`/share/${token}/comments`, { content, authorName: authorName || '', moduleId: moduleId || '', itemIndex: itemIndex ?? 0, visitorId: visitorId || '' }),
 
-  listComments: (token: string) =>
-    apiClient.get<{ items: ShareComment[] }>(`/share/${token}/comments`),
+  listComments: (token: string, visitorId?: string) =>
+    apiClient.get<{ items: ShareComment[] }>(`/share/${token}/comments${visitorId ? `?visitorId=${encodeURIComponent(visitorId)}` : ''}`),
 
   analyze: (token: string) =>
     apiClient.post<AIAnalysisResponse>(`/share/${token}/analyze`),

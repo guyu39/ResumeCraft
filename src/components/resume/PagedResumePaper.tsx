@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Resume } from '@/types/resume'
 import ResumePreview from './ResumePreview'
 
@@ -118,7 +118,7 @@ const PagedResumePaper: React.FC<PagedResumePaperProps> = ({
 
     return (
         <>
-            {/* 导出专用完整内容（隐藏但保留在DOM） */}
+            {/* 导出专用完整内容（隐藏但保留在DOM�?*/}
             <div
                 id="resume-paper"
                 ref={hiddenFullRef}
@@ -214,7 +214,7 @@ const PagedResumePaper: React.FC<PagedResumePaperProps> = ({
                     return (
                         <div
                             key={pageIndex}
-                            className={`bg-white overflow-hidden ${pageShadowClassName}`}
+                            className={`bg-white ${pageShadowClassName}`}
                             style={{
                                 width: `${A4_WIDTH_PX}px`,
                                 height: `${A4_HEIGHT_PX}px`,
@@ -236,7 +236,7 @@ const PagedResumePaper: React.FC<PagedResumePaperProps> = ({
                                     style={{
                                         width: `${A4_WIDTH_PX}px`,
                                         height: `${sliceHeight}px`,
-                                        overflow: 'hidden',
+                                        clipPath: 'inset(0 0 0 -380px)',
                                     }}
                                 >
                                     <div

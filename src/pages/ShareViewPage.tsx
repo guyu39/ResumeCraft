@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, MessageSquare, Send, X, Eye, Menu } from 'lucide-react'
 import { shareApi, type ShareResumeView, type ShareComment } from '@/api/resume'
+import { getVisitorId } from '@/utils/visitor'
 import ClassicTemplate from '@/components/resume/preview/ClassicTemplate'
 import { DEFAULT_RESUME_STYLE_SETTINGS, type Resume } from '@/types/resume'
 
@@ -167,6 +168,7 @@ const InlineCommentPanel: React.FC<{
 /* ==================== 主组件 ==================== */
 const ShareViewPage: React.FC = () => {
   const token = window.location.pathname.replace('/share/', '')
+  const visitorId = useMemo(() => getVisitorId(token), [token])
   const pcContentRef = useRef<HTMLDivElement>(null)
   const mobileContentRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
@@ -181,7 +183,18 @@ const ShareViewPage: React.FC = () => {
   const contentRef = isMobile ? mobileContentRef : pcContentRef
 
   useEffect(() => { const c = () => setIsMobile(window.innerWidth < MOBILE_BP); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
-  useEffect(() => { if (!token) return; shareApi.view(token).then(r => { setData(r); setComments(r.comments || []) }).catch(() => setErr('分享链接无效或已过期')).finally(() => setLoading(false)) }, [token])
+
+  // 加载简历数据 + 访客自己的评论
+  useEffect(() => {
+    if (!token) return
+    Promise.all([
+      shareApi.view(token),
+      shareApi.listComments(token, visitorId),
+    ]).then(([viewRes, commentsRes]) => {
+      setData(viewRes)
+      setComments(commentsRes.items || [])
+    }).catch(() => setErr('分享链接无效或已过期')).finally(() => setLoading(false))
+  }, [token, visitorId])
 
   // 移动端：点击评论面板外部收起
   useEffect(() => {
@@ -213,9 +226,9 @@ const ShareViewPage: React.FC = () => {
 
   const handleSubmit = useCallback(async (text: string, name: string) => {
     if (!active) return; setSending(true); const [mid, idx] = active.split('#')
-    try { const c = await shareApi.addComment(token, text, name, mid, Number(idx)); setComments(p => [...p, c]) } catch { /* */ }
+    try { const c = await shareApi.addComment(token, text, name, mid, Number(idx), visitorId); setComments(p => [...p, c]) } catch { /* */ }
     setSending(false)
-  }, [active, token])
+  }, [active, token, visitorId])
 
   // 通用：渲染每个 item 左侧的评论图标
   const renderItemCommentIcon = useCallback((moduleId: string, itemIndex: number) => {

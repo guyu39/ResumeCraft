@@ -28,9 +28,9 @@ const LanguagesPreview: React.FC<LanguagesPreviewProps> = ({ items, themeColor, 
         <div className="space-y-1.5">
           {validItems.map((item, index) => (
             <div key={item.id}>
-              <div className={renderItemCommentIcon ? "flex items-center gap-1.5" : "flex items-center gap-2"}>
+              <div className="relative flex items-center gap-2">
                 {renderItemCommentIcon && (
-                  <div className="flex-shrink-0">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-12 top-0">{renderItemCommentIcon(index)}</div>
                 )}
                 <span className="text-[9.5pt] text-gray-700 w-20 flex-shrink-0">🌐 {item.language}</span>
                 {item.level && (

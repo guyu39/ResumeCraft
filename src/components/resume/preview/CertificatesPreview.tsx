@@ -28,9 +28,9 @@ const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeC
         <div className="space-y-2">
           {validItems.map((item, index) => (
             <div key={item.id}>
-              <div className={renderItemCommentIcon ? "flex items-start gap-1.5" : "flex items-start gap-3"}>
+              <div className="relative flex items-start gap-3">
                 {renderItemCommentIcon && (
-                  <div className="flex-shrink-0 pt-0.5">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(index)}</div>
                 )}
                 <div className="flex-1 min-w-0 flex items-start gap-3">
                   <span className="text-[9.5pt] text-gray-700 flex-1">

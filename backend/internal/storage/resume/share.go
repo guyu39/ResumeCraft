@@ -103,17 +103,20 @@ func (r *repository) DeactivateShareLink(ctx context.Context, shariID, userID st
 
 // ----- Comments -----
 
-func (r *repository) AddComment(ctx context.Context, shareID, authorName, content, moduleID string, itemIndex int) (*model.ShareComment, error) {
+func (r *repository) AddComment(ctx context.Context, shareID, authorName, content, moduleID, visitorID string, itemIndex int) (*model.ShareComment, error) {
 	id := uuid.New().String()
 	now := time.Now()
 	if authorName == "" {
 		authorName = "匿名"
 	}
+	if visitorID == "" {
+		visitorID = ""
+	}
 
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO share_comments (id, share_id, author_name, content, module_id, item_index, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		id, shareID, authorName, content, moduleID, itemIndex, now,
+		`INSERT INTO share_comments (id, share_id, visitor_id, author_name, content, module_id, item_index, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		id, shareID, visitorID, authorName, content, moduleID, itemIndex, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("add comment: %w", err)
@@ -122,6 +125,7 @@ func (r *repository) AddComment(ctx context.Context, shareID, authorName, conten
 	return &model.ShareComment{
 		ID:         id,
 		ShareID:    shareID,
+		VisitorID:  visitorID,
 		AuthorName: authorName,
 		Content:    content,
 		ModuleID:   moduleID,
@@ -130,13 +134,13 @@ func (r *repository) AddComment(ctx context.Context, shareID, authorName, conten
 	}, nil
 }
 
-func (r *repository) ListComments(ctx context.Context, shareID string) ([]model.ShareComment, error) {
+func (r *repository) ListComments(ctx context.Context, shareID, visitorID string) ([]model.ShareComment, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, share_id, author_name, content, COALESCE(module_id,''), COALESCE(item_index,0),
 		 COALESCE(EXTRACT(EPOCH FROM created_at) * 1000, 0)::bigint
 		 FROM share_comments
-		 WHERE share_id = $1
-		 ORDER BY created_at ASC`, shareID,
+		 WHERE share_id = $1 AND visitor_id = $2
+		 ORDER BY created_at ASC`, shareID, visitorID,
 	)
 	if err != nil {
 		return nil, err
@@ -152,6 +156,35 @@ func (r *repository) ListComments(ctx context.Context, shareID string) ([]model.
 		comments = append(comments, c)
 	}
 	return comments, nil
+}
+
+// ListCommentsByResume 获取简历的全部评论（管理员视图）
+func (r *repository) ListCommentsByResume(ctx context.Context, resumeID string) ([]model.AdminCommentItem, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT sc.id, sl.token, sc.visitor_id, sc.author_name, sc.content,
+		 sc.module_id, COALESCE(sc.item_index,0),
+		 COALESCE(EXTRACT(EPOCH FROM sc.created_at) * 1000, 0)::bigint
+		 FROM share_comments sc
+		 JOIN share_links sl ON sc.share_id = sl.id
+		 WHERE sl.resume_id = $1
+		 ORDER BY sc.module_id, sc.item_index, sc.created_at ASC`,
+		resumeID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.AdminCommentItem
+	for rows.Next() {
+		var item model.AdminCommentItem
+		if err := rows.Scan(&item.ID, &item.ShareToken, &item.VisitorID, &item.AuthorName,
+			&item.Content, &item.ModuleID, &item.ItemIndex, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 // ----- Static helpers for repo bootstrap (shared service can use these) -----
