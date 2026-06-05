@@ -30,7 +30,7 @@ const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({ items, themeColor, 
             <div key={item.id}>
               <div className="relative flex items-center gap-2">
                 {renderItemCommentIcon && (
-                  <div className="absolute -left-12 top-0">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-6 sm:-left-8 md:-left-12 top-0">{renderItemCommentIcon(index)}</div>
                 )}
                 <span className="text-[9pt] text-gray-700 flex-1">🔗 {item.title || item.url}</span>
                 {item.url && (

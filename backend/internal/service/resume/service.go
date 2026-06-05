@@ -37,8 +37,9 @@ type Service interface {
 	DeactivateShareLink(ctx context.Context, userID, shareID string) error
 
 	// 分享评论
-	AddComment(ctx context.Context, token, authorName, content, moduleID, visitorID string, itemIndex int) (*model.ShareComment, error)
-	ListComments(ctx context.Context, token, visitorID string) ([]model.ShareComment, error)
+	AddComment(ctx context.Context, token, authorName, content, moduleID, visitorID string, itemIndex int, snapshotID *string) (*model.ShareComment, error)
+	ListComments(ctx context.Context, token, visitorID, snapshotID string) ([]model.ShareComment, error)
+	DeleteComment(ctx context.Context, commentID string) error
 	ListAllComments(ctx context.Context, userID, resumeID string) (*model.AdminCommentsResponse, error)
 
 	// 分享视图

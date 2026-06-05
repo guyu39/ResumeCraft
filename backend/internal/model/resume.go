@@ -7,11 +7,11 @@ type ResumeListItem struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	Template  string `json:"template"`
-	UpdatedAt int64  `json:"updatedAt"` // 前端期望时间戳
-	CreatedAt int64  `json:"createdAt"` // 前端期望时间戳
+	UpdatedAt int64  `json:"updatedAt"`
+	CreatedAt int64  `json:"createdAt"`
 }
 
-// ResumeContent 简历内容结构（内部使用）
+// ResumeContent 简历内容结构
 type ResumeContent struct {
 	ThemeColor        string                   `json:"themeColor"`
 	StyleSettings     ResumeStyleSettings      `json:"styleSettings"`
@@ -34,7 +34,7 @@ type ResumeStyleSettings struct {
 	ModuleTitleMarkerVisible bool    `json:"moduleTitleMarkerVisible"`
 }
 
-// ResumeDetail 简历详情（与前端 Resume 类型对齐）
+// ResumeDetail 简历详情
 type ResumeDetail struct {
 	ID                string                     `json:"id"`
 	Title             string                     `json:"title"`
@@ -44,11 +44,11 @@ type ResumeDetail struct {
 	StyleSettings     ResumeStyleSettings        `json:"styleSettings"`
 	Modules           []map[string]interface{}   `json:"modules"`
 	LatestVersionID   *string                    `json:"latestVersionId"`
-	LatestSnapshotID  *string                    `json:"latestSnapshotId,omitempty"`  // 最新的 manual/default 快照 ID
-	BasedOnSnapshotID *string                    `json:"basedOnSnapshotId,omitempty"` // 当前编辑基于的快照 ID
-	SnapshotDrafts    map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`    // 快照专属草稿 Map<snapshotId, DraftContent>
-	UpdatedAt         int64                      `json:"updatedAt"`                   // 前端期望时间戳
-	CreatedAt         int64                      `json:"createdAt"`                   // 前端期望时间戳
+	LatestSnapshotID  *string                    `json:"latestSnapshotId,omitempty"`
+	BasedOnSnapshotID *string                    `json:"basedOnSnapshotId,omitempty"`
+	SnapshotDrafts    map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`
+	UpdatedAt         int64                      `json:"updatedAt"`
+	CreatedAt         int64                      `json:"createdAt"`
 }
 
 // CreateResumeRequest 创建简历请求
@@ -68,8 +68,8 @@ type UpdateResumeRequest struct {
 	StyleSettings     *ResumeStyleSettings       `json:"styleSettings"`
 	Modules           []map[string]interface{}   `json:"modules"`
 	ClientUpdatedAt   int64                      `json:"clientUpdatedAt"`
-	BasedOnSnapshotID *string                    `json:"basedOnSnapshotId,omitempty"` // 当前编辑基于的快照 ID
-	SnapshotDrafts    map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`    // 快照专属草稿批量更新
+	BasedOnSnapshotID *string                    `json:"basedOnSnapshotId,omitempty"`
+	SnapshotDrafts    map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`
 }
 
 // Pagination 分页信息
@@ -91,7 +91,7 @@ type ResumeUpdateResponse struct {
 	ID               string  `json:"id"`
 	UpdatedAt        int64   `json:"updatedAt"`
 	LatestVersionID  *string `json:"latestVersionId"`
-	LatestSnapshotID *string `json:"latestSnapshotId,omitempty"` // 最新的 manual/default 快照 ID
+	LatestSnapshotID *string `json:"latestSnapshotId,omitempty"`
 }
 
 // ---------- 版本快照相关类型 ----------
@@ -102,10 +102,10 @@ type SnapshotType string
 const (
 	SnapshotTypeAuto    SnapshotType = "auto"
 	SnapshotTypeManual  SnapshotType = "manual"
-	SnapshotTypeDefault SnapshotType = "default" // 新建简历时的隐藏默认快照
+	SnapshotTypeDefault SnapshotType = "default"
 )
 
-// VersionSnapshot 版本快照（列表视图）
+// VersionSnapshot 版本快照
 type VersionSnapshot struct {
 	ID           string       `json:"id"`
 	ResumeID     string       `json:"resumeId"`
@@ -118,7 +118,7 @@ type VersionSnapshot struct {
 	IsCurrent    bool         `json:"isCurrent"`
 }
 
-// SnapshotListItem 快照列表项（简化版，时间轴用）
+// SnapshotListItem 快照列表项
 type SnapshotListItem struct {
 	ID           string       `json:"id"`
 	VersionNo    int          `json:"versionNo"`
@@ -182,60 +182,65 @@ type DiffStats struct {
 type DiffSnapshotsRequest struct {
 	SnapshotAID       string                   `json:"snapshotAId" binding:"required"`
 	SnapshotBID       string                   `json:"snapshotBId" binding:"required"`
-	CurrentModules    []map[string]interface{} `json:"currentModules,omitempty"`    // 当前快照的 modules（含草稿），为空则从 DB 取
-	ComparisonModules []map[string]interface{} `json:"comparisonModules,omitempty"` // 对比快照的 modules（含草稿），为空则从 DB 取
+	CurrentModules    []map[string]interface{} `json:"currentModules,omitempty"`
+	ComparisonModules []map[string]interface{} `json:"comparisonModules,omitempty"`
 }
 
 // ============ 分享链接 ============
 
 // ShareLink 分享链接
 type ShareLink struct {
-	ID        string `json:"id"`
-	ResumeID  string `json:"resumeId"`
-	Token     string `json:"token"`
-	CreatedBy string `json:"createdBy"`
-	ExpiresAt *int64 `json:"expiresAt,omitempty"` // Unix milli timestamp, nil = 永不过期
-	ViewCount int    `json:"viewCount"`
-	IsActive  bool   `json:"isActive"`
-	CreatedAt int64  `json:"createdAt"`
-	ShareURL  string `json:"shareUrl,omitempty"`
+	ID         string  `json:"id"`
+	ResumeID   string  `json:"resumeId"`
+	Token      string  `json:"token"`
+	CreatedBy  string  `json:"createdBy"`
+	SnapshotID *string `json:"snapshotId,omitempty"`
+	ExpiresAt  *int64  `json:"expiresAt,omitempty"`
+	ViewCount  int     `json:"viewCount"`
+	IsActive   bool    `json:"isActive"`
+	CreatedAt  int64   `json:"createdAt"`
+	ShareURL   string  `json:"shareUrl,omitempty"`
 }
 
 // ShareComment 分享评论
 type ShareComment struct {
-	ID         string `json:"id"`
-	ShareID    string `json:"shareId"`
-	VisitorID  string `json:"-"` // 敏感字段：JSON 不序列化，仅后端使用
-	AuthorName string `json:"authorName"`
-	Content    string `json:"content"`
-	ModuleID   string `json:"moduleId"`
-	ItemIndex  int    `json:"itemIndex"`
-	CreatedAt  int64  `json:"createdAt"`
+	ID         string  `json:"id"`
+	ShareID    string  `json:"shareId"`
+	SnapshotID *string `json:"snapshotId,omitempty"`
+	VisitorID  string  `json:"-"`
+	AuthorName string  `json:"authorName"`
+	Content    string  `json:"content"`
+	ModuleID   string  `json:"moduleId"`
+	ItemIndex  int     `json:"itemIndex"`
+	CreatedAt  int64   `json:"createdAt"`
 }
 
 // CreateShareRequest 创建分享请求
 type CreateShareRequest struct {
-	ResumeID  string `json:"resumeId" binding:"required"`
-	ExpiresIn int    `json:"expiresIn"` // 有效期天数，0 = 永不过期
+	ResumeID   string `json:"resumeId" binding:"required"`
+	SnapshotID string `json:"snapshotId,omitempty"`
+	ExpiresIn  int    `json:"expiresIn"`
 }
 
 // AddCommentRequest 添加评论请求
 type AddCommentRequest struct {
-	AuthorName string `json:"authorName"`
-	Content    string `json:"content" binding:"required"`
-	ModuleID   string `json:"moduleId"`
-	ItemIndex  int    `json:"itemIndex"`
-	VisitorID  string `json:"visitorId"` // 访客匿名标识，前端生成
+	AuthorName string  `json:"authorName"`
+	Content    string  `json:"content" binding:"required"`
+	ModuleID   string  `json:"moduleId"`
+	ItemIndex  int     `json:"itemIndex"`
+	VisitorID  string  `json:"visitorId"`
+	SnapshotID *string `json:"snapshotId,omitempty"`
 }
 
-// ShareResumeView 分享页简历数据（脱敏后的公开视图）
+// ShareResumeView 分享页简历数据
 type ShareResumeView struct {
-	Title      string                   `json:"title"`
-	Locale     string                   `json:"locale"`
-	ThemeColor string                   `json:"themeColor"`
-	Modules    []map[string]interface{} `json:"modules"`
-	ShareInfo  *ShareLink               `json:"shareInfo"`
-	Comments   []ShareComment           `json:"comments"`
+	Title            string                   `json:"title"`
+	Locale           string                   `json:"locale"`
+	ThemeColor       string                   `json:"themeColor"`
+	Modules          []map[string]interface{} `json:"modules"`
+	LatestSnapshotID *string                  `json:"latestSnapshotId,omitempty"`
+	ShareInfo        *ShareLink               `json:"shareInfo"`
+	Comments         []ShareComment           `json:"comments"`
 }
 
 // AIAnalysisRequest AI 分析请求
@@ -260,16 +265,18 @@ type RequirementDocRequest struct {
 
 // AdminCommentItem 管理员视角的单条评论
 type AdminCommentItem struct {
-	ID          string `json:"id"`
-	ShareToken  string `json:"shareToken"`
-	VisitorID   string `json:"visitorId"`
-	AuthorName  string `json:"authorName"`
-	Content     string `json:"content"`
-	ModuleID    string `json:"moduleId"`
-	ModuleTitle string `json:"moduleTitle"`
-	ItemIndex   int    `json:"itemIndex"`
-	ItemLabel   string `json:"itemLabel"`
-	CreatedAt   int64  `json:"createdAt"`
+	ID            string  `json:"id"`
+	ShareToken    string  `json:"shareToken"`
+	VisitorID     string  `json:"visitorId"`
+	AuthorName    string  `json:"authorName"`
+	Content       string  `json:"content"`
+	ModuleID      string  `json:"moduleId"`
+	ModuleTitle   string  `json:"moduleTitle"`
+	ItemIndex     int     `json:"itemIndex"`
+	ItemLabel     string  `json:"itemLabel"`
+	SnapshotID    *string `json:"snapshotId,omitempty"`
+	SnapshotLabel *string `json:"snapshotLabel,omitempty"`
+	CreatedAt     int64   `json:"createdAt"`
 }
 
 // ModuleCommentSummary 模块评论汇总
@@ -280,15 +287,15 @@ type ModuleCommentSummary struct {
 	VisitorCount int    `json:"visitorCount"`
 }
 
-// AdminCommentsResponse 管理员评论总览响应
-type AdminCommentsResponse struct {
-	Items   []AdminCommentItem   `json:"items"`
-	Summary AdminCommentsSummary `json:"summary"`
-}
-
 // AdminCommentsSummary 统计信息
 type AdminCommentsSummary struct {
 	TotalComments   int                    `json:"totalComments"`
 	TotalVisitors   int                    `json:"totalVisitors"`
 	ModuleBreakdown []ModuleCommentSummary `json:"moduleBreakdown"`
+}
+
+// AdminCommentsResponse 管理员评论总览响应
+type AdminCommentsResponse struct {
+	Items   []AdminCommentItem   `json:"items"`
+	Summary AdminCommentsSummary `json:"summary"`
 }

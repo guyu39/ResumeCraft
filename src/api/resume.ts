@@ -27,6 +27,8 @@ export interface AdminCommentItem {
   moduleTitle: string
   itemIndex: number
   itemLabel: string
+  snapshotId?: string
+  snapshotLabel?: string
   createdAt: number
 }
 
@@ -120,6 +122,9 @@ export const resumeApi = {
   // 评论管理（管理员视图）
   getComments: (resumeId: string) =>
     apiClient.get<AdminCommentsResponse>(`/resumes/${resumeId}/comments`, { auth: true }),
+
+  deleteComment: (resumeId: string, commentId: string) =>
+    apiClient.delete<{ deleted: boolean }>(`/resumes/${resumeId}/comments/${commentId}`, { auth: true }),
 }
 
 // ---------- 快照相关类型 ----------
@@ -197,6 +202,7 @@ export interface ShareResumeView {
   themeColor: string
   modules: unknown[]
   shareInfo: ShareLink
+  latestSnapshotId?: string
   comments: ShareComment[]
 }
 
@@ -208,8 +214,8 @@ export interface AIAnalysisResponse {
 }
 
 export const shareApi = {
-  create: (resumeId: string, expiresIn?: number) =>
-    apiClient.post<ShareLink>(`/resumes/${resumeId}/share`, { resumeId, expiresIn: expiresIn ?? 0 }, { auth: true }),
+  create: (resumeId: string, expiresIn?: number, snapshotId?: string) =>
+    apiClient.post<ShareLink>(`/resumes/${resumeId}/share`, { resumeId, expiresIn: expiresIn ?? 0, snapshotId: snapshotId || '' }, { auth: true }),
 
   list: (resumeId: string) =>
     apiClient.get<{ items: ShareLink[] }>(`/resumes/${resumeId}/shares`, { auth: true }),
@@ -220,11 +226,19 @@ export const shareApi = {
   view: (token: string) =>
     apiClient.get<ShareResumeView>(`/share/${token}`),
 
-  addComment: (token: string, content: string, authorName?: string, moduleId?: string, itemIndex?: number, visitorId?: string) =>
-    apiClient.post<ShareComment>(`/share/${token}/comments`, { content, authorName: authorName || '', moduleId: moduleId || '', itemIndex: itemIndex ?? 0, visitorId: visitorId || '' }),
+  addComment: (token: string, content: string, authorName?: string, moduleId?: string, itemIndex?: number, visitorId?: string, snapshotId?: string) =>
+    apiClient.post<ShareComment>(`/share/${token}/comments`, { content, authorName: authorName || '', moduleId: moduleId || '', itemIndex: itemIndex ?? 0, visitorId: visitorId || '', snapshotId: snapshotId || '' }),
 
-  listComments: (token: string, visitorId?: string) =>
-    apiClient.get<{ items: ShareComment[] }>(`/share/${token}/comments${visitorId ? `?visitorId=${encodeURIComponent(visitorId)}` : ''}`),
+  listComments: (token: string, visitorId?: string, snapshotId?: string) => {
+    const params = new URLSearchParams()
+    if (visitorId) params.set('visitorId', visitorId)
+    if (snapshotId) params.set('snapshotId', snapshotId)
+    const qs = params.toString()
+    return apiClient.get<{ items: ShareComment[] }>(`/share/${token}/comments${qs ? `?${qs}` : ''}`)
+  },
+
+  deleteComment: (token: string, commentId: string) =>
+    apiClient.delete<{ deleted: boolean }>(`/share/${token}/comments/${commentId}`),
 
   analyze: (token: string) =>
     apiClient.post<AIAnalysisResponse>(`/share/${token}/analyze`),

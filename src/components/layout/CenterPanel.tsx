@@ -198,6 +198,16 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
     return () => { cancelled = true }
   }, [isServerResume, resume.id])
 
+  const handleDeleteComment = useCallback(async (commentId: string) => {
+    if (!resume.id) return
+    try {
+      await resumeApi.deleteComment(resume.id, commentId)
+      setAdminComments(prev => prev.filter(c => c.id !== commentId))
+    } catch (err) {
+      console.error('[CenterPanel] 删除评论失败:', err)
+    }
+  }, [resume.id])
+
   // 点击节点 → 切换快照。快照是不可变时间点，但支持每个快照独立的本地草稿：
   // - 切走时：将当前编辑保存到快照专属 localStorage key，而非云DB
   // - 切入时：优先加载快照专属本地草稿（如果存在），跳过云端 API
@@ -367,7 +377,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
           <div
             style={{ width: `${A4_WIDTH_PX}px`, transform: `scale(${finalScale})`, transformOrigin: 'top left' }}
           >
-            <AdminCommentProvider comments={adminComments}>
+            <AdminCommentProvider comments={adminComments} onDeleteComment={handleDeleteComment}>
               <PagedResumePaper resume={displayResume} />
             </AdminCommentProvider>
           </div>

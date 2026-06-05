@@ -19,7 +19,11 @@ func generateToken() string {
 
 func (s *service) CreateShareLink(ctx context.Context, userID string, req model.CreateShareRequest) (*model.ShareLink, error) {
 	token := generateToken()
-	share, err := s.repo.CreateShareLink(ctx, req.ResumeID, userID, token, req.ExpiresIn)
+	var snapshotID *string
+	if req.SnapshotID != "" {
+		snapshotID = &req.SnapshotID
+	}
+	share, err := s.repo.CreateShareLink(ctx, req.ResumeID, userID, token, req.ExpiresIn, snapshotID)
 	if err != nil {
 		return nil, err
 	}
@@ -51,20 +55,37 @@ func (s *service) DeactivateShareLink(ctx context.Context, userID, shareID strin
 	return s.repo.DeactivateShareLink(ctx, shareID, userID)
 }
 
-func (s *service) AddComment(ctx context.Context, token, authorName, content, moduleID, visitorID string, itemIndex int) (*model.ShareComment, error) {
+func (s *service) AddComment(ctx context.Context, token, authorName, content, moduleID, visitorID string, itemIndex int, snapshotID *string) (*model.ShareComment, error) {
 	share, err := s.GetShareLink(ctx, token)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.AddComment(ctx, share.ID, authorName, content, moduleID, visitorID, itemIndex)
+
+	// 如果前端没传，回退到分享链接绑定的快照
+	if snapshotID == nil || *snapshotID == "" {
+		snapshotID = share.SnapshotID
+	}
+
+	return s.repo.AddComment(ctx, share.ID, authorName, content, moduleID, visitorID, itemIndex, snapshotID)
 }
 
-func (s *service) ListComments(ctx context.Context, token, visitorID string) ([]model.ShareComment, error) {
+func (s *service) ListComments(ctx context.Context, token, visitorID, snapshotID string) ([]model.ShareComment, error) {
 	share, err := s.GetShareLink(ctx, token)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListComments(ctx, share.ID, visitorID)
+
+	// 如果前端没传，回退到分享链接绑定的快照
+	sid := snapshotID
+	if sid == "" && share.SnapshotID != nil {
+		sid = *share.SnapshotID
+	}
+
+	return s.repo.ListComments(ctx, share.ID, visitorID, sid)
+}
+
+func (s *service) DeleteComment(ctx context.Context, commentID string) error {
+	return s.repo.DeleteComment(ctx, commentID)
 }
 
 func (s *service) ListAllComments(ctx context.Context, userID, resumeID string) (*model.AdminCommentsResponse, error) {
@@ -131,12 +152,13 @@ func (s *service) GetShareResumeView(ctx context.Context, token string) (*model.
 
 	// 分享页不返回评论（评论由前端通过 visitorId 单独获取）
 	return &model.ShareResumeView{
-		Title:      detail.Title,
-		Locale:     detail.Locale,
-		ThemeColor: detail.ThemeColor,
-		Modules:    detail.Modules,
-		ShareInfo:  share,
-		Comments:   []model.ShareComment{},
+		Title:            detail.Title,
+		Locale:           detail.Locale,
+		ThemeColor:       detail.ThemeColor,
+		Modules:          detail.Modules,
+		LatestSnapshotID: share.SnapshotID,
+		ShareInfo:        share,
+		Comments:         []model.ShareComment{},
 	}, nil
 }
 

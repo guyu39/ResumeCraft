@@ -31,7 +31,7 @@ const AIEngineeringPreview: React.FC<Props> = ({ data, themeColor, title = 'AI �
           <div key={it.id || idx}>
             <div className="relative">
               {renderItemCommentIcon && (
-                <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(idx)}</div>
+                <div className="absolute -left-6 sm:-left-8 md:-left-12 top-0.5">{renderItemCommentIcon(idx)}</div>
               )}
               <div className="flex-1 min-w-0 text-[9pt]">
                 {/* 第一行：命名 + 角色 + 时间 */}

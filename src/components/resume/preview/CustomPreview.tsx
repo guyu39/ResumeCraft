@@ -33,7 +33,7 @@ const CustomPreview: React.FC<CustomPreviewProps> = ({ data, themeColor, title: 
             <div key={item.id}>
               <div className="relative">
                 {renderItemCommentIcon && (
-                  <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-6 sm:-left-8 md:-left-12 top-0.5">{renderItemCommentIcon(index)}</div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">

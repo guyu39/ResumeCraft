@@ -57,8 +57,8 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor, titl
               href={item.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block max-w-[280px] truncate align-bottom text-[8.5pt] border-b border-dotted hover:underline"
-              style={{ color: themeColor, borderColor: themeColor }}
+              className="inline-block max-w-[280px] truncate align-bottom text-[8.5pt] underline decoration-dotted underline-offset-4"
+              style={{ color: themeColor }}
             >
               {item.link}
             </a>
@@ -93,7 +93,7 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({ items, themeColor, titl
             <div key={item.id}>
               <div className="relative">
                 {renderItemCommentIcon && (
-                  <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-6 sm:-left-8 md:-left-12 top-0.5">{renderItemCommentIcon(index)}</div>
                 )}
                 <div>
                   {renderItemContent(item)}

@@ -30,7 +30,7 @@ const CertificatesPreview: React.FC<CertificatesPreviewProps> = ({ items, themeC
             <div key={item.id}>
               <div className="relative flex items-start gap-3">
                 {renderItemCommentIcon && (
-                  <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-6 sm:-left-8 md:-left-12 top-0.5">{renderItemCommentIcon(index)}</div>
                 )}
                 <div className="flex-1 min-w-0 flex items-start gap-3">
                   <span className="text-[9.5pt] text-gray-700 flex-1">

@@ -3,11 +3,12 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Globe, Settings, Sparkles, X, Link2 } from 'lucide-react'
+import { Download, GitBranch, Globe, Settings, Sparkles, X, Link2, MessageSquare } from 'lucide-react'
 import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
 import ShareModal from '@/components/resume/ShareModal'
+import CommentsPanel from '@/components/resume/CommentsPanel'
 import { getAutoFixEnabled, setAutoFixEnabled } from '@/utils/textGuard'
 import {
     AIProviderPreset,
@@ -809,12 +810,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
 
 // ---------- 右栏主组件 ----------
 const RightPanel: React.FC = () => {
-    const { resume, activeModuleId, setActiveModule, activeSnapshotId, triggerSnapshotRefresh, setBasedOnSnapshotId } = useResumeStore()
+    const { resume, activeModuleId, setActiveModule, activeSnapshotId, triggerSnapshotRefresh, setBasedOnSnapshotId, snapshots } = useResumeStore()
     const { isAuthenticated } = useAuthStore()
     const formRef = useRef<HTMLDivElement>(null)
     const [showSettings, setShowSettings] = useState(false)
     const [showSnapshotDialog, setShowSnapshotDialog] = useState(false)
     const [shareOpen, setShareOpen] = useState(false)
+    const [showComments, setShowComments] = useState(false)
+    const currentSnapshotLabel = useMemo(() => {
+        if (!activeSnapshotId) return undefined
+        return snapshots.find(s => s.id === activeSnapshotId)?.label
+    }, [activeSnapshotId, snapshots])
     const [snapshotLabel, setSnapshotLabel] = useState('')
     const [snapshotSaving, setSnapshotSaving] = useState(false)
     const [snapshotError, setSnapshotError] = useState('')
@@ -1202,42 +1208,35 @@ const RightPanel: React.FC = () => {
         <>
         <div className="flex flex-col h-full">
             {/* 顶部操作栏 */}
-            <div className="flex-shrink-0 border-b border-slate-200/70 bg-white/80 px-4 py-3 backdrop-blur">
-                <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex-shrink-0 border-b border-slate-200/70 bg-white/80 px-3 py-2.5 backdrop-blur">
+                <div className="flex items-center justify-end gap-1.5">
                     {/* 保存按钮 */}
                     {resume.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id) && (
                         <button
                             onClick={() => setShowSnapshotDialog(true)}
-                            className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/85 px-3.5 py-2 text-sm text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-800"
+                            className="flex-shrink-0 p-2 rounded-xl border border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
                             title="新建简历版本 · 记录当前版本以便对比和回溯"
                         >
-
-                            <span className="truncate">新建版本</span>
+                            <GitBranch className="w-3.5 h-3.5" />
                         </button>
                     )}
 
                     {/* 设置按钮 */}
-
                     <button
-
                         onClick={() => {
                             setShowSettings((v) => !v)
                             setShowAIEvaluation(false)
+                            setShowComments(false)
                         }}
-                        className={`
-            flex flex-shrink items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-sm shadow-sm transition-colors
-            ${showSettings
+                        className={`flex-shrink-0 p-2 rounded-xl border transition-colors ${
+                            showSettings
                                 ? 'border-primary/30 bg-primary/10 text-primary'
-                                : 'border-slate-200 bg-white/85 text-slate-600 hover:bg-slate-50 hover:text-slate-800'
-                            }
-                            
-          `}
-
-                        title="简历设置 · 如遇内容被切割可调整间距"
+                                : 'border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                        }`}
+                        title="简历设置"
                         aria-label="简历设置"
                     >
-                        <Settings className="w-3.5 h-3.5 flex-shrink-0" />
-                        设置
+                        <Settings className="w-3.5 h-3.5" />
                     </button>
 
                     <button
@@ -1253,47 +1252,56 @@ const RightPanel: React.FC = () => {
                                 setShowAIEvaluation(false)
                             } else {
                                 setShowSettings(false)
+                                setShowComments(false)
                                 setShowAIEvaluation(true)
                             }
                         }}
                         disabled={hasDateErrors}
-                        title={hasDateErrors ? '请先修正日期范围错误' : undefined}
-                        className={`flex min-w-0 flex-shrink items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm shadow-sm transition-colors ${hasDateErrors
+                        title={hasDateErrors ? '请先修正日期范围错误' : showAIEvaluation ? '返回编辑' : evaluating ? 'AI 评估中...' : 'AI 评估'}
+                        className={`flex-shrink-0 p-2 rounded-xl border transition-colors ${hasDateErrors
                             ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                            : 'border-slate-200 bg-white/85 text-slate-600 hover:bg-slate-50 hover:text-slate-800'
+                            : showAIEvaluation
+                                ? 'border-primary/30 bg-primary/10 text-primary'
+                                : 'border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
                             }`}
                     >
-                        <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="truncate">{showAIEvaluation ? '返回编辑' : evaluating ? '评估中...' : 'AI评估'}</span>
+                        <Sparkles className="w-3.5 h-3.5" />
                     </button>
-
-                    {/* <button
-                    onClick={handlePreview}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 transition-colors flex-shrink min-w-0"
-                >
-                    <Eye className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">预览</span>
-                </button> */}
 
                     <button
                         onClick={() => setShareOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-gray-800 transition-colors flex-shrink min-w-0"
+                        className="flex-shrink-0 p-2 rounded-xl border border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
+                        title="分享"
                     >
-                        <Link2 className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="truncate">分享</span>
+                        <Link2 className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            setShowComments(v => !v)
+                            setShowSettings(false)
+                            setShowAIEvaluation(false)
+                        }}
+                        className={`flex-shrink-0 p-2 rounded-xl border transition-colors ${
+                            showComments
+                                ? 'border-primary/30 bg-primary/10 text-primary'
+                                : 'border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                        }`}
+                        title="评论"
+                    >
+                        <MessageSquare className="w-3.5 h-3.5" />
                     </button>
 
                     <button
                         onClick={handleExport}
                         disabled={exporting || hasDateErrors}
-                        title={hasDateErrors ? '请先修正日期范围错误' : undefined}
-                        className={`flex min-w-0 flex-shrink items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm transition-colors ${hasDateErrors
+                        title={hasDateErrors ? '请先修正日期范围错误' : exporting ? '导出中...' : '导出 PDF'}
+                        className={`flex-shrink-0 p-2 rounded-xl transition-colors ${hasDateErrors
                             ? 'cursor-not-allowed bg-slate-300 text-slate-500'
                             : 'bg-primary text-white shadow-[0_10px_20px_rgba(37,99,235,0.24)] hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60'
                             }`}
                     >
-                        <Download className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="truncate">{exporting ? '导出中...' : '导出PDF'}</span>
+                        <Download className="w-3.5 h-3.5" />
                     </button>
                 </div>
                 {编辑提醒.length > 0 && (
@@ -1397,6 +1405,8 @@ const RightPanel: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            ) : showComments ? (
+                <CommentsPanel resumeId={resume.id} onClose={() => setShowComments(false)} />
             ) : (
                 <>
                     {/* 当前模块标题 */}
@@ -1489,7 +1499,7 @@ const RightPanel: React.FC = () => {
                 </div>
             )}
         </div>
-        {shareOpen && <ShareModal resumeId={resume.id} open={shareOpen} onClose={() => setShareOpen(false)} />}
+        {shareOpen && <ShareModal resumeId={resume.id} snapshotId={activeSnapshotId || undefined} snapshotLabel={currentSnapshotLabel} open={shareOpen} onClose={() => setShareOpen(false)} />}
         </>
     )
 }

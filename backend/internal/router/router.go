@@ -64,6 +64,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 
 				// 评论管理（管理员视图，需认证）
 				resumeGroup.GET("/:id/comments", h.ListAllComments)
+				resumeGroup.DELETE("/:id/comments/:commentId", h.DeleteResumeComment)
 			}
 		}
 
@@ -74,6 +75,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 				shareGroup.GET("/:token", h.ViewSharedResume)
 				shareGroup.GET("/:token/comments", h.ListComments)
 				shareGroup.POST("/:token/comments", h.AddComment)
+				shareGroup.DELETE("/:token/comments/:commentId", h.DeleteComment)
 			}
 			// AI 分析 + 需求文档 + PDF 下载（公开访问）
 			if h.AIService() != nil {

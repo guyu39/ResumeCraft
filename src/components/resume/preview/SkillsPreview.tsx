@@ -38,7 +38,7 @@ const SkillsPreview: React.FC<SkillsPreviewProps> = ({ data, themeColor, title =
       <div>
         <div className="relative">
           {renderItemCommentIcon && (
-            <div className="absolute -left-12 top-0.5">{renderItemCommentIcon(0)}</div>
+            <div className="absolute -left-6 sm:-left-8 md:-left-12 top-0.5">{renderItemCommentIcon(0)}</div>
           )}
           <div>
             <RichTextPreview text={renderText} className="text-[9.5pt] text-gray-700" />

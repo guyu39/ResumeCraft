@@ -110,7 +110,7 @@ func (h *Handler) AddComment(c *gin.Context) {
 		return
 	}
 
-	comment, err := h.resumeService.AddComment(c.Request.Context(), token, req.AuthorName, req.Content, req.ModuleID, req.VisitorID, req.ItemIndex)
+	comment, err := h.resumeService.AddComment(c.Request.Context(), token, req.AuthorName, req.Content, req.ModuleID, req.VisitorID, req.ItemIndex, req.SnapshotID)
 	if err != nil {
 		log.Printf("[share] AddComment error: %v", err)
 		response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "添加评论失败")
@@ -120,18 +120,17 @@ func (h *Handler) AddComment(c *gin.Context) {
 	response.JSONCreated(c, comment)
 }
 
-// ListComments 获取评论列表（仅返回当前访客的评论）
-// GET /api/share/:token/comments?visitorId=xxx
+// ListComments 获取评论列表
+// GET /api/share/:token/comments?visitorId=xxx&snapshotId=yyy
 func (h *Handler) ListComments(c *gin.Context) {
 	token := c.Param("token")
 	visitorID := c.Query("visitorId")
-
-	if visitorID == "" {
-		response.JSONSuccess(c, gin.H{"items": []model.ShareComment{}})
+	snapshotID := c.Query("snapshotId")
+	if token == "" {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "token required")
 		return
 	}
-
-	comments, err := h.resumeService.ListComments(c.Request.Context(), token, visitorID)
+	comments, err := h.resumeService.ListComments(c.Request.Context(), token, visitorID, snapshotID)
 	if err != nil {
 		log.Printf("[share] ListComments error: %v", err)
 		response.JSONSuccess(c, gin.H{"items": []model.ShareComment{}})
@@ -144,7 +143,11 @@ func (h *Handler) ListComments(c *gin.Context) {
 // ListAllComments 获取简历全部评论（管理员视图，需认证）
 // GET /api/resumes/:id/comments
 func (h *Handler) ListAllComments(c *gin.Context) {
-	userID, _ := c.Get(middleware.ContextUserIDKey)
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录或登录已过期")
+		return
+	}
 	resumeID := c.Param("id")
 
 	result, err := h.resumeService.ListAllComments(c.Request.Context(), userID.(string), resumeID)
@@ -155,6 +158,48 @@ func (h *Handler) ListAllComments(c *gin.Context) {
 	}
 
 	response.JSONSuccess(c, result)
+}
+
+// DeleteComment 删除分享评论
+// DELETE /api/share/:token/comments/:commentId
+func (h *Handler) DeleteComment(c *gin.Context) {
+	commentID := c.Param("commentId")
+	if commentID == "" {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "commentId required")
+		return
+	}
+
+	if err := h.resumeService.DeleteComment(c.Request.Context(), commentID); err != nil {
+		log.Printf("[share] DeleteComment error: %v", err)
+		response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "评论不存在")
+		return
+	}
+
+	response.JSONSuccess(c, gin.H{"deleted": true})
+}
+
+// DeleteResumeComment 管理端删除评论（需认证）
+// DELETE /api/resumes/:id/comments/:commentId
+func (h *Handler) DeleteResumeComment(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录或登录已过期")
+		return
+	}
+	_ = userID
+	commentID := c.Param("commentId")
+	if commentID == "" {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "commentId required")
+		return
+	}
+
+	if err := h.resumeService.DeleteComment(c.Request.Context(), commentID); err != nil {
+		log.Printf("[share] DeleteResumeComment error: %v", err)
+		response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "评论不存在")
+		return
+	}
+
+	response.JSONSuccess(c, gin.H{"deleted": true})
 }
 
 // AnalyzeSharedResume AI 分析分享的简历

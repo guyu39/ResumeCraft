@@ -1,6 +1,6 @@
 // ============================================================
 // RichTextPreview — 轻量富文本预览（标题/文本样式/列表/链接）
-// 支持语法：#、##、**加粗**、*斜体*、__下划线__、[文本](链接)、-、1.
+// 支持语法：#、##、**加粗**、*斜体*、__下划线__、[文本](链接)、裸 URL、-、1.
 // ============================================================
 
 import React from 'react'
@@ -15,12 +15,12 @@ const 是HTML文本 = (text: string) => /<\/?[a-z][\s\S]*>/i.test(text)
 
 const 加粗行内文本 = (line: string): React.ReactNode[] => {
     const 节点: React.ReactNode[] = []
-    const 模式 = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*|__([^_]+)__)/g
+    const 模式 = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*|__([^_]+)__|(https?:\/\/[^\s]+))/g
     let 上一个结束 = 0
     let 匹配结果: RegExpExecArray | null
 
     while ((匹配结果 = 模式.exec(line)) !== null) {
-        const [完整匹配, , 链接文本, 链接地址, 加粗文本, 斜体文本, 下划线文本] = 匹配结果
+        const [完整匹配, , 链接文本, 链接地址, 加粗文本, 斜体文本, 下划线文本, 裸链接] = 匹配结果
         const 当前开始 = 匹配结果.index
 
         if (当前开始 > 上一个结束) {
@@ -34,7 +34,7 @@ const 加粗行内文本 = (line: string): React.ReactNode[] => {
                     href={链接地址}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 underline"
+                    className="text-blue-600"
                 >
                     {链接文本}
                 </a>
@@ -45,6 +45,18 @@ const 加粗行内文本 = (line: string): React.ReactNode[] => {
             节点.push(<em key={`${当前开始}-italic`}>{斜体文本}</em>)
         } else if (下划线文本) {
             节点.push(<u key={`${当前开始}-underline`}>{下划线文本}</u>)
+        } else if (裸链接) {
+            节点.push(
+                <a
+                    key={`${当前开始}-auto-link`}
+                    href={裸链接}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600"
+                >
+                    {裸链接}
+                </a>
+            )
         } else {
             节点.push(完整匹配)
         }

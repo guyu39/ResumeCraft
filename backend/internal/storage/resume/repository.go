@@ -39,15 +39,16 @@ type Repository interface {
 	DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string, currentModules, comparisonModules []map[string]interface{}) (*model.DiffResult, error)
 
 	// 分享链接
-	CreateShareLink(ctx context.Context, resumeID, userID, token string, expiresInDays int) (*model.ShareLink, error)
+	CreateShareLink(ctx context.Context, resumeID, userID, token string, expiresInDays int, snapshotID *string) (*model.ShareLink, error)
 	GetShareLinkByToken(ctx context.Context, token string) (*model.ShareLink, error)
 	ListShareLinksByResume(ctx context.Context, resumeID, userID string) ([]model.ShareLink, error)
 	IncrementShareViewCount(ctx context.Context, token string) error
 	DeactivateShareLink(ctx context.Context, shareID, userID string) error
 
 	// 分享评论
-	AddComment(ctx context.Context, shareID, authorName, content, moduleID, visitorID string, itemIndex int) (*model.ShareComment, error)
-	ListComments(ctx context.Context, shareID, visitorID string) ([]model.ShareComment, error)
+	AddComment(ctx context.Context, shareID, authorName, content, moduleID, visitorID string, itemIndex int, snapshotID *string) (*model.ShareComment, error)
+	ListComments(ctx context.Context, shareID, visitorID, snapshotID string) ([]model.ShareComment, error)
+	DeleteComment(ctx context.Context, commentID string) error
 	ListCommentsByResume(ctx context.Context, resumeID string) ([]model.AdminCommentItem, error)
 }
 

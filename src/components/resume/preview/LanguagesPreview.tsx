@@ -30,7 +30,7 @@ const LanguagesPreview: React.FC<LanguagesPreviewProps> = ({ items, themeColor, 
             <div key={item.id}>
               <div className="relative flex items-center gap-2">
                 {renderItemCommentIcon && (
-                  <div className="absolute -left-12 top-0">{renderItemCommentIcon(index)}</div>
+                  <div className="absolute -left-6 sm:-left-8 md:-left-12 top-0">{renderItemCommentIcon(index)}</div>
                 )}
                 <span className="text-[9.5pt] text-gray-700 w-20 flex-shrink-0">🌐 {item.language}</span>
                 {item.level && (
