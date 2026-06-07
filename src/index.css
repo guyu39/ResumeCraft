@@ -78,19 +78,15 @@ body {
 }
 
 .resume-preview-content[data-module-title-line-position='bottom'] .resume-module-title {
-  align-items: flex-start;
+  align-items: center;
   gap: 0.35rem;
-  padding-bottom: 3px;
+  padding-bottom: 5px;
   border-bottom: 1px solid #e5e7eb;
 }
 
 .resume-preview-content[data-module-title-line-position='bottom'] .resume-module-title-line,
 .resume-preview-content[data-module-title-line-position='none'] .resume-module-title-line {
   display: none;
-}
-
-.resume-preview-content[data-module-title-line-position='bottom'] .resume-module-title-marker {
-  margin-top: 1px;
 }
 
 .resume-preview-content[data-module-title-marker-visible='false'] .resume-module-title-marker,
