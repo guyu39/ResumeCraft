@@ -83,6 +83,7 @@ export interface ResumeStyleSettings {
   moduleTitleLinePosition: 'left' | 'bottom' | 'none'
   moduleTitleMarkerStyle: 'bar' | 'pill' | 'dot' | 'square' | 'none'
   moduleTitleMarkerVisible: boolean
+  avatarPosition?: 'center' | 'right' | 'left'
 }
 
 export interface ResumeDetail {

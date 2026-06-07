@@ -7,8 +7,8 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"time"
 
 	"resumecraft-pdf-backend/internal/model"
 
@@ -99,18 +99,30 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 	})
 }
 
-// ServeAvatar 代理访问头像（通过后端生成 MinIO 预签名 URL，避免直接暴露 MinIO 地址导致 403）
+// ServeAvatar 流式代理头像，避免 302 重定向导致的跨域问题
+// 之前使用 302 重定向到 MinIO 预签名 URL，导致：
+//  1. 浏览器端 Canvas 被跨域图片污染，toDataURL() 抛出 SecurityError
+//  2. PDF 导出时 Chromium 加载 302 链接触发 InsecureLocalNetwork 拦截
+//
+// 改为后端直接从 MinIO 读取数据返回，使图片真正同源。
 // GET /api/avatars/:userID/:filename
 func (h *Handler) ServeAvatar(c *gin.Context) {
 	userID := c.Param("userID")
 	filename := c.Param("filename")
 	key := "avatars/" + userID + "/" + filename
 
-	url, err := h.objectStorage.PresignedGetURL(c.Request.Context(), key, 5*time.Minute)
+	reader, size, contentType, err := h.objectStorage.Download(c.Request.Context(), key)
 	if err != nil {
 		c.String(http.StatusNotFound, "头像不存在")
 		return
 	}
+	defer reader.Close()
 
-	c.Redirect(http.StatusTemporaryRedirect, url)
+	if contentType != "" {
+		c.Header("Content-Type", contentType)
+	}
+	c.Header("Content-Length", strconv.FormatInt(size, 10))
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Status(http.StatusOK)
+	io.Copy(c.Writer, reader)
 }

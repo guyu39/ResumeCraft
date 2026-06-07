@@ -19,6 +19,7 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, mod
   const { t, te, locale } = useI18n()
   // 个人信息优先从独立 personalData 读取（多快照共享），回退到模块 data
   const personalData = useResumeStore((s) => s.personalData)
+  const avatarPosition = useResumeStore((s) => s.resume.styleSettings?.avatarPosition) ?? 'right'
 
   const {
     name,
@@ -73,10 +74,26 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, mod
       .map((item) => ({ value: `${item.title}${sep}${item.value}` }))),
   ]
 
+  const showAvatar = !!(personalData?.avatar as string || avatar)
+  const centerMode = avatarPosition === 'center'
+
+  const avatarEl = showAvatar ? (
+    <PersonalAvatar
+      avatar={(personalData?.avatar as string) || avatar}
+      avatarShape={(personalData?.avatarShape as 'circle' | 'square') || avatarShape || 'circle'}
+      size={75}
+      themeColor={themeColor}
+    />
+  ) : null
+
   return (
-    <div className="flex items-start gap-4 mb-2" data-module-id={moduleId}>
-      {/* 左侧：姓名 + 求职意向 + 联系方式 */}
-      <div className="flex-1 min-w-0">
+    <div className={`${centerMode ? 'text-center' : 'flex items-start gap-4'} mb-2`} data-module-id={moduleId}>
+      {/* 居中模式：头像在上方 */}
+      {centerMode && showAvatar && <div className="flex justify-center mb-2">{avatarEl}</div>}
+      {/* 居左模式：头像在左侧 */}
+      {avatarPosition === 'left' && avatarEl}
+      {/* 姓名 + 求职意向 + 联系方式 */}
+      <div className={`${centerMode ? '' : 'flex-1 min-w-0'}`}>
         <h1 className="text-[22pt] font-bold mb-0.5" style={{ color: themeColor }}>
           {name || t('personal.yourName')}
         </h1>
@@ -102,16 +119,8 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, mod
           </div>
         )}
       </div>
-
-      {/* 右侧：头像 */}
-      {(personalData?.avatar as string || avatar) && (
-        <PersonalAvatar
-          avatar={(personalData?.avatar as string) || avatar}
-          avatarShape={(personalData?.avatarShape as 'circle' | 'square') || avatarShape || 'circle'}
-          size={75}
-          themeColor={themeColor}
-        />
-      )}
+      {/* 居右模式（默认）：头像在右侧 */}
+      {!centerMode && avatarPosition !== 'left' && avatarEl}
     </div>
   )
 }

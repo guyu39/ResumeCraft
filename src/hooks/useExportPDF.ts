@@ -183,12 +183,17 @@ export function useSyncExport() {
           images.map(async (img) => {
             if (!img.src || img.src.startsWith('data:')) return
             try {
-              // 图片已加载完成则直接用 canvas 压缩转 base64
+              // 尝试 canvas 压缩转 base64（更快、体积更小）
               if (img.complete && img.naturalWidth > 0) {
-                const dataUrl = await compressImageToDataUrl(img)
-                if (dataUrl) { img.src = dataUrl; return }
+                try {
+                  const dataUrl = await compressImageToDataUrl(img)
+                  if (dataUrl) { img.src = dataUrl; return }
+                } catch {
+                  // canvas 被跨域图片污染（如通过 302 重定向加载的头像），回退到 fetch
+                  console.debug('[export] canvas tainted for:', img.src, 'falling back to fetch')
+                }
               }
-              // 图片未就绪则先 fetch 再压缩
+              // fetch 方式获取图片（不受跨域 canvas 污染限制）
               const resp = await fetch(img.src)
               if (!resp.ok) return
               const blob = await resp.blob()
@@ -199,6 +204,7 @@ export function useSyncExport() {
               })
               img.src = dataUrl
             } catch {
+              console.warn('[export] image conversion failed for:', img.src)
               // 转换失败则保留原 src
             }
           })

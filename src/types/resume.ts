@@ -81,7 +81,7 @@ export const MODULE_META_LIST: ModuleMeta[] = [
   { type: 'awards', label: '荣誉奖项', icon: '🏆', maxCount: 1, category: 'achievement' },
   { type: 'certificates', label: '证书资质', icon: '📜', maxCount: 1, category: 'achievement' },
   { type: 'portfolio', label: '作品链接', icon: '🔗', maxCount: 1, category: 'link' },
-  { type: 'ai-engineering', label: 'AI 工程', icon: '🤖', maxCount: 0, category: 'special' },
+  { type: 'ai-engineering', label: 'AI 工程', icon: '🤖', maxCount: 1, category: 'special' },
   { type: 'custom', label: '自定义模块', icon: '✨', maxCount: 0, category: 'special' },
 ]
 
@@ -323,6 +323,7 @@ export interface ResumeStyleSettings {
   moduleTitleLinePosition: ModuleTitleLinePosition
   moduleTitleMarkerStyle: ModuleTitleMarkerStyle
   moduleTitleMarkerVisible: boolean
+  avatarPosition: 'center' | 'right' | 'left'  // 头像位置（经典/简约模板适用）
 }
 
 export const DEFAULT_RESUME_STYLE_SETTINGS: ResumeStyleSettings = {
@@ -339,6 +340,7 @@ export const DEFAULT_RESUME_STYLE_SETTINGS: ResumeStyleSettings = {
   moduleTitleLinePosition: 'left',
   moduleTitleMarkerStyle: 'bar',
   moduleTitleMarkerVisible: true,
+  avatarPosition: 'right',
 }
 
 export interface IndustryTemplatePreset {

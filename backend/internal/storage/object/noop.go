@@ -15,6 +15,10 @@ func (n *NoopClient) Upload(ctx context.Context, key string, reader io.Reader, s
 	return "", ErrNotConfigured
 }
 
+func (n *NoopClient) Download(ctx context.Context, key string) (io.ReadCloser, int64, string, error) {
+	return nil, 0, "", ErrNotConfigured
+}
+
 func (n *NoopClient) Delete(ctx context.Context, key string) error {
 	return ErrNotConfigured
 }

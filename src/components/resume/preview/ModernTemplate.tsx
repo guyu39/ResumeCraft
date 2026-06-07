@@ -83,7 +83,7 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
       ...(personalData.education ? [`${labelMap.education}${sep}${te(personalData.education)}`] : []),
       ...(personalData.politics ? [`${labelMap.politics}${sep}${te(personalData.politics)}`] : []),
       ...(personalData.workYears ? [`${labelMap.workYears}${sep}${te(personalData.workYears)}`] : []),
-      ...(personalData.personalAccount ? [`${labelMap.personalAccount}${sep}${personalData.personalAccount}`] : []),
+      ...(personalData.personalAccount?.platform && personalData.personalAccount?.url ? [`${labelMap.personalAccount || '个人账号'}${sep}${personalData.personalAccount.platform}`] : []),
       ...((personalData.extraInfos ?? [])
         .filter((item) => item.title && item.value)
         .map((item) => `${item.title}${sep}${item.value}`)),
@@ -96,13 +96,14 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
         {personalModule?.visible !== false && personalData && (
           <div className="text-center mb-4" data-module-id={personalModule?.id}>
             {personalData.avatar && (
-              <PersonalAvatar
-                avatar={personalData.avatar}
-                avatarShape={personalData.avatarShape ?? 'circle'}
-                size={75}
-                themeColor={themeColor}
-                className="mx-auto mb-3"
-              />
+              <div className="flex justify-center mb-3">
+                <PersonalAvatar
+                  avatar={personalData.avatar}
+                  avatarShape={personalData.avatarShape ?? 'circle'}
+                  size={75}
+                  themeColor={themeColor}
+                />
+              </div>
             )}
             <h1 className="text-[18pt] font-bold mb-1" style={{ color: themeColor }}>
               {personalData.name || (isEn ? 'Your Name' : '你的姓名')}

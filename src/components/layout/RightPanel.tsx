@@ -438,6 +438,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     </p>
                 </div>
 
+                {resume.template !== 'modern' && (
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">头像位置</label>
+                        <select
+                            value={styleSettings.avatarPosition ?? 'right'}
+                            onChange={(e) => setStyleSettings({ avatarPosition: e.target.value as 'center' | 'right' | 'left' })}
+                            className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                            <option value="right">居右显示</option>
+                            <option value="center">居中显示</option>
+                            <option value="left">居左显示</option>
+                        </select>
+                    </div>
+                )}
+
                 <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
                         内容字体（{FONT_OPTIONS.find((item) => item.value === styleSettings.fontFamily)?.label ?? styleSettings.fontFamily}）

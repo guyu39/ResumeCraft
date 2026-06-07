@@ -75,7 +75,7 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
       ...(personalData.education ? [`${labelMap.education}${sep}${te(personalData.education)}`] : []),
       ...(personalData.politics ? [`${labelMap.politics}${sep}${te(personalData.politics)}`] : []),
       ...(personalData.workYears ? [`${labelMap.workYears}${sep}${te(personalData.workYears)}`] : []),
-      ...(personalData.personalAccount ? [`${labelMap.personalAccount}${sep}${personalData.personalAccount}`] : []),
+      ...(personalData.personalAccount?.platform && personalData.personalAccount?.url ? [`${labelMap.personalAccount || '个人账号'}${sep}${personalData.personalAccount.platform}`] : []),
       ...((personalData.extraInfos ?? [])
         .filter((item) => item.title && item.value)
         .map((item) => `${item.title}${sep}${item.value}`)),
@@ -134,8 +134,29 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
         ['--module-title-color' as string]: themeColor,
       }}
     >
-      <div className="relative mb-1 pr-[92px]" data-module-id={modules.find(m => m.type === 'personal')?.id}>
-        <div className="min-w-0">
+      <div className={`relative mb-1 ${styleSettings.avatarPosition === 'right' || !styleSettings.avatarPosition ? 'pr-[92px]' : ''}`} data-module-id={modules.find(m => m.type === 'personal')?.id}>
+        {/* 居中模式：头像在上方 */}
+        {styleSettings.avatarPosition === 'center' && personalData?.avatar && (
+          <div className="flex justify-center mb-2">
+            <PersonalAvatar
+              avatar={personalData.avatar}
+              avatarShape={personalData.avatarShape ?? 'circle'}
+              size={75}
+              themeColor={themeColor}
+            />
+          </div>
+        )}
+        {/* 居左模式：头像在左侧 */}
+        {styleSettings.avatarPosition === 'left' && personalData?.avatar && (
+          <PersonalAvatar
+            avatar={personalData.avatar}
+            avatarShape={personalData.avatarShape ?? 'circle'}
+            size={75}
+            themeColor={themeColor}
+            className="absolute left-0 top-0"
+          />
+        )}
+        <div className={`min-w-0 ${styleSettings.avatarPosition === 'left' ? 'ml-[92px]' : ''}`}>
           <h1 className="text-[22pt] font-extrabold tracking-tight leading-tight" style={{ color: themeColor }}>
             {personalData?.name || (isEn ? 'Your Name' : '你的姓名')}
           </h1>
@@ -143,7 +164,8 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
             <p className="mt-0.5 text-[8.8pt] text-gray-500 leading-tight">{personalData.targetPosition}</p>
           )}
         </div>
-        {personalData?.avatar && (
+        {/* 居右模式：头像在右侧 */}
+        {(!styleSettings.avatarPosition || styleSettings.avatarPosition === 'right') && personalData?.avatar && (
           <PersonalAvatar
             avatar={personalData.avatar}
             avatarShape={personalData.avatarShape ?? 'circle'}
@@ -155,7 +177,7 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
       </div>
 
       {personalLines.length > 0 && (
-        <div className="mb-5 grid grid-cols-2 gap-x-5 gap-y-0.5 text-[8.9pt] text-gray-500" data-module-id={modules.find(m => m.type === 'personal')?.id}>
+        <div className={`mb-5 grid grid-cols-2 gap-x-5 gap-y-0.5 text-[8.9pt] text-gray-500 ${styleSettings.avatarPosition === 'left' ? 'ml-[92px]' : ''}`} data-module-id={modules.find(m => m.type === 'personal')?.id}>
           {personalLines.map((line) => (
             <span key={line} className="block min-w-0 break-all leading-tight">{line}</span>
           ))}

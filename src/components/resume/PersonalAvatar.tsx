@@ -60,7 +60,7 @@ const PersonalAvatar: React.FC<PersonalAvatarProps> = ({
   }
 
   return (
-    <div className={`relative flex-shrink-0 ${className}`}>
+    <div className={`${className.includes('absolute') ? '' : 'relative'} flex-shrink-0 ${className}`}>
       {/* 头像图片 / 占位符 */}
       {avatar && !imgError ? (
         <img

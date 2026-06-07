@@ -57,6 +57,19 @@ func (m *MinioClient) Upload(ctx context.Context, key string, reader io.Reader, 
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, m.endpoint, m.bucket, key), nil
 }
 
+func (m *MinioClient) Download(ctx context.Context, key string) (io.ReadCloser, int64, string, error) {
+	obj, err := m.client.GetObject(ctx, m.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("download: %w", err)
+	}
+	info, err := obj.Stat()
+	if err != nil {
+		obj.Close()
+		return nil, 0, "", fmt.Errorf("stat: %w", err)
+	}
+	return obj, info.Size, info.ContentType, nil
+}
+
 func (m *MinioClient) Delete(ctx context.Context, key string) error {
 	return m.client.RemoveObject(ctx, m.bucket, key, minio.RemoveObjectOptions{})
 }

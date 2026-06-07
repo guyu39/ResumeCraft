@@ -32,6 +32,9 @@ type ResumeStyleSettings struct {
 	ModuleTitleLinePosition  string  `json:"moduleTitleLinePosition"`
 	ModuleTitleMarkerStyle   string  `json:"moduleTitleMarkerStyle"`
 	ModuleTitleMarkerVisible bool    `json:"moduleTitleMarkerVisible"`
+	ModuleTitleFontFamily    string  `json:"moduleTitleFontFamily"`
+	ModuleTitleFontSize      float64 `json:"moduleTitleFontSize"`
+	AvatarPosition           string  `json:"avatarPosition,omitempty"`
 }
 
 // ResumeDetail 简历详情

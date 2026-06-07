@@ -11,7 +11,7 @@ import ShareViewPage from '@/pages/ShareViewPage'
 import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
 import { resumeApi } from '@/api'
-import type { ResumeLocale, TemplateType, Module } from '@/types/resume'
+import type { ResumeLocale, TemplateType, Module, ResumeStyleSettings } from '@/types/resume'
 
 function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
@@ -113,7 +113,7 @@ const App: React.FC = () => {
               locale: firstResume.locale as ResumeLocale,
               template: firstResume.template as TemplateType,
               themeColor: firstResume.themeColor,
-              styleSettings: firstResume.styleSettings,
+              styleSettings: firstResume.styleSettings as ResumeStyleSettings,
               modules: firstResume.modules as Module[],
               updatedAt: firstResume.updatedAt,
             })
@@ -137,7 +137,7 @@ const App: React.FC = () => {
                 locale: currentResume.locale as ResumeLocale,
                 template: currentResume.template as TemplateType,
                 themeColor: currentResume.themeColor,
-                styleSettings: currentResume.styleSettings,
+                styleSettings: currentResume.styleSettings as ResumeStyleSettings,
                 modules: currentResume.modules as Module[],
                 updatedAt: currentResume.updatedAt,
               })
