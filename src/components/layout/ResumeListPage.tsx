@@ -369,7 +369,7 @@ setPendingCreateName(defaultTitle)
             template: cr.template as TemplateType,
             locale: 'zh-CN' as const,
             themeColor: '#1A56DB',
-            styleSettings: { fontFamily: 'Microsoft YaHei', fontSize: 12, moduleTitleFontFamily: 'Microsoft YaHei', moduleTitleFontSize: 14, textColor: '#363636', lineHeight: 1.3, pagePaddingHorizontal: 20, pagePaddingVertical: 20, moduleSpacing: 7, paragraphSpacing: 1, moduleTitleLinePosition: 'left', moduleTitleMarkerStyle: 'bar', moduleTitleMarkerVisible: true },
+            styleSettings: { fontFamily: 'Microsoft YaHei', fontSize: 12, moduleTitleFontFamily: 'Microsoft YaHei', moduleTitleFontSize: 14, textColor: '#363636', lineHeight: 1.3, pagePaddingHorizontal: 20, pagePaddingVertical: 20, moduleSpacing: 7, paragraphSpacing: 1, moduleTitleLinePosition: 'left', moduleTitleMarkerStyle: 'bar', moduleTitleMarkerVisible: true, avatarPosition: 'right' as const },
             updatedAt: cr.updatedAt,
             modules: [],
         })) as Resume[]

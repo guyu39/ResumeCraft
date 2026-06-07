@@ -175,7 +175,7 @@ const InlineCommentPanel: React.FC<{
 
 const ShareViewPage: React.FC = () => {
   const token = useMemo(() => window.location.pathname.split('/share/')[1]?.split('/')[0] || '', [])
-  const visitorId = useMemo(() => getVisitorId(), [])
+  const visitorId = useMemo(() => getVisitorId(token), [token])
   const [data, setData] = useState<ShareResumeView | null>(null)
   const [comments, setComments] = useState<ShareComment[]>([])
   const [loading, setLoading] = useState(true)

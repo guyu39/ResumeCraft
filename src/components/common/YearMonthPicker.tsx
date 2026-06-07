@@ -20,8 +20,6 @@ interface YearMonthPickerProps {
 }
 
 const MONTHS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
-const YEAR_COLS = 3
-const YEAR_ROWS = 3
 const YEARS_PER_PAGE = 9
 const DAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"]
 type Step = "year" | "month" | "day"

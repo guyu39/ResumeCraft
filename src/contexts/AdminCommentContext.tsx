@@ -76,22 +76,6 @@ export const AdminCommentProvider: React.FC<AdminCommentProviderProps> = ({
     return map
   }, [comments])
 
-  const getSnapshotGroups = useCallback(() => {
-    const map = new Map<string, { label: string; count: number }>()
-    for (const c of comments) {
-      const sid = c.snapshotId || '__unknown__'
-      const e = map.get(sid) || { label: c.snapshotLabel || '', count: 0 }
-      e.count++
-      map.set(sid, e)
-    }
-    return Array.from(map.entries()).map(([snapshotId, v]) => ({ snapshotId, snapshotLabel: v.label || snapshotId, count: v.count }))
-  }, [comments])
-
-  const getCommentsBySnapshot = useCallback(
-    (snapshotId: string) => comments.filter((c) => (c.snapshotId || '__unknown__') === snapshotId),
-    [comments]
-  )
-
   const getVisitorColor = useCallback(
     (visitorId: string) => visitorColorMap.get(visitorId) || '#94a3b8',
     [visitorColorMap]
