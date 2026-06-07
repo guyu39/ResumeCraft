@@ -183,6 +183,15 @@ body {
   animation: fadeInUp 0.2s ease-out;
 }
 
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.animate-slide-in {
+  animation: slideInRight 0.25s ease-out;
+}
+
 /* 隐藏原生滚动条，但保留滚动能力 */
 .no-scrollbar {
   -ms-overflow-style: none;

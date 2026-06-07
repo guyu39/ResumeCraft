@@ -2,14 +2,14 @@
 // PersonalForm — 个人信息编辑表单
 // ============================================================
 
-import React, { useState, useRef } from 'react'
-import { Upload, X, User, Plus, Trash2 } from 'lucide-react'
+import React, { useState } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { PersonalData } from '@/types/resume'
-import { useResumeStore } from '@/store/resumeStore'
+import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import FormField, { TextInput, Select } from '@/components/common/FormField'
 import { WORK_YEARS_OPTIONS } from '@/types/resume'
 import YearMonthPicker from '@/components/common/YearMonthPicker'
-import { uploadAvatar } from '@/api/upload'
+import PersonalAvatar from '@/components/resume/PersonalAvatar'
 import { useI18n } from '@/hooks/useI18n'
 
 interface PersonalFormProps {
@@ -28,11 +28,10 @@ interface FieldErrors {
 }
 
 const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
-  const { updateModuleData } = useResumeStore()
+  const { updateModuleData, setPersonalData } = useResumeStore()
   const { t, te } = useI18n()
   const [errors, setErrors] = useState<FieldErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const currentYear = new Date().getFullYear()
   const avatarShape = data.avatarShape ?? 'circle'
 
@@ -71,6 +70,8 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
 
   const update = <K extends keyof PersonalData>(key: K, value: PersonalData[K]) => {
     updateModuleData(moduleId, { [key]: value } as Partial<PersonalData>)
+    // 同步到独立 personalData（多快照共享）
+    setPersonalData({ ...useResumeStore.getState().personalData, [key]: value })
   }
 
   const extraInfos = data.extraInfos ?? []
@@ -117,63 +118,22 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
   const hasError = (field: keyof FieldErrors) =>
     touched[field] && !!errors[field]
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      alert(t('personal.selectImageFile'))
-      return
-    }
-    if (file.size > 1 * 1024 * 1024) {
-      try {
-        const { avatarUrl } = await uploadAvatar(file)
-        update('avatar', avatarUrl)
-      } catch {
-        alert(t('personal.avatarUploadFailed'))
-      }
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string
-      update('avatar', result)
-    }
-    reader.readAsDataURL(file)
+  const handleAvatarChange = (avatarUrl: string) => {
+    update('avatar', avatarUrl)
+    flushToCloud()
   }
 
   return (
     <div className="editor-form-root space-y-5">
       {/* 头像上传区 */}
       <div className="flex items-center gap-4">
-        <div className="relative flex-shrink-0">
-          {data.avatar ? (
-            <img
-              src={data.avatar}
-              alt={t('personal.avatar')}
-              className={`w-24 h-24 object-cover border-2 border-gray-200 ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
-            />
-          ) : (
-            <div className={`w-24 h-24 bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300 ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}>
-              <User className="w-8 h-8 text-gray-400" />
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute -bottom-1 -right-1 w-7 h-7 bg-primary text-white rounded-full flex items-center justify-center shadow-md hover:bg-primary/90"
-          >
-            <Upload className="w-3.5 h-3.5" />
-          </button>
-          {data.avatar && (
-            <button
-              type="button"
-              onClick={() => update('avatar', '')}
-              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
+        <PersonalAvatar
+          avatar={data.avatar}
+          avatarShape={avatarShape}
+          size={96}
+          editable
+          onAvatarChange={handleAvatarChange}
+        />
         <div>
           <p className="text-sm font-medium text-gray-700">{t('personal.personalAvatar')}</p>
           <p className="text-xs text-gray-400 mt-0.5">{t('personal.avatarUploadHint')}</p>
@@ -194,7 +154,6 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
             </button>
           </div>
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
       </div>
 
       {/* 基本信息 */}

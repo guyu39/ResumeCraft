@@ -93,10 +93,13 @@ export interface ResumeDetail {
   themeColor: string
   styleSettings: ResumeStyleSettings
   modules: unknown[]
+  personalData?: Record<string, unknown>
   latestVersionId: string
-  latestSnapshotId?: string // 最新的 manual/default 快照 ID
-  basedOnSnapshotId?: string // 当前编辑基于的快照 ID
-  snapshotDrafts?: Record<string, unknown> // 快照专属草稿 Map<snapshotId, DraftContent>
+  latestSnapshotId?: string
+  basedOnSnapshotId?: string
+  snapshotDrafts?: Record<string, unknown>
+  version: number
+  snapshotDraftsVersion: number
   updatedAt: number
   createdAt: number
 }
@@ -115,16 +118,21 @@ export interface UpdateResumeRequest {
   themeColor?: string
   styleSettings?: ResumeStyleSettings
   modules?: unknown[]
+  personalData?: Record<string, unknown>
   clientUpdatedAt?: number
-  basedOnSnapshotId?: string // 当前编辑基于的快照 ID
-  snapshotDrafts?: Record<string, unknown> // 快照专属草稿批量更新
+  basedOnSnapshotId?: string
+  snapshotDrafts?: Record<string, unknown>
+  version?: number
+  snapshotDraftsVersion?: number
 }
 
 export interface ResumeUpdateResponse {
   id: string
   updatedAt: number
   latestVersionId: string
-  latestSnapshotId?: string // 最新的 manual/default 快照 ID
+  latestSnapshotId?: string
+  version: number
+  snapshotDraftsVersion: number
 }
 
 // 版本相关

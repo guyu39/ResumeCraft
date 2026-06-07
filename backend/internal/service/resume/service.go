@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	ErrResumeNotFound = errors.New("resume not found")
-	ErrDuplicateTitle = errors.New("resume title already exists")
-	ErrDuplicateLabel = errors.New("snapshot label already exists")
+	ErrResumeNotFound  = errors.New("resume not found")
+	ErrDuplicateTitle  = errors.New("resume title already exists")
+	ErrDuplicateLabel  = errors.New("snapshot label already exists")
+	ErrVersionConflict = errors.New("version conflict")
 )
 
 type Service interface {
@@ -114,6 +115,9 @@ func (s *service) Update(ctx context.Context, userID, resumeID string, req model
 		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound
 		}
+		if errors.Is(err, resumeRepo.ErrVersionConflict) {
+			return nil, ErrVersionConflict
+		}
 		return nil, err
 	}
 	return resp, nil
@@ -145,6 +149,9 @@ func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionI
 	if err != nil {
 		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound
+		}
+		if errors.Is(err, resumeRepo.ErrVersionConflict) {
+			return nil, ErrVersionConflict
 		}
 		return nil, err
 	}

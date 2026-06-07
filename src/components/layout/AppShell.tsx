@@ -12,6 +12,7 @@ import { usePendingParse } from '@/hooks/usePendingParse'
 import type { NoticeItem } from '@/components/common/NoticeCenter'
 import { useResumeStore } from '@/store/resumeStore'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import ToastContainer from '@/components/common/Toast'
 
 const STORAGE_KEY_LEFT = 'resumecraft_panel_left_width'
 const STORAGE_KEY_RIGHT = 'resumecraft_panel_right_width'
@@ -221,6 +222,7 @@ const AppShell: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.14),transparent_22%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_48%,#edf2f8_100%)] p-3">
+      <ToastContainer />
       <div className="flex flex-1 w-full overflow-hidden gap-3">
         {/* 左栏 — 模块管理面板 */}
         <aside

@@ -48,6 +48,11 @@ export function useCloudSync() {
   const setBasedOnSnapshotId = useResumeStore((s) => s.setBasedOnSnapshotId)
   const lastSavedAt = useResumeStore((s) => s.lastSavedAt)
   const markSaved = useResumeStore((s) => s.markSaved)
+  const resumeVersion = useResumeStore((s) => s.resumeVersion)
+  const draftsVersion = useResumeStore((s) => s.draftsVersion)
+  const setResumeVersion = useResumeStore((s) => s.setResumeVersion)
+  const setDraftsVersion = useResumeStore((s) => s.setDraftsVersion)
+  const setSyncStatus = useResumeStore((s) => s.setSyncStatus)
   const { isAuthenticated } = useAuthStore()
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -57,12 +62,22 @@ export function useCloudSync() {
   const lastSyncedDataRef = useRef<string>('')
   const cloudIdRef = useRef<string | null>(null)
   const hasSyncedOnMountRef = useRef(false)
+  const localVersionRef = useRef(resumeVersion)
+  const localDraftsVersionRef = useRef(draftsVersion)
+
+  // 同步 ref 与 store 值
+  localVersionRef.current = resumeVersion
+  localDraftsVersionRef.current = draftsVersion
 
   // ========== 核心：落库 ==========
   const saveToCloud = useCallback(async (useBeacon = false): Promise<boolean> => {
     if (!isAuthenticated || isSyncingRef.current) return false
 
-    const currentData = serializeResume(resume)
+    // 直接从 Store 读取最新状态，避免 closure 中 stale resume
+    // （flushToCloud 在 updateModuleData 之后立即调用，此时 React 尚未 re-render，
+    //  closure 中的 resume 仍是旧值，导致头像 URL 未写入云端）
+    const latestResume = useResumeStore.getState().resume
+    const currentData = serializeResume(latestResume)
 
     // 内容去重：与上次落库相同则跳过（比 isDirty 更可靠，不依赖额外状态维护）
     if (currentData === lastSyncedDataRef.current) {
@@ -71,7 +86,7 @@ export function useCloudSync() {
       return true
     }
 
-    const targetId = cloudIdRef.current || resume.id
+    const targetId = cloudIdRef.current || latestResume.id
     if (!isValidUUID(targetId)) {
       console.warn('[CloudSync] 非云端简历，跳过')
       return false
@@ -81,11 +96,14 @@ export function useCloudSync() {
     if (useBeacon) {
       const snapshotDrafts = collectSnapshotDrafts()
       const body = JSON.stringify({
-        title: resume.title, themeColor: resume.themeColor,
-        styleSettings: resume.styleSettings, modules: resume.modules,
+        title: latestResume.title, themeColor: latestResume.themeColor,
+        styleSettings: latestResume.styleSettings, modules: latestResume.modules,
         clientUpdatedAt: Date.now(),
         basedOnSnapshotId: basedOnSnapshotId || undefined,
         snapshotDrafts: Object.keys(snapshotDrafts).length > 0 ? snapshotDrafts : undefined,
+        personalData: useResumeStore.getState().personalData || undefined,
+        version: localVersionRef.current,
+        snapshotDraftsVersion: localDraftsVersionRef.current,
       })
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       const token = localStorage.getItem('accessToken')
@@ -97,33 +115,49 @@ export function useCloudSync() {
 
     isSyncingRef.current = true
     setSaveStatus('saving')
+    setSyncStatus('cloud_syncing')
 
     try {
       const snapshotDrafts = collectSnapshotDrafts()
       const resp = await resumeApi.update(targetId, {
-        title: resume.title, themeColor: resume.themeColor,
-        styleSettings: resume.styleSettings, modules: resume.modules,
+        title: latestResume.title, themeColor: latestResume.themeColor,
+        styleSettings: latestResume.styleSettings, modules: latestResume.modules,
         clientUpdatedAt: Date.now(),
         basedOnSnapshotId: basedOnSnapshotId || undefined,
         snapshotDrafts: Object.keys(snapshotDrafts).length > 0 ? snapshotDrafts : undefined,
+        personalData: useResumeStore.getState().personalData || undefined,
+        version: localVersionRef.current,
+        snapshotDraftsVersion: localDraftsVersionRef.current,
       })
       lastSyncedDataRef.current = currentData
+      // 更新本地版本号
+      setResumeVersion(resp.version)
+      setDraftsVersion(resp.snapshotDraftsVersion)
+      localVersionRef.current = resp.version
+      localDraftsVersionRef.current = resp.snapshotDraftsVersion
       setLastSyncedAt(Date.now())
       setSaveStatus('synced')
+      setSyncStatus('cloud_synced')
       markSaved()
-      // 同步后端返回的最新快照 ID
       if (resp?.latestSnapshotId) {
         setBasedOnSnapshotId(resp.latestSnapshotId)
       }
       return true
-    } catch (err) {
+    } catch (err: any) {
       console.error('[CloudSync] 保存失败:', err)
-      setSaveStatus('error')
+      // 409 Conflict 特殊处理
+      if (err?.status === 409 || err?.code === 'VERSION_CONFLICT') {
+        setSaveStatus('error')
+        setSyncStatus('conflict')
+      } else {
+        setSaveStatus('error')
+        setSyncStatus('error')
+      }
       return false
     } finally {
       isSyncingRef.current = false
     }
-  }, [resume, isAuthenticated, basedOnSnapshotId, markSaved, setBasedOnSnapshotId])
+  }, [isAuthenticated, basedOnSnapshotId, markSaved, setBasedOnSnapshotId, setSyncStatus, setResumeVersion, setDraftsVersion])
 
   // ========== 事件驱动：退出/刷新 ==========
   useEffect(() => {

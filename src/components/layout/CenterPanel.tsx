@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import PagedResumePaper, { A4_HEIGHT_PX, A4_WIDTH_PX } from '@/components/resume/PagedResumePaper'
 import SnapshotTimeline from '@/components/common/SnapshotTimeline'
@@ -91,13 +91,13 @@ function renderUnifiedDiffHtml(before: string, after: string): string {
     }
   }
 
-  // 渲染为 HTML
+  // 渲染为 HTML（使用 class 替代 inline style）
   if (a.isList) {
     const diffParts = pairs.map((p) => {
-      const color = p.type === '-' ? '#fecaca' : p.type === '+' ? '#bbf7d0' : 'transparent'
-      const prefix = p.type === '-' ? '<span style="color:#dc2626;font-weight:bold;margin-right:4px">−</span>' :
-        p.type === '+' ? '<span style="color:#16a34a;font-weight:bold;margin-right:4px">+</span>' : ''
-      return `<li style="background:${color};padding:1px 4px;border-radius:2px;margin:1px 0">${prefix}${p.line.replace(/<\/?li[^>]*>/gi, '')}</li>`
+      const bgClass = p.type === '-' ? 'bg-red-100' : p.type === '+' ? 'bg-green-100' : ''
+      const prefix = p.type === '-' ? '<span class="text-red-600 font-bold mr-1">−</span>' :
+        p.type === '+' ? '<span class="text-green-600 font-bold mr-1">+</span>' : ''
+      return `<li class="${bgClass} px-1 py-0.5 rounded-sm my-px">${prefix}${p.line.replace(/<\/?li[^>]*>/gi, '')}</li>`
     })
     return a.wrapper[0] + a.wrapper[1] + diffParts.join('') + a.wrapper[2] + (a.wrapper[3] || '')
   }
@@ -105,9 +105,9 @@ function renderUnifiedDiffHtml(before: string, after: string): string {
   // 纯文本 diff
   return pairs
     .map((p) => {
-      const color = p.type === '-' ? 'background:#fecaca;' : p.type === '+' ? 'background:#bbf7d0;' : ''
-      const prefix = p.type === '-' ? '<b style="color:#dc2626">− </b>' : p.type === '+' ? '<b style="color:#16a34a">+ </b>' : '  '
-      return `<div style="${color}padding:1px 4px;border-radius:2px;margin:1px 0;font-family:monospace;white-space:pre-wrap">${prefix}${escapeHtml(p.line)}</div>`
+      const bgClass = p.type === '-' ? 'bg-red-100' : p.type === '+' ? 'bg-green-100' : ''
+      const prefix = p.type === '-' ? '<b class="text-red-600">− </b>' : p.type === '+' ? '<b class="text-green-600">+ </b>' : '  '
+      return `<div class="${bgClass} px-1 py-0.5 rounded-sm my-px font-mono whitespace-pre-wrap">${prefix}${escapeHtml(p.line)}</div>`
     })
     .join('')
 }
@@ -117,7 +117,7 @@ function escapeHtml(s: string): string {
 }
 
 const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
-  const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, isDirty, setSnapshots: setStoreSnapshots } = useResumeStore()
+  const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, syncStatus, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null)
@@ -131,7 +131,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
 
   // 当前活跃快照的标签名（仅在有快照数据时显示）
   const activeSnapshotLabel = activeSnapshotId && snapshots.length > 0
-    ? snapshots.find((s) => s.id === activeSnapshotId)?.label || `v${snapshots.find((s) => s.id === activeSnapshotId)?.versionNo}`
+    ? snapshots.find((s) => s.id === activeSnapshotId)?.label || snapshots.find((s) => s.id === activeSnapshotId)?.snapshotType
     : null
 
   useEffect(() => {
@@ -215,7 +215,9 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
     if (snapshot.id === activeSnapshotId) return
 
     // ① 离开当前快照：对应当前编辑的快照专属固化到 localStorage
-    if (isDirty && activeSnapshotId) {
+    // syncStatus !== 'idle' 而非 'dirty'：avatar 上传后 flushToCloud 将状态变为
+    // cloud_synced，但快照 content_snapshot 仍是旧数据，必须保存草稿防止丢失
+    if (syncStatus !== 'idle' && activeSnapshotId) {
       const draftKey = `resumecraft_snapshot_draft_${activeSnapshotId}`
       try {
         localStorage.setItem(draftKey, JSON.stringify({
@@ -225,8 +227,8 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
           savedAt: Date.now(),
         }))
       } catch { /* ignore */ }
-      // 注意：不调用 markClean()！
-      // isDirty 跟踪的是"相对于云端的修改"，保存到 localStorage 草稿不等于同步到云端
+      // 注意：不调用 setSyncStatus('cloud_synced')！
+      // syncStatus 跟踪的是"相对于云端的修改"，保存到 localStorage 草稿不等于同步到云端
     }
 
     // ② 进入目标快照：优先加载快照专属本地草稿
@@ -263,7 +265,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
         setBasedOnSnapshotId(snapshot.id)
       }
     } catch { /* ignore */ }
-  }, [resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, isDirty])
+  }, [resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, syncStatus])
 
   // 对比：tooltip 点击「对比」触发
   const handleCompareSnapshot = useCallback(async (snapshotId: string) => {
@@ -312,7 +314,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
         setBasedOnSnapshotId(targetId)
       }
 
-      // 无论 currentValid 是否为 true，都尝试加载本地草稿（刷新后云数据可能过期）
+      // 加载本地草稿（仅在草稿比云端数据新时使用，避免旧草稿覆盖云端更新）
       const draftKey = `resumecraft_snapshot_draft_${targetId}`
       try {
         const raw = localStorage.getItem(draftKey)
@@ -320,12 +322,17 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
           const parsed = JSON.parse(raw)
           if (parsed.modules) {
             const current = useResumeStore.getState()
-            current.initResume({
-              ...current.resume,
-              modules: parsed.modules as Resume['modules'],
-              themeColor: (parsed.themeColor as Resume['themeColor']) ?? current.resume.themeColor,
-              styleSettings: (parsed.styleSettings as Resume['styleSettings']) ?? current.resume.styleSettings,
-            })
+            // 比较草稿保存时间和云端更新时间：草稿更新时才覆盖
+            const cloudUpdatedAt = current.resume.updatedAt ?? 0
+            const draftSavedAt = (parsed.savedAt as number) ?? 0
+            if (draftSavedAt > cloudUpdatedAt) {
+              current.initResume({
+                ...current.resume,
+                modules: parsed.modules as Resume['modules'],
+                themeColor: (parsed.themeColor as Resume['themeColor']) ?? current.resume.themeColor,
+                styleSettings: (parsed.styleSettings as Resume['styleSettings']) ?? current.resume.styleSettings,
+              })
+            }
           }
         }
       } catch { /* ignore */ }
@@ -401,40 +408,50 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
       {/* 差异对比弹窗 */}
       {diffResult && (() => {
         const labelA = activeSnapshotId === diffResult.snapshotA.id
-          ? (diffResult.snapshotA.label || `v${diffResult.snapshotA.versionNo}`)
-          : (diffResult.snapshotB.label || `v${diffResult.snapshotB.versionNo}`)
+          ? (diffResult.snapshotA.label || diffResult.snapshotA.id.slice(0, 8))
+          : (diffResult.snapshotB.label || diffResult.snapshotB.id.slice(0, 8))
         const labelB = activeSnapshotId === diffResult.snapshotA.id
-          ? (diffResult.snapshotB.label || `v${diffResult.snapshotB.versionNo}`)
-          : (diffResult.snapshotA.label || `v${diffResult.snapshotA.versionNo}`)
+          ? (diffResult.snapshotB.label || diffResult.snapshotB.id.slice(0, 8))
+          : (diffResult.snapshotA.label || diffResult.snapshotA.id.slice(0, 8))
         return createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => setDiffResult(null)}>
-            <div className="bg-white rounded-xl shadow-2xl w-[640px] max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-xl">
-                <h3 className="text-base font-semibold text-gray-800">
-                  对比：「<span className="text-green-600">{labelA}</span>」vs 「<span className="text-red-600">{labelB}</span>」
+            <div className="bg-white rounded-xl shadow-2xl w-[640px] max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-medium text-gray-800">
+                  对比：<span className="text-green-600">{labelA}</span> vs <span className="text-red-600">{labelB}</span>
                 </h3>
-                <button className="text-gray-400 hover:text-gray-600 text-lg" onClick={() => setDiffResult(null)}>✕</button>
+                <button
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                  onClick={() => setDiffResult(null)}
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <div className="px-6 py-4">
-                <div className="flex gap-4 mb-3 text-xs text-gray-500">
-                  <span style={{ color: '#dc2626' }}>− 删除 {diffResult.stats.modulesRemoved}</span>
-                  <span style={{ color: '#16a34a' }}>+ 新增 {diffResult.stats.modulesAdded}</span>
-                  <span>修改 {diffResult.stats.modulesModified}</span>
-                  <span>字段 {diffResult.stats.fieldsChanged}</span>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto no-scrollbar px-6 py-4">
+                {/* Stats */}
+                <div className="flex gap-4 mb-4 text-xs text-gray-500">
+                  <span className="text-red-600 font-medium">− 删除 {diffResult.stats.modulesRemoved}</span>
+                  <span className="text-green-600 font-medium">+ 新增 {diffResult.stats.modulesAdded}</span>
+                  <span className="font-medium">修改 {diffResult.stats.modulesModified}</span>
+                  <span className="text-gray-400">字段 {diffResult.stats.fieldsChanged}</span>
                 </div>
 
                 {diffResult.diffs.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-8">两个版本内容相同</p>
+                  <p className="text-sm text-gray-400 text-center py-12">两个版本内容相同</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {diffResult.diffs.map((d, i) => {
-                      // before = 对比快照（旧），after = 当前快照（新）→ + 绿底 = 当前新增
                       const before = activeSnapshotId === diffResult.snapshotA.id ? String(d.after ?? '') : String(d.before ?? '')
                       const after = activeSnapshotId === diffResult.snapshotA.id ? String(d.before ?? '') : String(d.after ?? '')
                       return (
-                        <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm">
-                          <div className="flex items-center gap-2 text-xs text-gray-400 mb-2">
-                            <span className="font-medium text-gray-600">{d.moduleType}</span><span>·</span><span>{d.field}</span>
+                        <div key={i} className="border border-gray-100 rounded-lg p-3">
+                          <div className="flex items-center gap-1.5 text-xs mb-2">
+                            <span className="font-medium text-gray-700">{d.moduleType}</span>
+                            <span className="text-gray-300">·</span>
+                            <span className="text-gray-500">{d.field}</span>
                           </div>
                           <div className="diff-content text-xs" dangerouslySetInnerHTML={{ __html: renderUnifiedDiffHtml(before, after) }} />
                         </div>

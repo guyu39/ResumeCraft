@@ -5,6 +5,8 @@
 
 import React from 'react'
 import { PersonalData } from '@/types/resume'
+import { useResumeStore } from '@/store/resumeStore'
+import PersonalAvatar from '@/components/resume/PersonalAvatar'
 import { useI18n } from '@/hooks/useI18n'
 
 interface PersonalPreviewProps {
@@ -15,6 +17,8 @@ interface PersonalPreviewProps {
 
 const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, moduleId }) => {
   const { t, te, locale } = useI18n()
+  // 个人信息优先从独立 personalData 读取（多快照共享），回退到模块 data
+  const personalData = useResumeStore((s) => s.personalData)
 
   const {
     name,
@@ -100,12 +104,12 @@ const PersonalPreview: React.FC<PersonalPreviewProps> = ({ data, themeColor, mod
       </div>
 
       {/* 右侧：头像 */}
-      {avatar && (
-        <img
-          src={avatar}
-          alt={t('personal.avatar')}
-          className={`flex-shrink-0 object-cover border-2 ${avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
-          style={avatarShape === 'square' ? { width: '75px', height: '103.54px', borderColor: `${themeColor}40` } : { width: '75px', aspectRatio: '1/1', borderColor: `${themeColor}40` }}
+      {(personalData?.avatar as string || avatar) && (
+        <PersonalAvatar
+          avatar={(personalData?.avatar as string) || avatar}
+          avatarShape={(personalData?.avatarShape as 'circle' | 'square') || avatarShape || 'circle'}
+          size={75}
+          themeColor={themeColor}
         />
       )}
     </div>

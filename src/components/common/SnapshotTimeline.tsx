@@ -149,7 +149,7 @@ export default function SnapshotTimeline({
           onMouseLeave={handleTooltipLeave}
         >
           <div className="flex items-center gap-1 text-xs font-semibold text-gray-800">
-            <span>{tooltip.snapshot.label || `v${tooltip.snapshot.versionNo}`}</span>
+            <span>{tooltip.snapshot.label || tooltip.snapshot.snapshotType}</span>
           </div>
           <div className="text-[10px] text-gray-500 mt-1">
             {new Date(tooltip.snapshot.createdAt).toLocaleString('zh-CN')}

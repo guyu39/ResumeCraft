@@ -133,7 +133,6 @@ export type SnapshotType = 'auto' | 'manual' | 'default'
 
 export interface SnapshotListItem {
   id: string
-  versionNo: number
   snapshotType: SnapshotType
   label?: string
   createdAt: number
@@ -143,7 +142,6 @@ export interface SnapshotListItem {
 export interface SnapshotDetail {
   id: string
   resumeId: string
-  versionNo: number
   snapshotType: SnapshotType
   label?: string
   createdAt: number

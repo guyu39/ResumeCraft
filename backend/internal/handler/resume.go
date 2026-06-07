@@ -156,6 +156,10 @@ func (h *Handler) UpdateResume(c *gin.Context) {
 			response.JSONError(c, http.StatusNotFound, "RESUME_NOT_FOUND", "简历不存在或无权限访问")
 			return
 		}
+		if errors.Is(err, resume.ErrVersionConflict) {
+			response.JSONError(c, http.StatusConflict, "VERSION_CONFLICT", "简历已被其他客户端修改，请刷新后重试")
+			return
+		}
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "更新简历失败")
 		return
 	}

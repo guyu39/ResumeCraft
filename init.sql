@@ -28,71 +28,52 @@ create table public.resume_versions
         constraint fk_resume_versions_user
             references public.users
             on delete cascade,
-    version_no        integer                                                    not null
-        constraint resume_versions_version_no_check
-            check (version_no > 0),
     content_snapshot  jsonb                                                      not null,
     created_at        timestamp with time zone default now()                     not null,
-    created_by        uuid
-        constraint fk_resume_versions_created_by
-            references public.users
-            on delete set null,
-    parent_version_id uuid
-                                                                                 references public.resume_versions
-                                                                                     on delete set null,
-    branch_name       varchar(50)              default 'main'::character varying not null,
-    commit_message    varchar(200)             default ''::character varying     not null,
-    is_draft          boolean                  default false                     not null,
     snapshot_type     varchar(20)              default 'auto'::character varying not null
         constraint chk_snapshot_type
             check ((snapshot_type)::text = ANY
                    ((ARRAY ['auto'::character varying, 'manual'::character varying, 'default'::character varying])::text[])),
-    label             varchar(100),
-    jd_context_id     uuid,
-    constraint uq_resume_versions_resume_version
-        unique (resume_id, version_no)
+    label             varchar(100)
 );
-
-comment on column public.resume_versions.parent_version_id is '父版本 ID，用于构建版本树（树形结构隐含分支信息）';
-
-comment on column public.resume_versions.branch_name is '分支名称（如 main, google, amazon），默认 main';
-
-comment on column public.resume_versions.commit_message is '版本备注/标签（如"投递腾讯专用"）';
-
-comment on column public.resume_versions.is_draft is '是否为草稿版本（自动保存=草稿，手动打点=正式版本）';
 
 alter table public.resume_versions
     owner to resumecraft;
 
 create table public.resumes
 (
-    id                 uuid                     default gen_random_uuid()           not null
+    id                      uuid                     default gen_random_uuid()           not null
         primary key,
-    user_id            uuid                                                         not null
+    user_id                 uuid                                                         not null
         constraint fk_resumes_user
             references public.users
             on delete cascade,
-    title              varchar(120)             default 'resume'::character varying not null,
-    content            jsonb                    default '{}'::jsonb                 not null,
-    latest_version_id  uuid
+    title                   varchar(120)             default 'resume'::character varying not null,
+    content                 jsonb                    default '{}'::jsonb                 not null,
+    latest_version_id       uuid
         constraint fk_resumes_latest_version
             references public.resume_versions
             on delete set null,
-    created_at         timestamp with time zone default now()                       not null,
-    updated_at         timestamp with time zone default now()                       not null,
-    deleted_at         timestamp with time zone,
-    template           varchar(50)              default 'classic'::character varying,
-    theme_color        varchar(20)              default '#1A56DB'::character varying,
-    locale             varchar(10)              default 'zh-CN'::character varying,
-    current_version_id uuid
-                                                                                    references public.resume_versions
-                                                                                        on delete set null,
-    current_branch     varchar(50)              default 'main'::character varying   not null
+    created_at              timestamp with time zone default now()                       not null,
+    updated_at              timestamp with time zone default now()                       not null,
+    deleted_at              timestamp with time zone,
+    template                varchar(50)              default 'classic'::character varying,
+    locale                  varchar(10)              default 'zh-CN'::character varying,
+    based_on_snapshot_id    uuid,
+    snapshot_drafts         jsonb                    default '{}'::jsonb                 not null,
+    version                 bigint                   default 0                           not null,
+    snapshot_drafts_version bigint                   default 0                           not null
 );
 
-comment on column public.resumes.current_version_id is '当前正在编辑的版本 ID';
+comment on column public.resumes.based_on_snapshot_id is '当前编辑内容基于的快照ID';
 
-comment on column public.resumes.current_branch is '当前所在分支名';
+comment on column public.resumes.snapshot_drafts is '快照专属草稿 Map<snapshotId, DraftContent>';
+
+comment on column public.resumes.personal_data is '个人信息（姓名/头像/联系方式），独立存储，多快照共享';
+
+comment on column public.resumes.version is '乐观锁版本号，content 更新时 CAS 比对';
+
+comment on column public.resumes.snapshot_drafts_version is 'snapshot_drafts 独立版本号，避免与 content 共享锁';
 
 alter table public.resumes
     owner to resumecraft;
@@ -100,28 +81,8 @@ alter table public.resumes
 create index idx_resumes_user_updated_at
     on public.resumes (user_id asc, updated_at desc);
 
-create index idx_resumes_user_created_at
-    on public.resumes (user_id asc, created_at desc);
-
-create index idx_resume_versions_resume_version_desc
-    on public.resume_versions (resume_id asc, version_no desc);
-
 create index idx_resume_versions_user_created_at
     on public.resume_versions (user_id asc, created_at desc);
-
-create index idx_resume_versions_resume_branch
-    on public.resume_versions (resume_id asc, branch_name asc, version_no desc);
-
-create index idx_resume_versions_parent
-    on public.resume_versions (parent_version_id)
-    where (parent_version_id IS NOT NULL);
-
-create index idx_resume_versions_draft
-    on public.resume_versions (resume_id, branch_name, is_draft)
-    where (is_draft = true);
-
-create index idx_resume_versions_branches
-    on public.resume_versions (resume_id, branch_name);
 
 create index idx_resume_versions_manual
     on public.resume_versions (resume_id asc, snapshot_type asc, created_at desc)

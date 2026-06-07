@@ -137,6 +137,8 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 			{
 				usersGroup.POST("/avatar", h.UploadAvatar)
 			}
+			// 头像代理（无需认证，避免直接暴露 MinIO 地址导致 403）
+			api.GET("/avatars/:userID/:filename", h.ServeAvatar)
 		}
 
 		pdf := api.Group("/pdf")

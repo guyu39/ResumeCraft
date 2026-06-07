@@ -44,7 +44,7 @@ function restoreCloudSnapshotData(cloudResume: any) {
 }
 
 const App: React.FC = () => {
-  const { initResume, loadFromStorage } = useResumeStore()
+  const { initResume, loadFromStorage, setResumeVersion, setDraftsVersion, setPersonalData } = useResumeStore()
   const { isAuthenticated, checkAuth, logout } = useAuthStore()
   const [authChecked, setAuthChecked] = useState(false)
   const [cloudResumes, setCloudResumes] = useState<any[]>([])
@@ -117,6 +117,10 @@ const App: React.FC = () => {
               modules: firstResume.modules as Module[],
               updatedAt: firstResume.updatedAt,
             })
+              // 同步乐观锁版本号
+              setResumeVersion((firstResume as any).version ?? 0)
+              setDraftsVersion((firstResume as any).snapshotDraftsVersion ?? 0)
+              setPersonalData((firstResume as any).personalData ?? {})
               // 通知 useCloudSync 关于云端 ID
               ; (window as any).__cloudSyncSetCloudId?.(firstResume.id)
           }
@@ -137,6 +141,10 @@ const App: React.FC = () => {
                 modules: currentResume.modules as Module[],
                 updatedAt: currentResume.updatedAt,
               })
+                // 同步乐观锁版本号
+                setResumeVersion((currentResume as any).version ?? 0)
+                setDraftsVersion((currentResume as any).snapshotDraftsVersion ?? 0)
+                setPersonalData((currentResume as any).personalData ?? {})
                 // 通知 useCloudSync 关于云端 ID
                 ; (window as any).__cloudSyncSetCloudId?.(currentResume.id)
             }

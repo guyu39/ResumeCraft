@@ -31,6 +31,7 @@ import PortfolioPreview from './PortfolioPreview'
 import LanguagesPreview from './LanguagesPreview'
 import CustomPreview from './CustomPreview'
 import AIEngineeringPreview from './AIEngineeringPreview'
+import PersonalAvatar from '@/components/resume/PersonalAvatar'
 
 interface MinimalTemplateProps {
   resume: Resume
@@ -143,11 +144,12 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
           )}
         </div>
         {personalData?.avatar && (
-          <img
-            src={personalData.avatar}
-            alt={isEn ? 'Avatar' : '头像'}
-            className={`absolute right-0 top-0 object-cover border-2 ${personalData.avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'}`}
-            style={personalData.avatarShape === 'square' ? { width: '75px', height: '103.54px', borderColor: `${themeColor}40` } : { width: '75px', aspectRatio: '1/1', borderColor: `${themeColor}40` }}
+          <PersonalAvatar
+            avatar={personalData.avatar}
+            avatarShape={personalData.avatarShape ?? 'circle'}
+            size={75}
+            themeColor={themeColor}
+            className="absolute right-0 top-0"
           />
         )}
       </div>

@@ -15,9 +15,10 @@ import (
 )
 
 var (
-	ErrResumeNotFound = errors.New("resume not found")
-	ErrDuplicateTitle = errors.New("resume title already exists")
-	ErrDuplicateLabel = errors.New("snapshot label already exists")
+	ErrResumeNotFound  = errors.New("resume not found")
+	ErrDuplicateTitle  = errors.New("resume title already exists")
+	ErrDuplicateLabel  = errors.New("snapshot label already exists")
+	ErrVersionConflict = errors.New("version conflict: resume was modified by another client")
 )
 
 type Repository interface {
@@ -191,18 +192,21 @@ func (r *repository) GetByID(ctx context.Context, userID, resumeID string) (*mod
 	var detail model.ResumeDetail
 	var contentJSON []byte
 	var snapshotDraftsJSON []byte
+	var personalDataJSON []byte
 	var updatedAt, createdAt time.Time
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, title, locale, template, content, latest_version_id,
+		SELECT id, title, locale, template, content, personal_data, latest_version_id,
 		       based_on_snapshot_id, COALESCE(snapshot_drafts, '{}'),
+		       version, snapshot_drafts_version,
 		       updated_at, created_at
 		FROM resumes
 		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 	`, resumeID, userID).Scan(
 		&detail.ID, &detail.Title, &detail.Locale, &detail.Template,
-		&contentJSON, &detail.LatestVersionID,
+		&contentJSON, &personalDataJSON, &detail.LatestVersionID,
 		&detail.BasedOnSnapshotID, &snapshotDraftsJSON,
+		&detail.Version, &detail.SnapshotDraftsVersion,
 		&updatedAt, &createdAt,
 	)
 	if err != nil {
@@ -223,6 +227,11 @@ func (r *repository) GetByID(ctx context.Context, userID, resumeID string) (*mod
 	detail.Modules = content.Modules
 	detail.UpdatedAt = updatedAt.UnixMilli()
 	detail.CreatedAt = createdAt.UnixMilli()
+
+	// 个人信息（独立字段，多快照共享）
+	if len(personalDataJSON) > 0 {
+		detail.PersonalData = personalDataJSON
+	}
 
 	// 解析快照草稿
 	if len(snapshotDraftsJSON) > 0 && string(snapshotDraftsJSON) != "{}" {
@@ -246,11 +255,13 @@ func (r *repository) GetByID(ctx context.Context, userID, resumeID string) (*mod
 
 func (r *repository) Update(ctx context.Context, userID, resumeID string, req model.UpdateResumeRequest) (*model.ResumeUpdateResponse, error) {
 	// 先获取当前简历信息
-	var currentVersionID *string // NULL 可能
+	var currentVersionID *string
 	var currentContentJSON []byte
+	var currentVersion, currentDraftsVersion int64
 	err := r.pool.QueryRow(ctx, `
-		SELECT latest_version_id, content FROM resumes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-	`, resumeID, userID).Scan(&currentVersionID, &currentContentJSON)
+		SELECT latest_version_id, content, version, snapshot_drafts_version
+		FROM resumes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+	`, resumeID, userID).Scan(&currentVersionID, &currentContentJSON, &currentVersion, &currentDraftsVersion)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrResumeNotFound
@@ -262,6 +273,9 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	updates := []string{}
 	args := []interface{}{}
 	argIdx := 1
+	updateContent := false
+	updateDrafts := false
+	var contentVersion, draftsVersion int64
 
 	if req.Title != "" {
 		updates = append(updates, fmt.Sprintf("title = $%d", argIdx))
@@ -270,7 +284,15 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	}
 
 	if req.Modules != nil || req.ThemeColor != "" || req.StyleSettings != nil {
-		// 合并现有 content
+		// 乐观锁：content 更新需要 version CAS
+		if req.Version != nil {
+			contentVersion = *req.Version
+			if contentVersion != currentVersion {
+				return nil, fmt.Errorf("%w: expected v%d, got v%d", ErrVersionConflict, currentVersion, contentVersion)
+			}
+		}
+		// req.Version == nil：兼容旧客户端过渡期，不阻塞但无版本保护
+
 		var existingContent model.ResumeContent
 		json.Unmarshal(currentContentJSON, &existingContent)
 
@@ -291,17 +313,37 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		updates = append(updates, fmt.Sprintf("content = $%d", argIdx))
 		args = append(args, contentJSON)
 		argIdx++
+		updateContent = true
 	}
 
-	// 更新 based_on_snapshot_id（追踪当前编辑基于的快照）
+	// 个人信息（独立字段）
+	if len(req.PersonalData) > 0 {
+		updates = append(updates, fmt.Sprintf("personal_data = $%d", argIdx))
+		args = append(args, req.PersonalData)
+		argIdx++
+		// 个人信息更新也计入 content 版本（共用 version）
+		if !updateContent {
+			updateContent = true
+			// 不设 CAS 版本：个人信息不需要乐观锁保护
+			req.Version = nil
+		}
+	}
+
 	if req.BasedOnSnapshotID != nil {
 		updates = append(updates, fmt.Sprintf("based_on_snapshot_id = $%d", argIdx))
 		args = append(args, *req.BasedOnSnapshotID)
 		argIdx++
 	}
 
-	// 批量更新快照专属草稿：与现有 snapshot_drafts 合并（upsert 语义）
 	if req.SnapshotDrafts != nil && len(req.SnapshotDrafts) > 0 {
+		// 乐观锁：snapshot_drafts 用独立版本号
+		if req.SnapshotDraftsVersion != nil {
+			draftsVersion = *req.SnapshotDraftsVersion
+			if draftsVersion != currentDraftsVersion {
+				return nil, fmt.Errorf("%w (drafts): expected v%d, got v%d", ErrVersionConflict, currentDraftsVersion, draftsVersion)
+			}
+		}
+
 		var existingDrafts map[string]json.RawMessage
 		var existingDraftsJSON []byte
 		_ = r.pool.QueryRow(ctx, "SELECT COALESCE(snapshot_drafts, '{}') FROM resumes WHERE id = $1", resumeID).Scan(&existingDraftsJSON)
@@ -323,19 +365,16 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		updates = append(updates, fmt.Sprintf("snapshot_drafts = $%d", argIdx))
 		args = append(args, mergedJSON)
 		argIdx++
+		updateDrafts = true
 	}
 
 	if len(updates) == 0 {
-		// 没有更新内容，返回当前状态
 		var updatedAt time.Time
-		err := r.pool.QueryRow(ctx, `
-			SELECT updated_at FROM resumes WHERE id = $1 AND user_id = $2
-		`, resumeID, userID).Scan(&updatedAt)
+		err := r.pool.QueryRow(ctx, `SELECT updated_at FROM resumes WHERE id = $1 AND user_id = $2`, resumeID, userID).Scan(&updatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("get updated_at: %w", err)
 		}
 
-		// 查询最新快照 ID
 		var latestSnapshotID *string
 		_ = r.pool.QueryRow(ctx, `
 			SELECT id FROM resume_versions
@@ -344,28 +383,54 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		`, resumeID).Scan(&latestSnapshotID)
 
 		return &model.ResumeUpdateResponse{
-			ID:               resumeID,
-			UpdatedAt:        updatedAt.UnixMilli(),
-			LatestVersionID:  currentVersionID,
-			LatestSnapshotID: latestSnapshotID,
+			ID:                    resumeID,
+			UpdatedAt:             updatedAt.UnixMilli(),
+			LatestVersionID:       currentVersionID,
+			LatestSnapshotID:      latestSnapshotID,
+			Version:               currentVersion,
+			SnapshotDraftsVersion: currentDraftsVersion,
 		}, nil
 	}
 
-	// 不再创建 auto 版本！仅更新 resumes 表 content + updated_at
+	// 递增版本号
+	if updateContent {
+		updates = append(updates, "version = version + 1")
+	}
+	if updateDrafts {
+		updates = append(updates, "snapshot_drafts_version = snapshot_drafts_version + 1")
+	}
 	updates = append(updates, "updated_at = NOW()")
 
-	setClause := strings.Join(updates, ", ")
-	whereIdx := argIdx
-	query := fmt.Sprintf(`UPDATE resumes SET %s WHERE id = $%d AND user_id = $%d AND deleted_at IS NULL RETURNING updated_at`, setClause, whereIdx, whereIdx+1)
+	// WHERE 条件：CAS 版本比对
+	whereConditions := []string{fmt.Sprintf("id = $%d", argIdx), fmt.Sprintf("user_id = $%d", argIdx+1), "deleted_at IS NULL"}
 	args = append(args, resumeID, userID)
+	argIdx += 2
 
+	if updateContent && req.Version != nil {
+		whereConditions = append(whereConditions, fmt.Sprintf("version = $%d", argIdx))
+		args = append(args, contentVersion)
+		argIdx++
+	}
+	if updateDrafts && req.SnapshotDraftsVersion != nil {
+		whereConditions = append(whereConditions, fmt.Sprintf("snapshot_drafts_version = $%d", argIdx))
+		args = append(args, draftsVersion)
+		argIdx++
+	}
+
+	setClause := strings.Join(updates, ", ")
+	whereClause := strings.Join(whereConditions, " AND ")
+	query := fmt.Sprintf(`UPDATE resumes SET %s WHERE %s RETURNING version, snapshot_drafts_version, updated_at`, setClause, whereClause)
+
+	var newVersion, newDraftsVersion int64
 	var updatedAt time.Time
-	err = r.pool.QueryRow(ctx, query, args...).Scan(&updatedAt)
+	err = r.pool.QueryRow(ctx, query, args...).Scan(&newVersion, &newDraftsVersion, &updatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrVersionConflict
+		}
 		return nil, fmt.Errorf("update resume: %w", err)
 	}
 
-	// 查询最新快照 ID
 	var latestSnapshotID *string
 	_ = r.pool.QueryRow(ctx, `
 		SELECT id FROM resume_versions
@@ -374,28 +439,22 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	`, resumeID).Scan(&latestSnapshotID)
 
 	return &model.ResumeUpdateResponse{
-		ID:               resumeID,
-		UpdatedAt:        updatedAt.UnixMilli(),
-		LatestVersionID:  currentVersionID,
-		LatestSnapshotID: latestSnapshotID,
+		ID:                    resumeID,
+		UpdatedAt:             updatedAt.UnixMilli(),
+		LatestVersionID:       currentVersionID,
+		LatestSnapshotID:      latestSnapshotID,
+		Version:               newVersion,
+		SnapshotDraftsVersion: newDraftsVersion,
 	}, nil
 }
 
 func (r *repository) createVersion(ctx context.Context, resumeID, userID string, contentJSON []byte) (string, error) {
-	var versionNo int
-	err := r.pool.QueryRow(ctx, `
-		SELECT COALESCE(MAX(version_no), 0) + 1 FROM resume_versions WHERE resume_id = $1
-	`, resumeID).Scan(&versionNo)
-	if err != nil {
-		return "", fmt.Errorf("get next version no: %w", err)
-	}
-
 	var versionID string
-	err = r.pool.QueryRow(ctx, `
-		INSERT INTO resume_versions (resume_id, user_id, version_no, content_snapshot)
-		VALUES ($1, $2, $3, $4)
+	err := r.pool.QueryRow(ctx, `
+		INSERT INTO resume_versions (resume_id, user_id, content_snapshot)
+		VALUES ($1, $2, $3)
 		RETURNING id
-	`, resumeID, userID, versionNo, contentJSON).Scan(&versionID)
+	`, resumeID, userID, contentJSON).Scan(&versionID)
 	if err != nil {
 		return "", fmt.Errorf("create version: %w", err)
 	}
@@ -416,14 +475,14 @@ func (r *repository) Delete(ctx context.Context, userID, resumeID string) error 
 
 // RestoreFromVersion 从版本恢复简历内容
 func (r *repository) RestoreFromVersion(ctx context.Context, userID, resumeID string, versionContent []byte) (*model.ResumeUpdateResponse, error) {
-	// 直接用版本内容更新简历（不创建新 auto 版本）
 	var updatedAt time.Time
+	var newVersion, newDraftsVersion int64
 	err := r.pool.QueryRow(ctx, `
 		UPDATE resumes
-		SET content = $1, updated_at = NOW()
+		SET content = $1, version = version + 1, updated_at = NOW()
 		WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
-		RETURNING updated_at
-	`, versionContent, resumeID, userID).Scan(&updatedAt)
+		RETURNING version, snapshot_drafts_version, updated_at
+	`, versionContent, resumeID, userID).Scan(&newVersion, &newDraftsVersion, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrResumeNotFound
@@ -446,10 +505,12 @@ func (r *repository) RestoreFromVersion(ctx context.Context, userID, resumeID st
 	`, resumeID).Scan(&currentVersionID)
 
 	return &model.ResumeUpdateResponse{
-		ID:               resumeID,
-		UpdatedAt:        updatedAt.UnixMilli(),
-		LatestVersionID:  currentVersionID,
-		LatestSnapshotID: latestSnapshotID,
+		ID:                    resumeID,
+		UpdatedAt:             updatedAt.UnixMilli(),
+		LatestVersionID:       currentVersionID,
+		LatestSnapshotID:      latestSnapshotID,
+		Version:               newVersion,
+		SnapshotDraftsVersion: newDraftsVersion,
 	}, nil
 }
 
@@ -507,7 +568,7 @@ func (r *repository) ListSnapshots(ctx context.Context, resumeID string, limit i
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, version_no, snapshot_type, label,
+		SELECT id, snapshot_type, label,
 		       EXTRACT(EPOCH FROM created_at)::bigint * 1000
 		FROM resume_versions
 		WHERE resume_id = $1
@@ -524,7 +585,7 @@ func (r *repository) ListSnapshots(ctx context.Context, resumeID string, limit i
 	var items []model.SnapshotListItem
 	for rows.Next() {
 		var item model.SnapshotListItem
-		if err := rows.Scan(&item.ID, &item.VersionNo, &item.SnapshotType, &item.Label, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.SnapshotType, &item.Label, &item.CreatedAt); err != nil {
 			return nil, 0, fmt.Errorf("scan snapshot: %w", err)
 		}
 		item.IsCurrent = false
@@ -572,26 +633,17 @@ func (r *repository) CreateManualSnapshot(ctx context.Context, userID, resumeID 
 		return nil, fmt.Errorf("get current content: %w", err)
 	}
 
-	// 获取下一个版本号
-	var versionNo int
-	err = r.pool.QueryRow(ctx, `
-		SELECT COALESCE(MAX(version_no), 0) + 1 FROM resume_versions WHERE resume_id = $1
-	`, resumeID).Scan(&versionNo)
-	if err != nil {
-		return nil, fmt.Errorf("get next version no: %w", err)
-	}
-
-	// 插入手动快照
+	// 插入手动快照（不再使用 version_no，以 created_at 排序）
 	var snapshot model.VersionSnapshot
 	var createdAtMS int64
 	err = r.pool.QueryRow(ctx, `
-		INSERT INTO resume_versions (resume_id, user_id, version_no, content_snapshot, snapshot_type, label)
-		VALUES ($1, $2, $3, $4, 'manual', $5)
-		RETURNING id, resume_id, user_id, version_no, snapshot_type, label,
+		INSERT INTO resume_versions (resume_id, user_id, content_snapshot, snapshot_type, label)
+		VALUES ($1, $2, $3, 'manual', $4)
+		RETURNING id, resume_id, user_id, snapshot_type, label,
 		          EXTRACT(EPOCH FROM created_at)::bigint * 1000
-	`, resumeID, userID, versionNo, currentContentJSON, label).Scan(
+	`, resumeID, userID, currentContentJSON, label).Scan(
 		&snapshot.ID, &snapshot.ResumeID, &snapshot.UserID,
-		&snapshot.VersionNo, &snapshot.SnapshotType, &snapshot.Label,
+		&snapshot.SnapshotType, &snapshot.Label,
 		&createdAtMS,
 	)
 	if err != nil {
@@ -653,14 +705,14 @@ func (r *repository) GetSnapshotDetail(ctx context.Context, snapshotID string) (
 	var createdAtMS int64
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, resume_id, user_id, version_no, snapshot_type, label,
+		SELECT id, resume_id, user_id, snapshot_type, label,
 		       content_snapshot,
 		       EXTRACT(EPOCH FROM created_at)::bigint * 1000
 		FROM resume_versions
 		WHERE id = $1
 	`, snapshotID).Scan(
 		&snapshot.ID, &snapshot.ResumeID, &snapshot.UserID,
-		&snapshot.VersionNo, &snapshot.SnapshotType, &snapshot.Label,
+		&snapshot.SnapshotType, &snapshot.Label,
 		&contentJSON,
 		&createdAtMS,
 	)
@@ -762,8 +814,8 @@ func (r *repository) DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID
 
 	snapshotA := model.SnapshotBrief{}
 	snapshotB := model.SnapshotBrief{}
-	r.pool.QueryRow(ctx, `SELECT id, version_no, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000 FROM resume_versions WHERE id = $1`, snapshotAID).Scan(&snapshotA.ID, &snapshotA.VersionNo, &snapshotA.Label, &snapshotA.CreatedAt)
-	r.pool.QueryRow(ctx, `SELECT id, version_no, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000 FROM resume_versions WHERE id = $1`, snapshotBID).Scan(&snapshotB.ID, &snapshotB.VersionNo, &snapshotB.Label, &snapshotB.CreatedAt)
+	r.pool.QueryRow(ctx, `SELECT id, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000 FROM resume_versions WHERE id = $1`, snapshotAID).Scan(&snapshotA.ID, &snapshotA.Label, &snapshotA.CreatedAt)
+	r.pool.QueryRow(ctx, `SELECT id, label, EXTRACT(EPOCH FROM created_at)::bigint * 1000 FROM resume_versions WHERE id = $1`, snapshotBID).Scan(&snapshotB.ID, &snapshotB.Label, &snapshotB.CreatedAt)
 
 	return &model.DiffResult{SnapshotA: snapshotA, SnapshotB: snapshotB, Diffs: diffs, Stats: stats}, nil
 }

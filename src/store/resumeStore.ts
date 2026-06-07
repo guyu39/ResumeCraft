@@ -390,7 +390,7 @@ const debouncedSave = debounce((resume: Resume) => {
 
 // 标记脏数据 + 防抖保存到 localStorage
 function markDirtyAndSave(resume: Resume) {
-  useResumeStore.getState().markDirty()
+  useResumeStore.getState().setSyncStatus('dirty')
   debouncedSave(resume)
 }
 
@@ -400,10 +400,15 @@ function flushDraft() {
   debouncedSave.flush(resume)
 }
 
+export type SyncStatus = 'idle' | 'dirty' | 'cloud_syncing' | 'cloud_synced' | 'conflict' | 'error' | 'offline'
+
 // ---------- Zustand Store ----------
 interface ResumeStoreState {
   // 简历数据
   resume: Resume
+
+  // 个人信息（独立存储，多快照共享）
+  personalData: Record<string, unknown>
 
   // 快照预览（点击时间轴节点时临时覆盖显示）
   previewResume: Resume | null
@@ -415,8 +420,12 @@ interface ResumeStoreState {
   snapshotVersion: number
   // 快照列表（用于跨组件查找快照标签，如 AI 对话历史显示）
   snapshots: Array<{ id: string; label?: string; snapshotType: string }>
-  // 脏标记：自上次落库以来是否有修改
-  isDirty: boolean
+  // 同步状态机
+  syncStatus: SyncStatus
+  // content 乐观锁版本号
+  resumeVersion: number
+  // snapshot_drafts 独立版本号
+  draftsVersion: number
 
   // 当前选中模块 ID
   activeModuleId: string | null
@@ -488,9 +497,12 @@ interface ResumeStoreActions {
   setBasedOnSnapshotId: (id: string | null) => void
   setSnapshots: (items: Array<{ id: string; label?: string; snapshotType: string }>) => void
   triggerSnapshotRefresh: () => void
-  // 脏标记
-  markDirty: () => void
-  markClean: () => void
+  // 同步状态机
+  setSyncStatus: (status: SyncStatus) => void
+  setResumeVersion: (v: number) => void
+  setDraftsVersion: (v: number) => void
+  // 个人信息（独立存储）
+  setPersonalData: (data: Record<string, unknown>) => void
 }
 
 type ResumeStore = ResumeStoreState & ResumeStoreActions
@@ -498,6 +510,7 @@ type ResumeStore = ResumeStoreState & ResumeStoreActions
 export const useResumeStore = create<ResumeStore>((set) => ({
   // ---------- 初始状态 ----------
   resume: createDefaultResume(),
+  personalData: {},
   activeModuleId: null,
   isLoading: false,
   lastSavedAt: null,
@@ -506,7 +519,9 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   basedOnSnapshotId: null,
   snapshotVersion: 0,
   snapshots: [],
-  isDirty: false,
+  syncStatus: 'idle',
+  resumeVersion: 0,
+  draftsVersion: 0,
 
   // ---------- initResume ----------
   initResume: (partial) => {
@@ -521,7 +536,8 @@ export const useResumeStore = create<ResumeStore>((set) => ({
       },
       modules: partial?.modules ?? base.modules,
     }
-    next.updatedAt = Date.now()
+    // 仅在未显式传入时设为当前时间，保留云端时间戳用于草稿对比
+    if (!partial?.updatedAt) next.updatedAt = Date.now()
     set({ resume: next, activeModuleId: next.modules[0]?.id ?? null })
     saveToStorage(next)
   },
@@ -844,8 +860,10 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   setSnapshots: (items: Array<{ id: string; label?: string; snapshotType: string }>) => set({ snapshots: items }),
   triggerSnapshotRefresh: () => set((s) => ({ snapshotVersion: s.snapshotVersion + 1 })),
 
-  markDirty: () => set({ isDirty: true }),
-  markClean: () => set({ isDirty: false }),
+  setSyncStatus: (status: SyncStatus) => set({ syncStatus: status }),
+  setResumeVersion: (v: number) => set({ resumeVersion: v }),
+  setDraftsVersion: (v: number) => set({ draftsVersion: v }),
+  setPersonalData: (data: Record<string, unknown>) => set({ personalData: data, syncStatus: 'dirty' }),
 }))
 
 // ---------- 导出工具函数（供外部使用） ----------

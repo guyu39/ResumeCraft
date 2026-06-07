@@ -36,19 +36,22 @@ type ResumeStyleSettings struct {
 
 // ResumeDetail 简历详情
 type ResumeDetail struct {
-	ID                string                     `json:"id"`
-	Title             string                     `json:"title"`
-	Locale            string                     `json:"locale"`
-	Template          string                     `json:"template"`
-	ThemeColor        string                     `json:"themeColor"`
-	StyleSettings     ResumeStyleSettings        `json:"styleSettings"`
-	Modules           []map[string]interface{}   `json:"modules"`
-	LatestVersionID   *string                    `json:"latestVersionId"`
-	LatestSnapshotID  *string                    `json:"latestSnapshotId,omitempty"`
-	BasedOnSnapshotID *string                    `json:"basedOnSnapshotId,omitempty"`
-	SnapshotDrafts    map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`
-	UpdatedAt         int64                      `json:"updatedAt"`
-	CreatedAt         int64                      `json:"createdAt"`
+	ID                    string                     `json:"id"`
+	Title                 string                     `json:"title"`
+	Locale                string                     `json:"locale"`
+	Template              string                     `json:"template"`
+	ThemeColor            string                     `json:"themeColor"`
+	StyleSettings         ResumeStyleSettings        `json:"styleSettings"`
+	Modules               []map[string]interface{}   `json:"modules"`
+	PersonalData          json.RawMessage            `json:"personalData,omitempty"`
+	LatestVersionID       *string                    `json:"latestVersionId"`
+	LatestSnapshotID      *string                    `json:"latestSnapshotId,omitempty"`
+	BasedOnSnapshotID     *string                    `json:"basedOnSnapshotId,omitempty"`
+	SnapshotDrafts        map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`
+	Version               int64                      `json:"version"`
+	SnapshotDraftsVersion int64                      `json:"snapshotDraftsVersion"`
+	UpdatedAt             int64                      `json:"updatedAt"`
+	CreatedAt             int64                      `json:"createdAt"`
 }
 
 // CreateResumeRequest 创建简历请求
@@ -59,17 +62,21 @@ type CreateResumeRequest struct {
 	ThemeColor    string                   `json:"themeColor"`
 	StyleSettings *ResumeStyleSettings     `json:"styleSettings"`
 	Modules       []map[string]interface{} `json:"modules"`
+	PersonalData  json.RawMessage          `json:"personalData,omitempty"`
 }
 
 // UpdateResumeRequest 更新简历请求
 type UpdateResumeRequest struct {
-	Title             string                     `json:"title" binding:"max=255"`
-	ThemeColor        string                     `json:"themeColor"`
-	StyleSettings     *ResumeStyleSettings       `json:"styleSettings"`
-	Modules           []map[string]interface{}   `json:"modules"`
-	ClientUpdatedAt   int64                      `json:"clientUpdatedAt"`
-	BasedOnSnapshotID *string                    `json:"basedOnSnapshotId,omitempty"`
-	SnapshotDrafts    map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`
+	Title                 string                     `json:"title" binding:"max=255"`
+	ThemeColor            string                     `json:"themeColor"`
+	StyleSettings         *ResumeStyleSettings       `json:"styleSettings"`
+	Modules               []map[string]interface{}   `json:"modules"`
+	PersonalData          json.RawMessage            `json:"personalData,omitempty"`
+	ClientUpdatedAt       int64                      `json:"clientUpdatedAt"`
+	BasedOnSnapshotID     *string                    `json:"basedOnSnapshotId,omitempty"`
+	SnapshotDrafts        map[string]json.RawMessage `json:"snapshotDrafts,omitempty"`
+	Version               *int64                     `json:"version,omitempty"`
+	SnapshotDraftsVersion *int64                     `json:"snapshotDraftsVersion,omitempty"`
 }
 
 // Pagination 分页信息
@@ -88,10 +95,12 @@ type ResumeListResponse struct {
 
 // ResumeUpdateResponse 更新简历响应
 type ResumeUpdateResponse struct {
-	ID               string  `json:"id"`
-	UpdatedAt        int64   `json:"updatedAt"`
-	LatestVersionID  *string `json:"latestVersionId"`
-	LatestSnapshotID *string `json:"latestSnapshotId,omitempty"`
+	ID                    string  `json:"id"`
+	UpdatedAt             int64   `json:"updatedAt"`
+	LatestVersionID       *string `json:"latestVersionId"`
+	LatestSnapshotID      *string `json:"latestSnapshotId,omitempty"`
+	Version               int64   `json:"version"`
+	SnapshotDraftsVersion int64   `json:"snapshotDraftsVersion"`
 }
 
 // ---------- 版本快照相关类型 ----------
@@ -110,10 +119,8 @@ type VersionSnapshot struct {
 	ID           string       `json:"id"`
 	ResumeID     string       `json:"resumeId"`
 	UserID       string       `json:"userId"`
-	VersionNo    int          `json:"versionNo"`
 	SnapshotType SnapshotType `json:"snapshotType"`
 	Label        *string      `json:"label,omitempty"`
-	JDContextID  *string      `json:"jdContextId,omitempty"`
 	CreatedAt    int64        `json:"createdAt"`
 	IsCurrent    bool         `json:"isCurrent"`
 }
@@ -121,7 +128,6 @@ type VersionSnapshot struct {
 // SnapshotListItem 快照列表项
 type SnapshotListItem struct {
 	ID           string       `json:"id"`
-	VersionNo    int          `json:"versionNo"`
 	SnapshotType SnapshotType `json:"snapshotType"`
 	Label        *string      `json:"label,omitempty"`
 	CreatedAt    int64        `json:"createdAt"`
@@ -156,7 +162,6 @@ type DiffResult struct {
 // SnapshotBrief 快照简要信息
 type SnapshotBrief struct {
 	ID        string  `json:"id"`
-	VersionNo int     `json:"versionNo"`
 	Label     *string `json:"label,omitempty"`
 	CreatedAt int64   `json:"createdAt"`
 }
