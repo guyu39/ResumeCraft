@@ -37,7 +37,7 @@ type chromedpRenderer struct {
 
 func NewChromedpRenderer(options Options) Renderer {
 	if options.RenderTimeout <= 0 {
-		options.RenderTimeout = 60 * time.Second
+		options.RenderTimeout = 90 * time.Second
 	}
 	if options.ViewportWidth <= 0 {
 		options.ViewportWidth = 794
@@ -58,7 +58,7 @@ func NewChromedpRenderer(options Options) Renderer {
 		options.PDFScale = 1
 	}
 	if options.MaxBrowserTabs <= 0 {
-		options.MaxBrowserTabs = 10
+		options.MaxBrowserTabs = 2
 	}
 	if options.BrowserIdleTimeout <= 0 {
 		options.BrowserIdleTimeout = 5 * time.Minute
@@ -72,6 +72,8 @@ func NewChromedpRenderer(options Options) Renderer {
 		chromedp.Flag("disable-features", "LazyFrameLoading,PaintHolding"),
 		chromedp.Flag("disable-extensions", true),
 		chromedp.Flag("disable-component-extensions-with-background-pages", true),
+		// Docker 容器默认 /dev/shm 仅 64MB，Chromium 渲染大页面时会 OOM 导致布局异常
+		chromedp.Flag("disable-dev-shm-usage", true),
 	}
 	if options.ChromiumHeadless {
 		allocOpts = append(allocOpts, chromedp.Headless)
@@ -131,8 +133,13 @@ func (r *chromedpRenderer) RenderPDF(html string) ([]byte, error) {
 		`, nil),
 		// 等待字体加载完成
 		chromedp.Evaluate(`document.fonts.ready`, nil),
-		// 额外留布局稳定时间
-		chromedp.Sleep(500*time.Millisecond),
+		// 等字体渲染 + 2 帧布局稳定后打印
+		// 注意：不能用 WaitVisible + 前端 <script> 打标记，因为 SetDocumentContent 不执行脚本
+		chromedp.Evaluate(`
+			new Promise(resolve => {
+				requestAnimationFrame(() => requestAnimationFrame(resolve))
+			})
+		`, nil),
 		emulation.SetEmulatedMedia().WithMedia("print"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			var err error

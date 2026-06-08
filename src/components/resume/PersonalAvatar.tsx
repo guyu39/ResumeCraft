@@ -36,6 +36,9 @@ const PersonalAvatar: React.FC<PersonalAvatarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const shapeClass = avatarShape === 'square' ? 'rounded-lg' : 'rounded-full'
+  // 方形：一寸照比例 25mm×35mm ≈ 1:1.4；圆形保持正方形
+  const avatarWidth = size
+  const avatarHeight = avatarShape === 'square' ? Math.round(size * 1.4) : size
   const borderColor = themeColor ? `${themeColor}40` : '#E5E7EB'
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,12 +71,12 @@ const PersonalAvatar: React.FC<PersonalAvatarProps> = ({
           alt={t('personal.avatar')}
           onError={() => setImgError(true)}
           className={`object-cover border-2 ${shapeClass}`}
-          style={{ width: size, height: size, borderColor }}
+          style={{ width: avatarWidth, height: avatarHeight, borderColor }}
         />
       ) : (
         <div
           className={`flex items-center justify-center border-2 border-dashed border-gray-300 bg-gray-100 ${shapeClass}`}
-          style={{ width: size, height: size }}
+          style={{ width: avatarWidth, height: avatarHeight }}
         >
           <User className="text-gray-400" style={{ width: size * 0.35, height: size * 0.35 }} />
         </div>

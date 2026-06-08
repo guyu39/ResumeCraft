@@ -23,6 +23,7 @@ import {
     type ResumeEvaluateOutput,
 } from '@/ai'
 import { useSyncExport } from '@/hooks/useExportPDF'
+import { toast } from '@/components/common/Toast'
 import { useResumeEvaluation } from '@/hooks/useResumeEvaluation'
 import { useJDMatch } from '@/hooks/useJDMatch'
 import { useJDScore } from '@/hooks/useJDScore'
@@ -1113,12 +1114,12 @@ const RightPanel: React.FC = () => {
 
     // ---------- PDF 导出 ----------
     const handleExport = async () => {
-        // 导出前先落库
+        toast('正在生成 PDF，请稍候...', 'success')
         await flushToCloud()
         try {
             await exportPDF('resume-paper-export', resume.title)
-        } catch {
-            // 错误已由 hook 内部处理
+        } catch (err) {
+            toast(err instanceof Error ? err.message : 'PDF 导出失败', 'error')
         }
     }
 

@@ -49,6 +49,14 @@ services:
       RATE_LIMIT_AI_CAPACITY: "20"
       RATE_LIMIT_AI_REFILL_PER_SEC: "0.05"
 
+      # MinIO 对象存储（Docker 内网用服务名直连）
+      S3_ENDPOINT: "minio:9000"
+      S3_ACCESS_KEY: "${MINIO_ROOT_USER:-minioadmin}"
+      S3_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
+      S3_BUCKET: "resumecraft"
+      S3_USE_SSL: "false"
+
+
       TZ: Asia/Shanghai
     depends_on:
       postgres:

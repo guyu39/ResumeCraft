@@ -214,9 +214,20 @@ export function useSyncExport() {
         const styleTags = Array.from(document.querySelectorAll('style'))
           .map((node) => node.outerHTML)
           .join('\n')
-        const linkTags = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
-          .map((node) => node.outerHTML)
-          .join('\n')
+        // const linkTags = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+        //   .map((node) => node.outerHTML)
+        //   .join('\n')
+        const inlinedCSS = (
+          await Promise.all(
+            (Array.from(document.querySelectorAll('link[rel="stylesheet"]')) as HTMLLinkElement[])
+              .map(link =>
+                fetch(link.href)
+                  .then(r => r.text())
+                  .then(t => `<style>${t}</style>`)
+                  .catch(() => `/* failed: ${link.href} */`)
+              )
+          )
+        ).join('\n')
 
         // 构建 HTML：克隆节点并移除 visibility hidden / position off-screen 等隐藏样式
         const clone = sourceElement.cloneNode(true) as HTMLElement
@@ -228,10 +239,10 @@ export function useSyncExport() {
         clone.style.pointerEvents = 'auto'
         // 递归移除所有子元素的 visibility:hidden
         const removeHidden = (el: Element) => {
-            if (el instanceof HTMLElement && el.style.visibility === 'hidden') {
-                el.style.visibility = 'visible'
-            }
-            Array.from(el.children).forEach(removeHidden)
+          if (el instanceof HTMLElement && el.style.visibility === 'hidden') {
+            el.style.visibility = 'visible'
+          }
+          Array.from(el.children).forEach(removeHidden)
         }
         removeHidden(clone)
 
@@ -243,9 +254,9 @@ export function useSyncExport() {
           '<head>',
           '<meta charset="UTF-8" />',
           '<meta name="viewport" content="width=device-width,initial-scale=1" />',
-          `<base href="${window.location.origin}/" />`,
+
           styleTags,
-          linkTags,
+          inlinedCSS,
           '<style>',
           'html, body { margin: 0; padding: 0; background: #fff; }',
           '* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }',

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -81,9 +82,11 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 	}
 
 	key := "avatars/" + userID + "/" + uuid.New().String() + ext
+	filename := key[strings.LastIndex(key, "/")+1:] // 提取 UUID.ext 部分
 
 	avatarURL, err := h.objectStorage.Upload(c.Request.Context(), key, bytes.NewReader(data), int64(len(data)), contentType)
 	if err != nil {
+		log.Printf("[avatar] upload to storage failed for user %s: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "UPLOAD_FAILED", "message": "头像上传失败"})
 		return
 	}
@@ -93,9 +96,13 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 		return
 	}
 
+	// 返回 API 代理路径而非原始 MinIO URL，确保前端渲染时头像 URL 始终可达
+	// （MinIO 容器内地址 minio:9000 在浏览器端不可解析）
+	proxyURL := "/api/avatars/" + userID + "/" + filename
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": "OK",
-		"data": model.UploadAvatarResponse{AvatarURL: avatarURL},
+		"data": model.UploadAvatarResponse{AvatarURL: proxyURL},
 	})
 }
 
