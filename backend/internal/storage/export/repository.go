@@ -18,23 +18,25 @@ var (
 
 // Task 导出任务
 type Task struct {
-	ID          string
-	ResumeID    string
-	VersionID   string
-	Status      model.ExportStatus
-	Progress    int
-	ErrorCode   string
-	ErrorMsg    string
-	FileData    []byte
-	FileURL     string
-	FileKey     string
-	CreatedAt   time.Time
-	FinishedAt  *time.Time
-	ExpiresAt   *time.Time
+	ID         string
+	ResumeID   string
+	UserID     string
+	VersionID  string
+	Format     string
+	Status     model.ExportStatus
+	Progress   int
+	ErrorCode  string
+	ErrorMsg   string
+	FileData   []byte
+	FileURL    string
+	FileKey    string
+	CreatedAt  time.Time
+	FinishedAt *time.Time
+	ExpiresAt  *time.Time
 }
 
 type Repository interface {
-	Create(ctx context.Context, resumeID, versionID string) (*Task, error)
+	Create(ctx context.Context, userID, resumeID, versionID, format string) (*Task, error)
 	GetByID(ctx context.Context, taskID string) (*Task, error)
 	UpdateStatus(ctx context.Context, taskID string, status model.ExportStatus, progress int) error
 	UpdateSuccess(ctx context.Context, taskID string, fileData []byte) error
@@ -54,7 +56,7 @@ func NewInMemoryRepository() Repository {
 	}
 }
 
-func (r *inMemoryRepository) Create(ctx context.Context, resumeID, versionID string) (*Task, error) {
+func (r *inMemoryRepository) Create(ctx context.Context, userID, resumeID, versionID, format string) (*Task, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -62,8 +64,10 @@ func (r *inMemoryRepository) Create(ctx context.Context, resumeID, versionID str
 	now := time.Now()
 	task := &Task{
 		ID:        taskID,
+		UserID:    userID,
 		ResumeID:  resumeID,
 		VersionID: versionID,
+		Format:    format,
 		Status:    model.ExportStatusQueued,
 		Progress:  0,
 		CreatedAt: now,
@@ -163,10 +167,10 @@ func (r *inMemoryRepository) Delete(ctx context.Context, taskID string) error {
 
 func TaskToExportTask(t *Task) *model.ExportTask {
 	et := &model.ExportTask{
-		TaskID:     t.ID,
-		Status:     t.Status,
-		Progress:   t.Progress,
-		CreatedAt:  t.CreatedAt.UnixMilli(),
+		TaskID:    t.ID,
+		Status:    t.Status,
+		Progress:  t.Progress,
+		CreatedAt: t.CreatedAt.UnixMilli(),
 	}
 	if t.ErrorCode != "" {
 		et.ErrorCode = t.ErrorCode

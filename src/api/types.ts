@@ -154,11 +154,13 @@ export interface RestoreVersionRequest {
 }
 
 // 导出相关
+export type ExportFormat = 'pdf' | 'markdown' | 'json' | 'resume'
+
 export type ExportStatus = 'QUEUED' | 'PROCESSING' | 'SUCCESS' | 'FAILED'
 
 export interface CreateExportRequest {
   versionId: string
-  format: 'pdf'
+  format: ExportFormat
   paper: 'A4' | 'Letter'
   orientation: 'portrait' | 'landscape'
 }

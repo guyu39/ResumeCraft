@@ -45,6 +45,10 @@ func (h *Handler) CreateExport(c *gin.Context) {
 			response.JSONError(c, http.StatusNotFound, "RESUME_NOT_FOUND", "简历不存在或无权限访问")
 			return
 		}
+		if errors.Is(err, export.ErrUnsupportedFormat) {
+			response.JSONError(c, http.StatusBadRequest, "UNSUPPORTED_FORMAT", "不支持的导出格式")
+			return
+		}
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "创建导出任务失败")
 		return
 	}
@@ -111,7 +115,7 @@ func (h *Handler) DownloadExport(c *gin.Context) {
 
 	// 如果有 FileData（noop 降级），直接返回
 	if len(fullTask.FileData) > 0 {
-		c.Data(http.StatusOK, "application/pdf", fullTask.FileData)
+		c.Data(http.StatusOK, formatContentType(fullTask.Format), fullTask.FileData)
 		return
 	}
 
@@ -130,4 +134,19 @@ func (h *Handler) DownloadExport(c *gin.Context) {
 	}
 
 	response.JSONError(c, http.StatusNotFound, "FILE_NOT_FOUND", "导出文件不存在")
+}
+
+func formatContentType(format string) string {
+	switch format {
+	case "pdf":
+		return "application/pdf"
+	case "markdown":
+		return "text/markdown; charset=utf-8"
+	case "json":
+		return "application/json; charset=utf-8"
+	case "resume":
+		return "application/json; charset=utf-8"
+	default:
+		return "application/octet-stream"
+	}
 }

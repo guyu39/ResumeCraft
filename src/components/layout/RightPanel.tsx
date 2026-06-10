@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, GitBranch, Globe, Settings, Sparkles, X, Link2, MessageSquare } from 'lucide-react'
+import { GitBranch, Globe, Settings, Sparkles, X, Link2, MessageSquare } from 'lucide-react'
 import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType, type ModuleTitleMarkerStyle } from '@/types/resume'
@@ -22,7 +22,7 @@ import {
     validateAIConfig,
     type ResumeEvaluateOutput,
 } from '@/ai'
-import { useSyncExport } from '@/hooks/useExportPDF'
+import { useExport } from '@/hooks/useExport'
 import { toast } from '@/components/common/Toast'
 import { useResumeEvaluation } from '@/hooks/useResumeEvaluation'
 import { useJDMatch } from '@/hooks/useJDMatch'
@@ -32,6 +32,7 @@ import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
 import CoverLetterPanel from '@/components/layout/ai/CoverLetterPanel'
 import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse, type ConversationItem } from '@/api'
+import type { ExportFormat } from '@/api/types'
 
 // 各模块表单
 import PersonalForm from '@/components/resume/blocks/PersonalForm'
@@ -47,6 +48,7 @@ import LanguagesForm from '@/components/resume/blocks/LanguagesForm'
 import CustomForm from '@/components/resume/blocks/CustomForm'
 import AIEngineeringForm from '@/components/resume/blocks/AIEngineeringForm'
 import NoticeCenter, { type NoticeItem } from '@/components/common/NoticeCenter'
+import ExportMenu from '@/components/common/ExportMenu'
 
 // 设置面板组件
 import ThemeColorPicker from '@/components/common/ThemeColorPicker'
@@ -908,7 +910,7 @@ const RightPanel: React.FC = () => {
     const [preloadedEvalHistory, setPreloadedEvalHistory] = useState<ConversationItem[]>([])
     const [preloadedJDHistory, setPreloadedJDHistory] = useState<ConversationItem[]>([])
     const [restoredCoverLetter, setRestoredCoverLetter] = useState<CoverLetterResponse | null>(null)
-    const { exportPDF, exporting, error: exportError } = useSyncExport()
+    const { exportFile, exporting, error: exportError } = useExport()
     const {
         loading: evaluating,
         streamDone: evaluateStreamDone,
@@ -1113,13 +1115,17 @@ const RightPanel: React.FC = () => {
     }, [activeModuleId])
 
     // ---------- PDF 导出 ----------
-    const handleExport = async () => {
-        toast('正在生成 PDF，请稍候...', 'success')
+    const handleExport = async (format: ExportFormat = 'pdf') => {
+        const labels: Record<ExportFormat, string> = { pdf: 'PDF', markdown: 'Markdown', json: 'JSON', resume: 'Resume' }
+        toast(`正在生成 ${labels[format]}，请稍候...`, 'success')
         await flushToCloud()
         try {
-            await exportPDF('resume-paper-export', resume.title)
+            await exportFile(resume.id, format, {
+                versionId: activeSnapshotId || '',
+                filename: resume.title,
+            })
         } catch (err) {
-            toast(err instanceof Error ? err.message : 'PDF 导出失败', 'error')
+            toast(err instanceof Error ? err.message : `${labels[format]}导出失败`, 'error')
         }
     }
 
@@ -1308,17 +1314,11 @@ const RightPanel: React.FC = () => {
                         <MessageSquare className="w-3.5 h-3.5" />
                     </button>
 
-                    <button
-                        onClick={handleExport}
-                        disabled={exporting || hasDateErrors}
-                        title={hasDateErrors ? '请先修正日期范围错误' : exporting ? '导出中...' : '导出 PDF'}
-                        className={`flex-shrink-0 p-2 rounded-xl transition-colors ${hasDateErrors
-                            ? 'cursor-not-allowed bg-slate-300 text-slate-500'
-                            : 'bg-primary text-white shadow-[0_10px_20px_rgba(37,99,235,0.24)] hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60'
-                            }`}
-                    >
-                        <Download className="w-3.5 h-3.5" />
-                    </button>
+                    <ExportMenu
+                        exporting={exporting}
+                        disabled={hasDateErrors}
+                        onExport={handleExport}
+                    />
                 </div>
                 {编辑提醒.length > 0 && (
                     <NoticeCenter items={编辑提醒.slice(0, 1)} compact className="mt-2" />
