@@ -92,7 +92,8 @@ func NewServer() *http.Server {
 				aiCfgRepo := aiStorage.NewConfigRepository(pool)
 				aiSuggestRecordRepo := aiStorage.NewSuggestRecordRepository(pool)
 				aiParserCfgRepo := aiStorage.NewParserConfigRepository(pool)
-				aiService = ai.NewService(aiRepo, aiCfgRepo, aiSuggestRecordRepo, aiParserCfgRepo, cfg.AI, redisClient)
+				aiInterviewRepo := aiStorage.NewInterviewRepository(pool)
+				aiService = ai.NewService(aiRepo, aiCfgRepo, aiSuggestRecordRepo, aiParserCfgRepo, aiInterviewRepo, cfg.AI, redisClient)
 			}
 		}
 	}

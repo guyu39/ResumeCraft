@@ -199,6 +199,32 @@ body {
   height: 0;
 }
 
+/* 自定义细窄滚动条（替换原生）— 用于历史抽屉等内嵌列表 */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
 /* 富文本链接统一样式（编辑态 + 预览态） */
 .rich-editor-content a,
 .rich-preview-content a,

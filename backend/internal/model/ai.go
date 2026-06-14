@@ -69,6 +69,7 @@ const (
 	ConversationTypeJDMatch     ConversationType = "jd_match"
 	ConversationTypeCoverLetter ConversationType = "cover_letter"
 	ConversationTypeTranslate   ConversationType = "translate"
+	ConversationTypeInterview   ConversationType = "interview_prep"
 )
 
 // AIConversation AI 对话会话
@@ -460,4 +461,179 @@ type EnhanceRequest struct {
 // EnhanceResponse AI 增强响应
 type EnhanceResponse struct {
 	Result string `json:"result"`
+}
+
+// --- Interview 面试准备 ---
+
+type InterviewRound string
+
+const (
+	InterviewRoundTech1 InterviewRound = "technical_1"
+	InterviewRoundTech2 InterviewRound = "technical_2"
+	InterviewRoundHR    InterviewRound = "hr"
+)
+
+type InterviewMode string
+
+const (
+	InterviewModeSimulate   InterviewMode = "simulate"
+	InterviewModeTranscript InterviewMode = "transcript"
+)
+
+type InterviewGenerateRequest struct {
+	ResumeID          string                 `json:"resumeId" binding:"required"`
+	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
+	Content           map[string]interface{} `json:"content" binding:"required"`
+	JDText            string                 `json:"jdText" binding:"required"`
+	TargetTitle       string                 `json:"targetTitle"`
+	CompanyName       string                 `json:"companyName"`
+	FocusAreas        []string               `json:"focusAreas"`
+	QuestionCount     int                    `json:"questionCount"`
+	InterviewRound    string                 `json:"interviewRound"`
+}
+
+type InterviewEvaluateRequest struct {
+	SessionID      string            `json:"sessionId" binding:"required"`
+	Answers        []InterviewAnswer `json:"answers" binding:"required"`
+	InterviewRound string            `json:"interviewRound"`
+}
+
+type AnalyzeTranscriptRequest struct {
+	ResumeID          string                 `json:"resumeId" binding:"required"`
+	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
+	Content           map[string]interface{} `json:"content" binding:"required"`
+	JDText            string                 `json:"jdText"`
+	TargetTitle       string                 `json:"targetTitle"`
+	CompanyName       string                 `json:"companyName"`
+	TranscriptText    string                 `json:"transcriptText" binding:"required"`
+	TranscriptSource  string                 `json:"transcriptSource"`
+	InterviewRound    string                 `json:"interviewRound"`
+}
+
+type InterviewQuestion struct {
+	ID                   string                  `json:"id"`
+	Category             string                  `json:"category"`
+	Difficulty           string                  `json:"difficulty"`
+	Question             string                  `json:"question"`
+	Context              string                  `json:"context,omitempty"`
+	Hints                []string                `json:"hints,omitempty"`
+	EvaluationCriteria   InterviewEvalCriteria   `json:"evaluationCriteria"`
+	RelatedResumeSection string                  `json:"relatedResumeSection,omitempty"`
+	SourceSegment        *InterviewSourceSegment `json:"sourceSegment,omitempty"`
+}
+
+type InterviewEvalCriteria struct {
+	KeyPoints   []string `json:"keyPoints"`
+	BonusPoints []string `json:"bonusPoints"`
+	RedFlags    []string `json:"redFlags"`
+}
+
+type InterviewSourceSegment struct {
+	StartChar int `json:"startChar"`
+	EndChar   int `json:"endChar"`
+}
+
+type InterviewAnswer struct {
+	QuestionID     string `json:"questionId"`
+	Answer         string `json:"answer"`
+	Skipped        bool   `json:"skipped"`
+	AnsweredAt     string `json:"answeredAt"`
+	FromTranscript bool   `json:"fromTranscript,omitempty"`
+	OriginalText   string `json:"originalText,omitempty"`
+}
+
+type InterviewEvaluation struct {
+	Summary                string                       `json:"summary"`
+	OverallScore           *int                         `json:"overallScore,omitempty"`
+	OverallLevel           string                       `json:"overallLevel,omitempty"`
+	DimensionScores        map[string]InterviewDimScore `json:"dimensionScores"`
+	RoundScores            map[string]int               `json:"roundScores"`
+	RoundReasons           map[string]string            `json:"roundReasons,omitempty"`
+	QuestionEvaluations    []InterviewQEval             `json:"questionEvaluations"`
+	ImprovementSuggestions []InterviewImprovement       `json:"improvementSuggestions"`
+	Model                  string                       `json:"model"`
+	EvaluatedAt            string                       `json:"evaluatedAt"`
+}
+
+type InterviewDimScore struct {
+	Score    int    `json:"score"`
+	Level    string `json:"level"`
+	Feedback string `json:"feedback"`
+}
+
+type InterviewQEval struct {
+	QuestionID    string   `json:"questionId"`
+	Score         int      `json:"score"`
+	KeyPointsHit  []string `json:"keyPointsHit"`
+	MissedPoints  []string `json:"missedPoints"`
+	RedFlagsFound []string `json:"redFlagsFound"`
+	BriefFeedback string   `json:"briefFeedback"`
+}
+
+type InterviewImprovement struct {
+	Priority      string `json:"priority"`
+	Area          string `json:"area"`
+	Suggestion    string `json:"suggestion"`
+	EstimatedGain int    `json:"estimatedGain"`
+	TargetRound   string `json:"targetRound"`
+}
+
+type SaveInterviewProgressRequest struct {
+	Answers       []InterviewAnswer `json:"answers"`
+	AnsweredCount int               `json:"answeredCount"`
+	SkippedCount  int               `json:"skippedCount"`
+}
+
+type InterviewSession struct {
+	ID               string               `json:"id"`
+	UserID           string               `json:"userId"`
+	ResumeID         string               `json:"resumeId,omitempty"`
+	SnapshotID       string               `json:"snapshotId,omitempty"`
+	ConversationID   string               `json:"conversationId,omitempty"`
+	TargetTitle      string               `json:"targetTitle"`
+	CompanyName      string               `json:"companyName"`
+	JDText           string               `json:"jdText"`
+	JDHash           string               `json:"jdHash,omitempty"`
+	FocusAreas       []string             `json:"focusAreas"`
+	QuestionCount    int                  `json:"questionCount"`
+	InterviewRound   string               `json:"interviewRound"`
+	Mode             string               `json:"mode"`
+	TranscriptText   string               `json:"transcriptText,omitempty"`
+	TranscriptSource string               `json:"transcriptSource,omitempty"`
+	Questions        []InterviewQuestion  `json:"questions"`
+	Answers          []InterviewAnswer    `json:"answers"`
+	AnsweredCount    int                  `json:"answeredCount"`
+	SkippedCount     int                  `json:"skippedCount"`
+	Evaluation       *InterviewEvaluation `json:"evaluation,omitempty"`
+	OverallScore     *int                 `json:"overallScore,omitempty"`
+	PassLevel        string               `json:"passLevel,omitempty"`
+	Model            string               `json:"model,omitempty"`
+	Status           string               `json:"status"`
+	CreatedAt        int64                `json:"createdAt"`
+	UpdatedAt        int64                `json:"updatedAt"`
+}
+
+// InterviewSessionListItem 面试历史列表轻量结构（不含 jdText/transcriptText/questions/evaluation 大字段）
+type InterviewSessionListItem struct {
+	ID             string `json:"id"`
+	TargetTitle    string `json:"targetTitle"`
+	CompanyName    string `json:"companyName"`
+	InterviewRound string `json:"interviewRound"`
+	Mode           string `json:"mode"`
+	QuestionCount  int    `json:"questionCount"`
+	AnsweredCount  int    `json:"answeredCount"`
+	SkippedCount   int    `json:"skippedCount"`
+	OverallScore   *int   `json:"overallScore,omitempty"`
+	PassLevel      string `json:"passLevel,omitempty"`
+	Status         string `json:"status"`
+	CreatedAt      int64  `json:"createdAt"`
+	UpdatedAt      int64  `json:"updatedAt"`
+}
+
+// InterviewSessionListResponse 面试历史分页响应
+type InterviewSessionListResponse struct {
+	Items  []InterviewSessionListItem `json:"items"`
+	Total  int                        `json:"total"`
+	Limit  int                        `json:"limit"`
+	Offset int                        `json:"offset"`
 }

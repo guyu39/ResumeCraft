@@ -31,6 +31,7 @@ import { useCoverLetter } from '@/hooks/useCoverLetter'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
 import CoverLetterPanel from '@/components/layout/ai/CoverLetterPanel'
+import InterviewPrepPanel from '@/components/layout/ai/InterviewPrepPanel'
 import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse, type ConversationItem } from '@/api'
 import type { ExportFormat } from '@/api/types'
 
@@ -895,7 +896,7 @@ const RightPanel: React.FC = () => {
     }, [resume.modules])
 
     const hasDateErrors = dateErrors.length > 0
-    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'cover_letter'>('evaluate')
+    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'cover_letter' | 'interview_prep'>('evaluate')
     const [aiConfigFromServer, setAiConfigFromServer] = useState<{
         provider: string
         baseUrl: string
@@ -1335,27 +1336,34 @@ const RightPanel: React.FC = () => {
                 <div className="flex-1 overflow-hidden bg-white">
                     <div className="flex h-full flex-col">
                         <div className="flex-shrink-0 border-b border-gray-100 bg-white px-4 py-3">
-                            <div className="grid grid-cols-3 gap-2 rounded-xl bg-gray-100 p-1 text-sm">
+                            <div className="grid grid-cols-4 gap-1 rounded-xl bg-gray-100 p-1 text-xs">
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('evaluate')}
-                                    className={`rounded-lg px-3 py-2 transition-colors ${activeAITool === 'evaluate' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'evaluate' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
                                     简历评估
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('jd_match')}
-                                    className={`rounded-lg px-3 py-2 transition-colors ${activeAITool === 'jd_match' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'jd_match' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
                                     JD 匹配
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('cover_letter')}
-                                    className={`rounded-lg px-3 py-2 transition-colors ${activeAITool === 'cover_letter' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'cover_letter' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
                                     求职信
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveAITool('interview_prep')}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'interview_prep' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    面试
                                 </button>
                             </div>
                         </div>
@@ -1416,6 +1424,14 @@ const RightPanel: React.FC = () => {
                                     lastGeneratedAt={lastGeneratedAt}
                                     onGenerate={handleGenerateCoverLetter}
                                     onReset={resetCoverLetter}
+                                />
+                            )}
+                            {activeAITool === 'interview_prep' && (
+                                <InterviewPrepPanel
+                                    resumeId={resume.id}
+                                    content={resume as unknown as Record<string, unknown>}
+                                    activeSnapshotId={activeSnapshotId}
+                                    aiConfigured={!!aiConfigFromServer?.hasApiKey}
                                 />
                             )}
                         </div>

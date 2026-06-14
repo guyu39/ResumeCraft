@@ -20,15 +20,16 @@ type CompleteRequest struct {
 	Prompt     string
 	TimeoutMs  int
 	Stream     bool
+	MaxTokens  int
 	OnProgress func(text string)
 }
 
 // CompleteResponse AI 完成响应
 type CompleteResponse struct {
-	Text            string
-	ReasoningText   string
-	InputTokens     int
-	OutputTokens    int
+	Text          string
+	ReasoningText string
+	InputTokens   int
+	OutputTokens  int
 }
 
 // AIProvider AI 服务调用接口
@@ -137,7 +138,7 @@ func (p *openAIProvider) Complete(ctx context.Context, req CompleteRequest) (*Co
 	var chatResp struct {
 		Choices []struct {
 			Message struct {
-				Content         string `json:"content"`
+				Content          string `json:"content"`
 				ReasoningContent string `json:"reasoning_content"`
 			} `json:"message"`
 		} `json:"choices"`
@@ -230,6 +231,11 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
 			"stream":   true,
 		}
+	}
+
+	// 注入 max_tokens（如果调用方指定）
+	if req.MaxTokens > 0 {
+		body["max_tokens"] = req.MaxTokens
 	}
 
 	bodyBytes, err := json.Marshal(body)

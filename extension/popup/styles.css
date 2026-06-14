@@ -1,0 +1,182 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 360px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: #111827;
+  background: #f9fafb;
+}
+
+.view {
+  padding: 20px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.section {
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+
+input[type="email"],
+input[type="password"],
+input[type="url"],
+.select-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input:focus,
+.select-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 10px 16px;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.btn-primary:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
+}
+
+.btn-fill {
+  font-size: 16px;
+  padding: 12px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-text:hover {
+  color: #374151;
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  font-size: 13px;
+}
+
+.status-bar.detected {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.status-bar.not-apply {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-bar.unsupported {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.result-bar {
+  display: flex;
+  gap: 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+}
+
+.stat-success {
+  color: #16a34a;
+  font-size: 13px;
+}
+
+.stat-unmatched {
+  color: #d97706;
+  font-size: 13px;
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.footer {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.footer-text {
+  font-size: 11px;
+  color: #9ca3af;
+}

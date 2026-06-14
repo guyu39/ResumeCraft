@@ -20,10 +20,11 @@ import (
 )
 
 var (
-	ErrConversationNotFound = errors.New("conversation not found")
-	ErrAIConfigNotFound     = errors.New("ai config not found")
-	ErrAIRequestFailed      = errors.New("ai request failed")
-	ErrAPIKeyRequired       = errors.New("api key required for first-time setup")
+	ErrConversationNotFound     = errors.New("conversation not found")
+	ErrAIConfigNotFound         = errors.New("ai config not found")
+	ErrAIRequestFailed          = errors.New("ai request failed")
+	ErrAPIKeyRequired           = errors.New("api key required for first-time setup")
+	ErrInterviewSessionNotFound = aiStorage.ErrInterviewSessionNotFound
 )
 
 type Service interface {
@@ -44,6 +45,15 @@ type Service interface {
 	GenerateCoverLetter(ctx context.Context, userID string, req model.CoverLetterRequest) (*model.CoverLetterResponse, error)
 	RewriteBullet(ctx context.Context, userID string, req model.BulletRewriteRequest) (*model.BulletRewriteResponse, error)
 	Suggest(ctx context.Context, userID string, req model.SuggestRequest) (*model.SuggestResponse, error)
+
+	// 面试准备
+	GenerateInterviewQuestions(ctx context.Context, userID string, req model.InterviewGenerateRequest, onEvent func(StreamEvent)) error
+	EvaluateInterviewAnswers(ctx context.Context, userID string, req model.InterviewEvaluateRequest, onEvent func(StreamEvent)) error
+	AnalyzeTranscript(ctx context.Context, userID string, req model.AnalyzeTranscriptRequest, onEvent func(StreamEvent)) error
+	SaveInterviewProgress(ctx context.Context, userID, sessionID string, req model.SaveInterviewProgressRequest) error
+	ListInterviewSessions(ctx context.Context, userID string, limit, offset int) (*model.InterviewSessionListResponse, error)
+	GetInterviewSession(ctx context.Context, userID, sessionID string) (*model.InterviewSession, error)
+	DeleteInterviewSession(ctx context.Context, userID, sessionID string) error
 
 	// 对话消息
 	AddMessage(ctx context.Context, conversationID, role, content string) (*model.AIMessage, error)
@@ -72,14 +82,14 @@ type service struct {
 	cfgRepo           aiStorage.ConfigRepository
 	suggestRecordRepo aiStorage.SuggestRecordRepository
 	parserCfgRepo     aiStorage.ParserConfigRepository
+	interviewRepo     aiStorage.InterviewRepository
 	aiProvider        AIProvider
 	encryption        *Encryption
 	redis             *redis.Client    // AI 对话缓存
 	sanitizeCfg       sanitizer.Config // 脱敏配置
 }
 
-func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, suggestRecordRepo aiStorage.SuggestRecordRepository, parserCfgRepo aiStorage.ParserConfigRepository, aiCfg config.AIConfig, redisClient *redis.Client) Service {
-	// 脱敏配置：默认开启，可通过 AI_SANITIZE_ENABLED=false 关闭
+func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, suggestRecordRepo aiStorage.SuggestRecordRepository, parserCfgRepo aiStorage.ParserConfigRepository, interviewRepo aiStorage.InterviewRepository, aiCfg config.AIConfig, redisClient *redis.Client) Service {
 	sanCfg := sanitizer.DefaultConfig()
 	if !aiCfg.SanitizeEnabled {
 		sanCfg.Enabled = false
@@ -89,6 +99,7 @@ func NewService(repo aiStorage.Repository, cfgRepo aiStorage.ConfigRepository, s
 		cfgRepo:           cfgRepo,
 		suggestRecordRepo: suggestRecordRepo,
 		parserCfgRepo:     parserCfgRepo,
+		interviewRepo:     interviewRepo,
 		aiProvider:        newAIProvider(aiCfg),
 		encryption:        NewEncryption(aiCfg.EncryptionKey),
 		redis:             redisClient,
@@ -1084,7 +1095,36 @@ type StreamEvent struct {
 	Gaps              []model.JDGap              `json:"gaps,omitempty"`
 	ResumeSuggestions []model.JDResumeSuggestion `json:"resumeSuggestions,omitempty"`
 	ActionItems       []string                   `json:"actionItems,omitempty"`
-	RawText           string                     `json:"rawText,omitempty"` // 用于 debug 的原始行文本
+	RawText           string                     `json:"rawText,omitempty"`
+
+	Index          *int                        `json:"index,omitempty"`
+	Question       *model.InterviewQuestion    `json:"question,omitempty"`
+	QuestionEval   *model.InterviewQEval       `json:"questionEval,omitempty"`
+	DimensionScore interface{}                 `json:"dimensionScore,omitempty"`
+	RoundScore     interface{}                 `json:"roundScore,omitempty"`
+	Overall        interface{}                 `json:"overall,omitempty"`
+	Improvement    *model.InterviewImprovement `json:"improvement,omitempty"`
+	QAExtracted    interface{}                 `json:"qaExtracted,omitempty"`
+	QAEval         interface{}                 `json:"qaEval,omitempty"`
+	// 录音转写问答平铺字段（用 questionText/answerText 避免与上方 Question/Answer 字段冲突）
+	QAQuestion    string         `json:"questionText,omitempty"`
+	QAAnswer      string         `json:"answerText,omitempty"`
+	Score         *int           `json:"score,omitempty"`
+	BriefFeedback string         `json:"briefFeedback,omitempty"`
+	KeyPointsHit  []string       `json:"keyPointsHit,omitempty"`
+	MissedPoints  []string       `json:"missedPoints,omitempty"`
+	Dimension     string         `json:"dimension,omitempty"`
+	Feedback      string         `json:"feedback,omitempty"`
+	Round         string         `json:"round,omitempty"`
+	Reason        string         `json:"reason,omitempty"`
+	RoundScores   map[string]int `json:"roundScores,omitempty"`
+	Priority      string         `json:"priority,omitempty"`
+	Area          string         `json:"area,omitempty"`
+	Suggestion    string         `json:"suggestion,omitempty"`
+	EstimatedGain *int           `json:"estimatedGain,omitempty"`
+	TargetRound   string         `json:"targetRound,omitempty"`
+	SessionID     string         `json:"sessionId,omitempty"`
+	Timestamp     int64          `json:"timestamp,omitempty"`
 }
 
 // tryParsePartial 从累积文本中解析部分结果，支持 NDJSON 格式

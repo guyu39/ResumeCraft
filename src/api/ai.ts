@@ -612,6 +612,169 @@ export const aiApi = {
     // AI 增强（抽取指标 / 补全风控 / 转STAR）
     enhance: (data: EnhanceRequest) =>
         apiClient.post<EnhanceResponse>('/ai/enhance', data, { auth: true }),
+
+    interviewGenerate: (
+        data: InterviewGenerateRequest,
+        onUpdate: (partial: InterviewGenerateEvent) => void
+    ): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const token = localStorage.getItem('accessToken')
+            if (!token) { reject(new Error('请登录使用')); return }
+
+            const xhr = new XMLHttpRequest()
+            xhr.open('POST', '/api/ai/interview/generate', true)
+            xhr.setRequestHeader('Content-Type', 'application/json')
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+            let lastPos = 0
+            let sessionId = ''
+
+            xhr.onprogress = () => {
+                if (xhr.status >= 400) return
+                const text = xhr.responseText
+                const newText = text.slice(lastPos)
+                lastPos = text.length
+
+                const lines = newText.split('\n')
+                for (const line of lines) {
+                    if (line.startsWith('event:')) continue
+                    if (!line.startsWith('data: ')) continue
+                    const content = line.slice(6).trim()
+                    if (!content) continue
+                    try {
+                        const evt = JSON.parse(content) as InterviewGenerateEvent
+                        onUpdate(evt)
+                        if (evt.type === 'finish' && evt.sessionId) {
+                            sessionId = evt.sessionId
+                        }
+                    } catch { /* skip */ }
+                }
+            }
+
+            xhr.onload = () => {
+                if (xhr.status >= 400) {
+                    let msg = `生成失败 (${xhr.status})`
+                    try {
+                        const body = JSON.parse(xhr.responseText)
+                        msg = body?.error?.message || body?.message || msg
+                    } catch { /* keep default */ }
+                    reject(new Error(msg))
+                    return
+                }
+                resolve(sessionId)
+            }
+            xhr.onerror = () => { reject(new Error('网络错误')) }
+            xhr.send(JSON.stringify(data))
+        })
+    },
+
+    interviewEvaluate: (
+        data: InterviewEvaluateRequest,
+        onUpdate: (partial: InterviewEvaluateEvent) => void
+    ): Promise<void> => {
+        return new Promise((resolve, reject) => {
+            const token = localStorage.getItem('accessToken')
+            if (!token) { reject(new Error('请登录使用')); return }
+
+            const xhr = new XMLHttpRequest()
+            xhr.open('POST', '/api/ai/interview/evaluate', true)
+            xhr.setRequestHeader('Content-Type', 'application/json')
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+            let lastPos = 0
+
+            xhr.onprogress = () => {
+                const text = xhr.responseText
+                const newText = text.slice(lastPos)
+                lastPos = text.length
+
+                const lines = newText.split('\n')
+                for (const line of lines) {
+                    if (line.startsWith('event:')) continue
+                    if (!line.startsWith('data: ')) continue
+                    const content = line.slice(6).trim()
+                    if (!content) continue
+                    try {
+                        const evt = JSON.parse(content) as InterviewEvaluateEvent
+                        onUpdate(evt)
+                    } catch { /* skip */ }
+                }
+            }
+
+            xhr.onload = () => { resolve() }
+            xhr.onerror = () => { reject(new Error('网络错误')) }
+            xhr.send(JSON.stringify(data))
+        })
+    },
+
+    interviewAnalyzeTranscript: (
+        data: AnalyzeTranscriptRequest,
+        onUpdate: (partial: TranscriptAnalyzeEvent) => void
+    ): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const token = localStorage.getItem('accessToken')
+            if (!token) { reject(new Error('请登录使用')); return }
+
+            const xhr = new XMLHttpRequest()
+            xhr.open('POST', '/api/ai/interview/analyze-transcript', true)
+            xhr.setRequestHeader('Content-Type', 'application/json')
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+            let lastPos = 0
+            let sessionId = ''
+
+            xhr.onprogress = () => {
+                if (xhr.status >= 400) return
+                const text = xhr.responseText
+                const newText = text.slice(lastPos)
+                lastPos = text.length
+
+                const lines = newText.split('\n')
+                for (const line of lines) {
+                    if (line.startsWith('event:')) continue
+                    if (!line.startsWith('data: ')) continue
+                    const content = line.slice(6).trim()
+                    if (!content) continue
+                    try {
+                        const evt = JSON.parse(content) as TranscriptAnalyzeEvent
+                        onUpdate(evt)
+                        if (evt.type === 'finish' && 'sessionId' in evt && evt.sessionId) {
+                            sessionId = evt.sessionId as string
+                        }
+                    } catch { /* skip */ }
+                }
+            }
+
+            xhr.onload = () => {
+                if (xhr.status >= 400) {
+                    let msg = `分析失败 (${xhr.status})`
+                    try {
+                        const body = JSON.parse(xhr.responseText)
+                        msg = body?.error?.message || body?.message || msg
+                    } catch { /* keep default */ }
+                    reject(new Error(msg))
+                    return
+                }
+                resolve(sessionId)
+            }
+            xhr.onerror = () => { reject(new Error('网络错误')) }
+            xhr.send(JSON.stringify(data))
+        })
+    },
+
+    interviewSaveProgress: (sessionId: string, data: SaveInterviewProgressRequest) =>
+        apiClient.put(`/ai/interview/sessions/${sessionId}/progress`, data, { auth: true }),
+
+    // 面试历史
+    interviewListSessions: (limit = 20, offset = 0) =>
+        apiClient.get<InterviewSessionListResponse>(
+            `/ai/interview/sessions?limit=${limit}&offset=${offset}`,
+            { auth: true }
+        ),
+    interviewGetSession: (sessionId: string) =>
+        apiClient.get<InterviewSessionDetail>(`/ai/interview/sessions/${sessionId}`, { auth: true }),
+    interviewDeleteSession: (sessionId: string) =>
+        apiClient.delete(`/ai/interview/sessions/${sessionId}`, { auth: true }),
 }
 
 export interface ParserConfigRequest {
@@ -694,3 +857,155 @@ export interface EnhanceRequest {
 export interface EnhanceResponse {
     result: string
 }
+
+// ============================================================
+// 面试准备 API
+// ============================================================
+
+export interface InterviewGenerateRequest {
+    resumeId: string
+    snapshotVersionId?: string
+    content: Record<string, unknown>
+    jdText: string
+    targetTitle?: string
+    companyName?: string
+    focusAreas?: string[]
+    questionCount?: number
+    interviewRound?: 'technical_1' | 'technical_2' | 'hr'
+}
+
+export interface InterviewEvaluateRequest {
+    sessionId: string
+    answers: InterviewAnswer[]
+    interviewRound?: string
+}
+
+export interface AnalyzeTranscriptRequest {
+    resumeId: string
+    snapshotVersionId?: string
+    content: Record<string, unknown>
+    jdText?: string
+    targetTitle?: string
+    companyName?: string
+    transcriptText: string
+    transcriptSource?: string
+    interviewRound?: 'technical_1' | 'technical_2' | 'hr'
+}
+
+export interface SaveInterviewProgressRequest {
+    answers: InterviewAnswer[]
+    answeredCount: number
+    skippedCount: number
+}
+
+export interface InterviewSessionListItem {
+    id: string
+    targetTitle: string
+    companyName: string
+    interviewRound: 'technical_1' | 'technical_2' | 'hr' | string
+    mode: 'simulate' | 'transcript' | string
+    questionCount: number
+    answeredCount: number
+    skippedCount: number
+    overallScore?: number
+    passLevel?: string
+    status: 'generating' | 'answering' | 'evaluated' | string
+    createdAt: number
+    updatedAt: number
+}
+
+export interface InterviewSessionListResponse {
+    items: InterviewSessionListItem[]
+    total: number
+    limit: number
+    offset: number
+}
+
+export interface InterviewSessionDetail extends InterviewSessionListItem {
+    resumeId?: string
+    snapshotId?: string
+    conversationId?: string
+    jdText: string
+    jdHash?: string
+    focusAreas: string[]
+    transcriptText?: string
+    transcriptSource?: string
+    questions: InterviewQuestion[]
+    answers: InterviewAnswer[]
+    evaluation?: InterviewEvaluation
+    model?: string
+}
+
+export interface InterviewQuestion {
+    id: string
+    category: 'technical' | 'project' | 'industry' | 'soft_skill' | 'behavioral'
+    difficulty: 'basic' | 'medium' | 'advanced'
+    question: string
+    context?: string
+    hints?: string[]
+    evaluationCriteria: {
+        keyPoints: string[]
+        bonusPoints: string[]
+        redFlags: string[]
+    }
+    relatedResumeSection?: string
+}
+
+export interface InterviewAnswer {
+    questionId: string
+    answer: string
+    skipped: boolean
+    answeredAt: string
+    fromTranscript?: boolean
+    originalText?: string
+}
+
+export interface InterviewEvaluation {
+    summary: string
+    overallScore?: number
+    overallLevel?: string
+    dimensionScores: Record<string, { score: number; level: string; feedback: string }>
+    roundScores: Record<string, number>
+    roundReasons?: Record<string, string>
+    questionEvaluations: Array<{
+        questionId: string
+        score: number
+        keyPointsHit: string[]
+        missedPoints: string[]
+        redFlagsFound: string[]
+        briefFeedback: string
+    }>
+    improvementSuggestions: Array<{
+        priority: 'high' | 'medium' | 'low'
+        area: string
+        suggestion: string
+        estimatedGain: number
+        targetRound: string
+    }>
+    model: string
+    evaluatedAt: string
+}
+
+export type InterviewGenerateEvent =
+    | { type: 'model'; content: string }
+    | { type: 'question'; index: number; question: InterviewQuestion }
+    | { type: 'finish'; sessionId: string; timestamp: number }
+
+export type InterviewEvaluateEvent =
+    | { type: 'model'; content: string }
+    | { type: 'question_eval'; questionId: string; score: number; briefFeedback: string; keyPointsHit: string[]; missedPoints: string[]; redFlagsFound: string[] }
+    | { type: 'dimension_score'; dimension: string; score: number; level: string; feedback: string }
+    | { type: 'round_score'; round: string; score: number }
+    | { type: 'overall'; score: number; level: string; roundScores: Record<string, number> }
+    | { type: 'improvement'; priority: string; area: string; suggestion: string; estimatedGain: number; targetRound: string }
+    | { type: 'finish'; timestamp: number }
+
+export type TranscriptAnalyzeEvent =
+    | { type: 'model'; content: string }
+    | { type: 'qa_extracted'; index: number; question: string; answer: string }
+    | { type: 'qa_eval'; index: number; score: number; briefFeedback: string; keyPointsHit: string[]; missedPoints: string[] }
+    | { type: 'dimension_score'; dimension: string; score: number; level: string; feedback: string }
+    | { type: 'round_score'; round: string; score: number }
+    | { type: 'overall'; score: number; level: string; roundScores: Record<string, number> }
+    | { type: 'improvement'; priority: string; area: string; suggestion: string; estimatedGain: number; targetRound: string }
+    | { type: 'finish'; sessionId: string; timestamp: number }

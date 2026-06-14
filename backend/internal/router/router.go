@@ -121,6 +121,24 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 
 				aiGroup.GET("/suggest-records", h.ListSuggestRecords)
 				aiGroup.POST("/suggest-records", h.SaveSuggestRecord)
+
+				interviewGroup := aiGroup.Group("/interview")
+				{
+					if aiLimiter != nil {
+						interviewGroup.POST("/generate", aiLimiter, h.GenerateInterviewQuestions)
+						interviewGroup.POST("/evaluate", aiLimiter, h.EvaluateInterviewAnswers)
+						interviewGroup.POST("/analyze-transcript", aiLimiter, h.AnalyzeTranscript)
+					} else {
+						interviewGroup.POST("/generate", h.GenerateInterviewQuestions)
+						interviewGroup.POST("/evaluate", h.EvaluateInterviewAnswers)
+						interviewGroup.POST("/analyze-transcript", h.AnalyzeTranscript)
+					}
+					interviewGroup.PUT("/sessions/:id/progress", h.SaveInterviewProgress)
+					// 面试历史查询（轻量级，不挂载 aiLimiter）
+					interviewGroup.GET("/sessions", h.ListInterviewSessions)
+					interviewGroup.GET("/sessions/:id", h.GetInterviewSession)
+					interviewGroup.DELETE("/sessions/:id", h.DeleteInterviewSession)
+				}
 			}
 		}
 
