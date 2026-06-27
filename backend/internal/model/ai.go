@@ -500,6 +500,21 @@ type InterviewEvaluateRequest struct {
 	InterviewRound string            `json:"interviewRound"`
 }
 
+// InterviewFollowupTurn 追问对话中的一轮（user=候选人回答 / assistant=面试官追问）
+type InterviewFollowupTurn struct {
+	Role    string `json:"role"` // user | assistant
+	Content string `json:"content"`
+}
+
+// InterviewFollowupRequest 面试追问请求
+type InterviewFollowupRequest struct {
+	SessionID  string                  `json:"sessionId" binding:"required"`
+	QuestionID string                  `json:"questionId" binding:"required"`
+	Question   string                  `json:"question" binding:"required"`
+	Answer     string                  `json:"answer" binding:"required"`
+	History    []InterviewFollowupTurn `json:"history"`
+}
+
 type AnalyzeTranscriptRequest struct {
 	ResumeID          string                 `json:"resumeId" binding:"required"`
 	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`

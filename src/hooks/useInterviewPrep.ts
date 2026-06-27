@@ -1,13 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { aiApi, type InterviewQuestion, type InterviewAnswer, type InterviewEvaluation, type InterviewGenerateRequest, type InterviewEvaluateRequest, type AnalyzeTranscriptRequest } from '@/api/ai'
 
-type InterviewRound = 'technical_1' | 'technical_2' | 'hr'
+type InterviewRound = 'technical' | 'hr'
 type InterviewMode = 'simulate' | 'transcript'
 type Status = 'idle' | 'generating' | 'analyzing' | 'answering' | 'evaluating' | 'evaluated'
 
 export function useInterviewPrep() {
     const [mode, setMode] = useState<InterviewMode>('simulate')
-    const [interviewRound, setInterviewRound] = useState<InterviewRound>('technical_1')
+    const [interviewRound, setInterviewRound] = useState<InterviewRound>('technical')
 
     const [questions, setQuestions] = useState<InterviewQuestion[]>([])
     const [generating, setGenerating] = useState(false)
@@ -365,8 +365,11 @@ export function useInterviewPrep() {
         if (session.mode === 'transcript' || session.mode === 'simulate') {
             setMode(session.mode)
         }
-        if (session.interviewRound === 'technical_1' || session.interviewRound === 'technical_2' || session.interviewRound === 'hr') {
-            setInterviewRound(session.interviewRound)
+        // 兼容历史记录里的 technical_1/technical_2，统一映射为 technical
+        if (session.interviewRound === 'hr') {
+            setInterviewRound('hr')
+        } else if (session.interviewRound === 'technical' || session.interviewRound === 'technical_1' || session.interviewRound === 'technical_2') {
+            setInterviewRound('technical')
         }
         setQuestions(session.questions || [])
         const answerMap = new Map<string, InterviewAnswer>()

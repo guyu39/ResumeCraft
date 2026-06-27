@@ -174,7 +174,7 @@ func (s *service) buildInterviewGeneratePrompt(content map[string]interface{}, j
 	)
 }
 
-func (s *service) buildInterviewEvaluatePrompt(questions []model.InterviewQuestion, answers []model.InterviewAnswer, targetTitle, companyName string, rc roundConfig) string {
+func (s *service) buildInterviewEvaluatePrompt(questions []model.InterviewQuestion, answers []model.InterviewAnswer, targetTitle, companyName string, rc roundConfig, roundKey string, focusAreas []string) string {
 	var qaPairs []string
 	answerMap := make(map[string]model.InterviewAnswer)
 	for _, a := range answers {
@@ -187,8 +187,46 @@ func (s *service) buildInterviewEvaluatePrompt(questions []model.InterviewQuesti
 		if ok && !a.Skipped {
 			answerText = a.Answer
 		}
-		qaPairs = append(qaPairs, fmt.Sprintf("### Q%d [%s] %s\n候选人回答：%s", i+1, q.Difficulty, q.Question, answerText))
+		// 显式带上题目真实 id，要求评估时按此 id 回填 questionId，确保前端能匹配题干
+		qaPairs = append(qaPairs, fmt.Sprintf("### Q%d [id=%s] [%s] %s\n候选人回答：%s", i+1, q.ID, q.Difficulty, q.Question, answerText))
 	}
+
+	// 动态确定要评估的维度：固定维度全集 = technical/project/industry/soft_skill/behavioral
+	// 规则：① HR 面只评 soft_skill + behavioral（不评技术/项目深度）；技术面不评 behavioral
+	//      ② 若用户勾选了出题范围(focusAreas)，则维度限定在所勾选范围内（与 behavioral 规则取交集）
+	dimLabels := map[string]string{
+		"technical": "技术深度", "project": "项目经验", "industry": "行业知识",
+		"soft_skill": "软技能", "behavioral": "行为面试",
+	}
+	var allowed []string
+	if roundKey == "hr" {
+		allowed = []string{"soft_skill", "behavioral", "industry"}
+	} else {
+		// 技术面：技术/项目/行业/软技能，不含行为面试
+		allowed = []string{"technical", "project", "industry", "soft_skill"}
+	}
+	// 与用户勾选的出题范围取交集（勾选了才收窄；没勾选用轮次默认）
+	if len(focusAreas) > 0 {
+		focusSet := make(map[string]bool, len(focusAreas))
+		for _, f := range focusAreas {
+			focusSet[f] = true
+		}
+		// behavioral 仅 HR 面允许，软技能/行业作为通用维度始终保留以支撑综合判断
+		var narrowed []string
+		for _, d := range allowed {
+			if focusSet[d] || d == "soft_skill" || d == "behavioral" {
+				narrowed = append(narrowed, d)
+			}
+		}
+		if len(narrowed) > 0 {
+			allowed = narrowed
+		}
+	}
+	var dimList []string
+	for _, d := range allowed {
+		dimList = append(dimList, fmt.Sprintf("%s(%s)", d, dimLabels[d]))
+	}
+	dimConstraint := strings.Join(dimList, "、")
 
 	return fmt.Sprintf(`你是一位资深面试官，正在评估候选人对面试题的回答。
 
@@ -202,13 +240,10 @@ func (s *service) buildInterviewEvaluatePrompt(questions []model.InterviewQuesti
 
 ## 评估要求
 
-1. 逐题评分（0-100分），标注命中要点、遗漏要点、减分信号
-2. 按维度汇总评分（技术深度/项目经验/行业知识/软技能/行为面试）
-3. 按面试轮次预估通过率：
-   - technical_1 (一面): 侧重基础技术+项目概述
-   - technical_2 (二面): 侧重架构设计+系统思维
-   - hr (HR面): 侧重软技能+行为面试
-4. 给出分优先级的提升建议，标注针对哪一轮面试
+1. 【逐题评分，必须覆盖全部 %d 道题，一题一条 question_eval，不得遗漏、不得合并】（0-100分），标注命中要点、遗漏要点、减分信号
+2. 【维度评分只能从以下维度中选取，禁止自创其它维度】：%s
+3. 给出当前面试轮次的通过率预估（round 用 %q）
+4. 给出分优先级的提升建议
 
 ## 通过率评级映射
 - A  (90-100): 极有竞争力
@@ -222,23 +257,23 @@ func (s *service) buildInterviewEvaluatePrompt(questions []model.InterviewQuesti
 
 ## 输出格式：NDJSON
 
-逐题评估：
-{"type":"question_eval","questionId":"q_N","score":85,"briefFeedback":"50字反馈","keyPointsHit":[...],"missedPoints":[...],"redFlagsFound":[...]}
+逐题评估（**对上面每一道题各输出一条**，共 %d 条；questionId 必须 = 该题标注的 [id=xxx] 里的 id，逐字复制，禁止改写或臆造）：
+{"type":"question_eval","questionId":"该题的真实id","score":85,"briefFeedback":"50字反馈","keyPointsHit":[...],"missedPoints":[...],"redFlagsFound":[...]}
 
-维度评分：
+维度评分（dimension 只能取上面允许的维度英文 key，如 technical/project/industry/soft_skill/behavioral，禁止其它值）：
 {"type":"dimension_score","dimension":"technical","score":78,"level":"B+","feedback":"100字维度反馈"}
 
 轮次通过率：
-{"type":"round_score","round":"technical_1","score":85}
+{"type":"round_score","round":%q,"score":85}
 
 综合评分：
-{"type":"overall","score":72,"level":"B+","roundScores":{"technical_1":85,"technical_2":72,"hr":80}}
+{"type":"overall","score":72,"level":"B+","roundScores":{%q:85}}
 
 提升建议：
-{"type":"improvement","priority":"high","area":"技术深度","suggestion":"具体建议","estimatedGain":8,"targetRound":"technical_2"}
+{"type":"improvement","priority":"high","area":"技术深度","suggestion":"具体建议","estimatedGain":8,"targetRound":%q}
 
 结束：
-{"type":"finish","timestamp":毫秒时间戳}`, targetTitle, companyName, rc.description, strings.Join(qaPairs, "\n\n"))
+{"type":"finish","timestamp":毫秒时间戳}`, targetTitle, companyName, rc.description, strings.Join(qaPairs, "\n\n"), len(questions), dimConstraint, roundKey, len(questions), roundKey, roundKey, roundKey)
 }
 
 func (s *service) buildTranscriptAnalyzePrompt(content map[string]interface{}, transcriptText, jdText, targetTitle, companyName string, rc roundConfig) string {

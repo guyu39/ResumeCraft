@@ -603,10 +603,10 @@ create table interview_sessions
     jd_hash           varchar(64),
     focus_areas       jsonb                    default '[]'::jsonb                      not null,
     question_count    integer                  default 25                               not null,
-    interview_round   varchar(20)              default 'technical_1'::character varying not null
+    interview_round   varchar(20)              default 'technical'::character varying not null
         constraint chk_interview_round
             check ((interview_round)::text = ANY
-                   ((ARRAY ['technical_1'::character varying, 'technical_2'::character varying, 'hr'::character varying])::text[])),
+                   ((ARRAY ['technical'::character varying, 'technical_1'::character varying, 'technical_2'::character varying, 'hr'::character varying])::text[])),
     mode              varchar(20)              default 'simulate'::character varying    not null
         constraint chk_interview_mode
             check ((mode)::text = ANY

@@ -128,10 +128,12 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 						interviewGroup.POST("/generate", aiLimiter, h.GenerateInterviewQuestions)
 						interviewGroup.POST("/evaluate", aiLimiter, h.EvaluateInterviewAnswers)
 						interviewGroup.POST("/analyze-transcript", aiLimiter, h.AnalyzeTranscript)
+						interviewGroup.POST("/followup", aiLimiter, h.GenerateFollowup)
 					} else {
 						interviewGroup.POST("/generate", h.GenerateInterviewQuestions)
 						interviewGroup.POST("/evaluate", h.EvaluateInterviewAnswers)
 						interviewGroup.POST("/analyze-transcript", h.AnalyzeTranscript)
+						interviewGroup.POST("/followup", h.GenerateFollowup)
 					}
 					interviewGroup.PUT("/sessions/:id/progress", h.SaveInterviewProgress)
 					// 面试历史查询（轻量级，不挂载 aiLimiter）

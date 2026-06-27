@@ -557,6 +557,15 @@ export const aiApi = {
         }).then(() => sessionId)
     },
 
+    interviewFollowup: (data: {
+        sessionId: string
+        questionId: string
+        question: string
+        answer: string
+        history: Array<{ role: 'user' | 'assistant'; content: string }>
+    }) =>
+        apiClient.post<{ followup: string; done: boolean }>('/ai/interview/followup', data, { auth: true }),
+
     interviewSaveProgress: (sessionId: string, data: SaveInterviewProgressRequest) =>
         apiClient.put(`/ai/interview/sessions/${sessionId}/progress`, data, { auth: true }),
 
@@ -666,7 +675,7 @@ export interface InterviewGenerateRequest {
     companyName?: string
     focusAreas?: string[]
     questionCount?: number
-    interviewRound?: 'technical_1' | 'technical_2' | 'hr'
+    interviewRound?: 'technical' | 'hr'
 }
 
 export interface InterviewEvaluateRequest {
@@ -684,7 +693,7 @@ export interface AnalyzeTranscriptRequest {
     companyName?: string
     transcriptText: string
     transcriptSource?: string
-    interviewRound?: 'technical_1' | 'technical_2' | 'hr'
+    interviewRound?: 'technical' | 'hr'
 }
 
 export interface SaveInterviewProgressRequest {

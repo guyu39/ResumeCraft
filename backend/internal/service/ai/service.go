@@ -49,6 +49,7 @@ type Service interface {
 	// 面试准备
 	GenerateInterviewQuestions(ctx context.Context, userID string, req model.InterviewGenerateRequest, onEvent func(StreamEvent)) error
 	EvaluateInterviewAnswers(ctx context.Context, userID string, req model.InterviewEvaluateRequest, onEvent func(StreamEvent)) error
+	GenerateFollowup(ctx context.Context, userID string, req model.InterviewFollowupRequest) (string, bool, error)
 	AnalyzeTranscript(ctx context.Context, userID string, req model.AnalyzeTranscriptRequest, onEvent func(StreamEvent)) error
 	SaveInterviewProgress(ctx context.Context, userID, sessionID string, req model.SaveInterviewProgressRequest) error
 	ListInterviewSessions(ctx context.Context, userID, resumeID string, limit, offset int) (*model.InterviewSessionListResponse, error)
@@ -1020,6 +1021,8 @@ type StreamEvent struct {
 	BriefFeedback string         `json:"briefFeedback,omitempty"`
 	KeyPointsHit  []string       `json:"keyPointsHit,omitempty"`
 	MissedPoints  []string       `json:"missedPoints,omitempty"`
+	RedFlagsFound []string       `json:"redFlagsFound,omitempty"`
+	QuestionID    string         `json:"questionId,omitempty"`
 	Dimension     string         `json:"dimension,omitempty"`
 	Feedback      string         `json:"feedback,omitempty"`
 	Round         string         `json:"round,omitempty"`

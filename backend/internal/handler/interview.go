@@ -163,6 +163,35 @@ func (h *Handler) EvaluateInterviewAnswers(c *gin.Context) {
 	}
 }
 
+// GenerateFollowup 面试追问
+// POST /api/ai/interview/followup
+func (h *Handler) GenerateFollowup(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.InterviewFollowupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	followup, done, err := h.aiService.GenerateFollowup(c.Request.Context(), userID.(string), req)
+	if err != nil {
+		if errors.Is(err, ai.ErrAIConfigNotFound) {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[interview] GenerateFollowup error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "生成追问失败")
+		return
+	}
+
+	response.JSONSuccess(c, gin.H{"followup": followup, "done": done})
+}
+
 func (h *Handler) AnalyzeTranscript(c *gin.Context) {
 	userID, ok := c.Get(middleware.ContextUserIDKey)
 	if !ok {
