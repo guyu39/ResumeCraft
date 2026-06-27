@@ -4,6 +4,7 @@ import type { ResumeEvaluateOutput } from '@/ai'
 import { aiApi, type ConversationItem } from '@/api/ai'
 import { useResumeStore } from '@/store/resumeStore'
 import { severityClassMap as sharedSeverityClassMap, severityTextMap as sharedSeverityTextMap } from './shared'
+import { buildEvaluationReportHTML } from './evaluationReport'
 
 interface ResumeScoreDrawerProps {
     open: boolean
@@ -328,6 +329,8 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
 }) => {
     // 从 store 获取快照列表，用于在对话历史中显示快照标签
     const snapshots = useResumeStore((s) => s.snapshots)
+    const resumeTitle = useResumeStore((s) => s.resume.title)
+    const [exportingReport, setExportingReport] = useState(false)
     const getSnapshotLabel = (snapshotVersionId?: string | null): string | null => {
         if (!snapshotVersionId) return null
         const snap = snapshots.find((s) => s.id === snapshotVersionId)
@@ -336,6 +339,56 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     }
     // Use restored result for display when available
     const displayResult = restoredResult ?? result
+
+    // 导出评估报告 PDF：离屏渲染报告 HTML → html2canvas 截图 → jsPDF 按 A4 分页。
+    // 纯前端、无打印对话框、无 URL 页脚、不依赖后端 Chrome。
+    const handleExportReport = async () => {
+        if (!displayResult || exportingReport) return
+        setExportingReport(true)
+        const container = document.createElement('div')
+        container.style.position = 'fixed'
+        container.style.left = '-10000px'
+        container.style.top = '0'
+        container.style.background = '#ffffff'
+        container.innerHTML = buildEvaluationReportHTML(displayResult, {
+            resumeTitle,
+            evaluatedAt: Date.now(),
+        })
+        document.body.appendChild(container)
+        try {
+            const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+                import('html2canvas'),
+                import('jspdf'),
+            ])
+            const target = container.firstElementChild as HTMLElement
+            const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+
+            const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+            const pageW = pdf.internal.pageSize.getWidth()
+            const pageH = pdf.internal.pageSize.getHeight()
+            const imgW = pageW
+            const imgH = (canvas.height * imgW) / canvas.width
+            const imgData = canvas.toDataURL('image/jpeg', 0.92)
+
+            // 内容高于一页时按页切割
+            let remaining = imgH
+            let position = 0
+            while (remaining > 0) {
+                pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
+                remaining -= pageH
+                if (remaining > 0) {
+                    pdf.addPage()
+                    position -= pageH
+                }
+            }
+            pdf.save(`${resumeTitle || '简历'}-评估报告.pdf`)
+        } catch {
+            // 失败由按钮 loading 复位反映
+        } finally {
+            if (container.parentNode) container.parentNode.removeChild(container)
+            setExportingReport(false)
+        }
+    }
 
     // Reset history state when drawer closes
     useEffect(() => {
@@ -491,6 +544,16 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                     className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
                                 >
                                     {showHistory ? '收起历史' : '查看历史'}
+                                </button>
+                            )}
+                            {isAuthenticated && displayResult && (
+                                <button
+                                    type="button"
+                                    onClick={handleExportReport}
+                                    disabled={exportingReport}
+                                    className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-wait"
+                                >
+                                    {exportingReport ? '导出中...' : '导出报告'}
                                 </button>
                             )}
                                 </div>
