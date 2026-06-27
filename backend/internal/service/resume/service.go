@@ -21,7 +21,7 @@ type Service interface {
 	GetByID(ctx context.Context, userID, resumeID string) (*model.ResumeDetail, error)
 	Update(ctx context.Context, userID, resumeID string, req model.UpdateResumeRequest) (*model.ResumeUpdateResponse, error)
 	Delete(ctx context.Context, userID, resumeID string) error
-	RestoreVersion(ctx context.Context, userID, resumeID, versionID string) (*model.ResumeUpdateResponse, error)
+	RestoreVersion(ctx context.Context, userID, resumeID, versionID string, expectedVersion *int64) (*model.ResumeUpdateResponse, error)
 
 	// 版本快照
 	ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error)
@@ -134,7 +134,7 @@ func (s *service) Delete(ctx context.Context, userID, resumeID string) error {
 	return nil
 }
 
-func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionID string) (*model.ResumeUpdateResponse, error) {
+func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionID string, expectedVersion *int64) (*model.ResumeUpdateResponse, error) {
 	// 获取版本内容
 	versionContent, err := s.repo.GetVersionContent(ctx, versionID)
 	if err != nil {
@@ -144,8 +144,8 @@ func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionI
 		return nil, err
 	}
 
-	// 恢复简历
-	resp, err := s.repo.RestoreFromVersion(ctx, userID, resumeID, versionContent)
+	// 恢复简历（expectedVersion 非 nil 时启用乐观锁）
+	resp, err := s.repo.RestoreFromVersion(ctx, userID, resumeID, versionID, versionContent, expectedVersion)
 	if err != nil {
 		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound

@@ -28,7 +28,7 @@ type Repository interface {
 	GetByID(ctx context.Context, userID, resumeID string) (*model.ResumeDetail, error)
 	Update(ctx context.Context, userID, resumeID string, req model.UpdateResumeRequest) (*model.ResumeUpdateResponse, error)
 	Delete(ctx context.Context, userID, resumeID string) error
-	RestoreFromVersion(ctx context.Context, userID, resumeID string, versionContent []byte) (*model.ResumeUpdateResponse, error)
+	RestoreFromVersion(ctx context.Context, userID, resumeID, snapshotID string, versionContent []byte, expectedVersion *int64) (*model.ResumeUpdateResponse, error)
 	GetVersionContent(ctx context.Context, versionID string) ([]byte, error)
 
 	// 版本快照
@@ -157,7 +157,16 @@ func (r *repository) Create(ctx context.Context, userID string, req model.Create
 	var item model.ResumeListItem
 	var updatedAt, createdAt time.Time
 	var resumeID string
-	err = r.pool.QueryRow(ctx, `
+
+	// 建简历 + 建默认快照 + 回填 latest_version_id 三步必须在同一事务，
+	// 任一步失败整体回滚，避免出现「简历已落库但无默认快照 / latest_version_id 为空」的脏数据。
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	err = tx.QueryRow(ctx, `
 		INSERT INTO resumes (user_id, title, locale, template, content)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, title, template, updated_at, created_at
@@ -168,22 +177,31 @@ func (r *repository) Create(ctx context.Context, userID string, req model.Create
 		return nil, fmt.Errorf("create resume: %w", err)
 	}
 
+	// 自动创建 "默认" 快照（隐藏，不在时间轴显示）
+	var defaultSnapshotID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO resume_versions (resume_id, user_id, content_snapshot, snapshot_type, label)
+		VALUES ($1, $2, $3, 'default', '默认')
+		RETURNING id
+	`, resumeID, userID, contentJSON).Scan(&defaultSnapshotID)
+	if err != nil {
+		return nil, fmt.Errorf("create default snapshot: %w", err)
+	}
+
+	// 将 latest_version_id 指向默认快照
+	if _, err = tx.Exec(ctx, `
+		UPDATE resumes SET latest_version_id = $1 WHERE id = $2
+	`, defaultSnapshotID, resumeID); err != nil {
+		return nil, fmt.Errorf("set latest_version_id: %w", err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit create resume: %w", err)
+	}
+
 	item.ID = resumeID
 	item.UpdatedAt = updatedAt.UnixMilli()
 	item.CreatedAt = createdAt.UnixMilli()
-
-	// 自动创建 "默认" 快照（隐藏，不在时间轴显示）
-	var defaultSnapshotID string
-	_ = r.pool.QueryRow(ctx, `
-		INSERT INTO resume_versions (resume_id, user_id, version_no, content_snapshot, snapshot_type, label)
-		VALUES ($1, $2, 1, $3, 'default', '默认')
-		RETURNING id
-	`, resumeID, userID, contentJSON).Scan(&defaultSnapshotID)
-
-	// 将 latest_version_id 指向默认快照
-	_, _ = r.pool.Exec(ctx, `
-		UPDATE resumes SET latest_version_id = $1 WHERE id = $2
-	`, defaultSnapshotID, resumeID)
 
 	return &item, nil
 }
@@ -254,13 +272,22 @@ func (r *repository) GetByID(ctx context.Context, userID, resumeID string) (*mod
 }
 
 func (r *repository) Update(ctx context.Context, userID, resumeID string, req model.UpdateResumeRequest) (*model.ResumeUpdateResponse, error) {
-	// 先获取当前简历信息
+	// 整个更新放进单事务：读当前状态 → 合并 drafts → 带 CAS 的 UPDATE，
+	// 避免 snapshot_drafts 的「读-改-写」在并发下丢失其它 key（TOCTOU）。
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin update tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 先获取当前简历信息（FOR UPDATE 锁住行，串行化并发更新）
 	var currentVersionID *string
 	var currentContentJSON []byte
 	var currentVersion, currentDraftsVersion int64
-	err := r.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		SELECT latest_version_id, content, version, snapshot_drafts_version
 		FROM resumes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+		FOR UPDATE
 	`, resumeID, userID).Scan(&currentVersionID, &currentContentJSON, &currentVersion, &currentDraftsVersion)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -316,20 +343,16 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		updateContent = true
 	}
 
-	// 个人信息（独立字段）
+	// 个人信息（独立字段，不复用 content 的乐观锁版本号：
+	// personal_data 与 content 是不同列，借用同一 version 会导致个人信息保存
+	// 凭空推高 content 版本，误伤并发的正文编辑。这里仅写列、不参与 version 递增/CAS。）
 	if len(req.PersonalData) > 0 {
 		updates = append(updates, fmt.Sprintf("personal_data = $%d", argIdx))
 		args = append(args, req.PersonalData)
 		argIdx++
-		// 个人信息更新也计入 content 版本（共用 version）
-		if !updateContent {
-			updateContent = true
-			// 不设 CAS 版本：个人信息不需要乐观锁保护
-			req.Version = nil
-		}
 	}
 
-	if req.BasedOnSnapshotID != nil {
+	if req.BasedOnSnapshotID != nil && *req.BasedOnSnapshotID != "" {
 		updates = append(updates, fmt.Sprintf("based_on_snapshot_id = $%d", argIdx))
 		args = append(args, *req.BasedOnSnapshotID)
 		argIdx++
@@ -344,9 +367,10 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 			}
 		}
 
+		// 在事务内读取当前 drafts（行已被上面的 FOR UPDATE 锁住，无 TOCTOU 窗口）
 		var existingDrafts map[string]json.RawMessage
 		var existingDraftsJSON []byte
-		_ = r.pool.QueryRow(ctx, "SELECT COALESCE(snapshot_drafts, '{}') FROM resumes WHERE id = $1", resumeID).Scan(&existingDraftsJSON)
+		_ = tx.QueryRow(ctx, "SELECT COALESCE(snapshot_drafts, '{}') FROM resumes WHERE id = $1", resumeID).Scan(&existingDraftsJSON)
 		if len(existingDraftsJSON) > 0 {
 			json.Unmarshal(existingDraftsJSON, &existingDrafts)
 		}
@@ -370,17 +394,21 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 
 	if len(updates) == 0 {
 		var updatedAt time.Time
-		err := r.pool.QueryRow(ctx, `SELECT updated_at FROM resumes WHERE id = $1 AND user_id = $2`, resumeID, userID).Scan(&updatedAt)
+		err := tx.QueryRow(ctx, `SELECT updated_at FROM resumes WHERE id = $1 AND user_id = $2`, resumeID, userID).Scan(&updatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("get updated_at: %w", err)
 		}
 
 		var latestSnapshotID *string
-		_ = r.pool.QueryRow(ctx, `
+		_ = tx.QueryRow(ctx, `
 			SELECT id FROM resume_versions
 			WHERE resume_id = $1 AND snapshot_type IN ('manual', 'default')
 			ORDER BY created_at DESC LIMIT 1
 		`, resumeID).Scan(&latestSnapshotID)
+
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("commit update: %w", err)
+		}
 
 		return &model.ResumeUpdateResponse{
 			ID:                    resumeID,
@@ -423,7 +451,7 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 
 	var newVersion, newDraftsVersion int64
 	var updatedAt time.Time
-	err = r.pool.QueryRow(ctx, query, args...).Scan(&newVersion, &newDraftsVersion, &updatedAt)
+	err = tx.QueryRow(ctx, query, args...).Scan(&newVersion, &newDraftsVersion, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrVersionConflict
@@ -432,11 +460,15 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	}
 
 	var latestSnapshotID *string
-	_ = r.pool.QueryRow(ctx, `
+	_ = tx.QueryRow(ctx, `
 		SELECT id FROM resume_versions
 		WHERE resume_id = $1 AND snapshot_type IN ('manual', 'default')
 		ORDER BY created_at DESC LIMIT 1
 	`, resumeID).Scan(&latestSnapshotID)
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit update: %w", err)
+	}
 
 	return &model.ResumeUpdateResponse{
 		ID:                    resumeID,
@@ -446,20 +478,6 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		Version:               newVersion,
 		SnapshotDraftsVersion: newDraftsVersion,
 	}, nil
-}
-
-func (r *repository) createVersion(ctx context.Context, resumeID, userID string, contentJSON []byte) (string, error) {
-	var versionID string
-	err := r.pool.QueryRow(ctx, `
-		INSERT INTO resume_versions (resume_id, user_id, content_snapshot)
-		VALUES ($1, $2, $3)
-		RETURNING id
-	`, resumeID, userID, contentJSON).Scan(&versionID)
-	if err != nil {
-		return "", fmt.Errorf("create version: %w", err)
-	}
-
-	return versionID, nil
 }
 
 func (r *repository) Delete(ctx context.Context, userID, resumeID string) error {
@@ -474,17 +492,45 @@ func (r *repository) Delete(ctx context.Context, userID, resumeID string) error 
 }
 
 // RestoreFromVersion 从版本恢复简历内容
-func (r *repository) RestoreFromVersion(ctx context.Context, userID, resumeID string, versionContent []byte) (*model.ResumeUpdateResponse, error) {
+// expectedVersion 非 nil 时启用乐观锁：恢复期间若简历被并发编辑（version 已变），返回 ErrVersionConflict，
+// 避免恢复盲覆盖他人/另一标签页的修改。恢复后把 based_on_snapshot_id 指向被恢复的快照，
+// 使前端「当前编辑基于的快照」状态与实际内容一致。
+func (r *repository) RestoreFromVersion(ctx context.Context, userID, resumeID, snapshotID string, versionContent []byte, expectedVersion *int64) (*model.ResumeUpdateResponse, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin restore tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	whereConditions := []string{"id = $2", "user_id = $3", "deleted_at IS NULL"}
+	args := []interface{}{versionContent, resumeID, userID}
+	if expectedVersion != nil {
+		whereConditions = append(whereConditions, "version = $4")
+		args = append(args, *expectedVersion)
+	}
+	query := fmt.Sprintf(`
+		UPDATE resumes
+		SET content = $1, version = version + 1, based_on_snapshot_id = $%d, updated_at = NOW()
+		WHERE %s
+		RETURNING version, snapshot_drafts_version, updated_at, latest_version_id
+	`, len(args)+1, strings.Join(whereConditions, " AND "))
+	args = append(args, snapshotID)
+
 	var updatedAt time.Time
 	var newVersion, newDraftsVersion int64
-	err := r.pool.QueryRow(ctx, `
-		UPDATE resumes
-		SET content = $1, version = version + 1, updated_at = NOW()
-		WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
-		RETURNING version, snapshot_drafts_version, updated_at
-	`, versionContent, resumeID, userID).Scan(&newVersion, &newDraftsVersion, &updatedAt)
+	var currentVersionID *string
+	err = tx.QueryRow(ctx, query, args...).Scan(&newVersion, &newDraftsVersion, &updatedAt, &currentVersionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// 带乐观锁时 rows=0 既可能是简历不存在，也可能是版本冲突；
+			// 用一次存在性查询区分，给出准确错误。
+			if expectedVersion != nil {
+				var exists bool
+				_ = tx.QueryRow(ctx, `SELECT true FROM resumes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, resumeID, userID).Scan(&exists)
+				if exists {
+					return nil, ErrVersionConflict
+				}
+			}
 			return nil, ErrResumeNotFound
 		}
 		return nil, fmt.Errorf("restore resume: %w", err)
@@ -492,17 +538,15 @@ func (r *repository) RestoreFromVersion(ctx context.Context, userID, resumeID st
 
 	// 查询最新快照 ID
 	var latestSnapshotID *string
-	_ = r.pool.QueryRow(ctx, `
+	_ = tx.QueryRow(ctx, `
 		SELECT id FROM resume_versions
 		WHERE resume_id = $1 AND snapshot_type IN ('manual', 'default')
 		ORDER BY created_at DESC LIMIT 1
 	`, resumeID).Scan(&latestSnapshotID)
 
-	// 获取 currentVersionID
-	var currentVersionID *string
-	_ = r.pool.QueryRow(ctx, `
-		SELECT latest_version_id FROM resumes WHERE id = $1
-	`, resumeID).Scan(&currentVersionID)
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit restore: %w", err)
+	}
 
 	return &model.ResumeUpdateResponse{
 		ID:                    resumeID,

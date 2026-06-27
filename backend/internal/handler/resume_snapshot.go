@@ -230,11 +230,22 @@ func (h *Handler) RestoreFromSnapshot(c *gin.Context) {
 		return
 	}
 
-	result, err := h.resumeService.RestoreVersion(c.Request.Context(), userID.(string), resumeID, snapshotID)
+	// 可选 version：前端带上则启用乐观锁，恢复期间被并发编辑会返回 409。
+	// 请求体可为空（不传 version 时退化为无锁恢复，兼容旧客户端）。
+	var req struct {
+		Version *int64 `json:"version"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	result, err := h.resumeService.RestoreVersion(c.Request.Context(), userID.(string), resumeID, snapshotID, req.Version)
 	if err != nil {
 		log.Printf("[snapshot] RestoreFromSnapshot error: %v", err)
 		if errors.Is(err, resume.ErrResumeNotFound) {
 			response.JSONError(c, http.StatusNotFound, "SNAPSHOT_NOT_FOUND", "快照或简历不存在")
+			return
+		}
+		if errors.Is(err, resume.ErrVersionConflict) {
+			response.JSONError(c, http.StatusConflict, "VERSION_CONFLICT", "简历已被其他客户端修改，请刷新后重试")
 			return
 		}
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "恢复快照失败")
