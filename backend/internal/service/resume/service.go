@@ -13,6 +13,7 @@ var (
 	ErrDuplicateTitle  = errors.New("resume title already exists")
 	ErrDuplicateLabel  = errors.New("snapshot label already exists")
 	ErrVersionConflict = errors.New("version conflict")
+	ErrCommentForbidden = errors.New("comment not found or not owned by visitor")
 )
 
 type Service interface {
@@ -40,7 +41,8 @@ type Service interface {
 	// 分享评论
 	AddComment(ctx context.Context, token, authorName, content, moduleID, visitorID string, itemIndex int, snapshotID *string) (*model.ShareComment, error)
 	ListComments(ctx context.Context, token, visitorID, snapshotID string) ([]model.ShareComment, error)
-	DeleteComment(ctx context.Context, commentID string) error
+	DeleteComment(ctx context.Context, token, visitorID, commentID string) error
+	DeleteCommentByOwner(ctx context.Context, commentID string) error
 	ListAllComments(ctx context.Context, userID, resumeID string) (*model.AdminCommentsResponse, error)
 
 	// 分享视图

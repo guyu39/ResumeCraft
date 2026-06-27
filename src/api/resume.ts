@@ -235,8 +235,8 @@ export const shareApi = {
     return apiClient.get<{ items: ShareComment[] }>(`/share/${token}/comments${qs ? `?${qs}` : ''}`)
   },
 
-  deleteComment: (token: string, commentId: string) =>
-    apiClient.delete<{ deleted: boolean }>(`/share/${token}/comments/${commentId}`),
+  deleteComment: (token: string, commentId: string, visitorId: string) =>
+    apiClient.delete<{ deleted: boolean }>(`/share/${token}/comments/${commentId}?visitorId=${encodeURIComponent(visitorId)}`),
 
   analyze: (token: string) =>
     apiClient.post<AIAnalysisResponse>(`/share/${token}/analyze`),

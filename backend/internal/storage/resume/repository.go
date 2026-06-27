@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	ErrResumeNotFound  = errors.New("resume not found")
-	ErrDuplicateTitle  = errors.New("resume title already exists")
-	ErrDuplicateLabel  = errors.New("snapshot label already exists")
-	ErrVersionConflict = errors.New("version conflict: resume was modified by another client")
+	ErrResumeNotFound    = errors.New("resume not found")
+	ErrDuplicateTitle    = errors.New("resume title already exists")
+	ErrDuplicateLabel    = errors.New("snapshot label already exists")
+	ErrVersionConflict   = errors.New("version conflict: resume was modified by another client")
+	ErrCommentForbidden  = errors.New("comment not found or not owned by visitor")
 )
 
 type Repository interface {
@@ -48,8 +49,9 @@ type Repository interface {
 
 	// 分享评论
 	AddComment(ctx context.Context, shareID, authorName, content, moduleID, visitorID string, itemIndex int, snapshotID *string) (*model.ShareComment, error)
-	ListComments(ctx context.Context, shareID, visitorID, snapshotID string) ([]model.ShareComment, error)
-	DeleteComment(ctx context.Context, commentID string) error
+	ListComments(ctx context.Context, shareID, visitorID string) ([]model.ShareComment, error)
+	DeleteComment(ctx context.Context, shareID, visitorID, commentID string) error
+	DeleteCommentByID(ctx context.Context, commentID string) error
 	ListCommentsByResume(ctx context.Context, resumeID string) ([]model.AdminCommentItem, error)
 }
 

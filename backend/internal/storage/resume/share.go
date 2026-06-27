@@ -10,7 +10,6 @@ import (
 	"resumecraft-pdf-backend/internal/model"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // ----- Share Link -----
@@ -154,27 +153,17 @@ func (r *repository) AddComment(ctx context.Context, shareID, authorName, conten
 	}, nil
 }
 
-func (r *repository) ListComments(ctx context.Context, shareID, visitorID, snapshotID string) ([]model.ShareComment, error) {
-	var rows pgx.Rows
-	var err error
-
-	if snapshotID != "" {
-		rows, err = r.pool.Query(ctx,
-			`SELECT id, share_id, author_name, content, COALESCE(module_id,''), COALESCE(item_index,0),
-			 COALESCE(snapshot_id::text, ''), COALESCE(EXTRACT(EPOCH FROM created_at) * 1000, 0)::bigint
-			 FROM share_comments
-			 WHERE share_id = $1 AND visitor_id = $2 AND snapshot_id::text = $3
-			 ORDER BY created_at ASC`, shareID, visitorID, snapshotID,
-		)
-	} else {
-		rows, err = r.pool.Query(ctx,
-			`SELECT id, share_id, author_name, content, COALESCE(module_id,''), COALESCE(item_index,0),
-			 COALESCE(snapshot_id::text, ''), COALESCE(EXTRACT(EPOCH FROM created_at) * 1000, 0)::bigint
-			 FROM share_comments
-			 WHERE share_id = $1 AND visitor_id = $2
-			 ORDER BY created_at ASC`, shareID, visitorID,
-		)
-	}
+func (r *repository) ListComments(ctx context.Context, shareID, visitorID string) ([]model.ShareComment, error) {
+	// 评论按「分享链接 + 访客」保留，跨快照可见：不再用 snapshot_id 过滤。
+	// snapshot_id 仅作为记录字段保留（标记评论发表时基于的快照），不参与查询条件，
+	// 否则分享者更新简历产生新快照后，访客之前的评论会因 snapshot 不匹配而查不到。
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, share_id, author_name, content, COALESCE(module_id,''), COALESCE(item_index,0),
+		 COALESCE(snapshot_id::text, ''), COALESCE(EXTRACT(EPOCH FROM created_at) * 1000, 0)::bigint
+		 FROM share_comments
+		 WHERE share_id = $1 AND visitor_id = $2
+		 ORDER BY created_at ASC`, shareID, visitorID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -228,8 +217,26 @@ func (r *repository) ListCommentsByResume(ctx context.Context, resumeID string) 
 	return items, nil
 }
 
-// DeleteComment 删除分享评论（不需要认证，公开接口）
-func (r *repository) DeleteComment(ctx context.Context, commentID string) error {
+// DeleteComment 删除分享评论（公开接口）
+// 限定 share_id + visitor_id：访客只能删自己在该分享链接下发表的评论，
+// 避免仅凭 commentID 越权删除他人评论。
+func (r *repository) DeleteComment(ctx context.Context, shareID, visitorID, commentID string) error {
+	ct, err := r.pool.Exec(ctx,
+		`DELETE FROM share_comments WHERE id = $1 AND share_id = $2 AND visitor_id = $3`,
+		commentID, shareID, visitorID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete comment: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		// 评论不存在，或不属于该访客/分享链接 → 视为无权删除
+		return ErrCommentForbidden
+	}
+	return nil
+}
+
+// DeleteCommentByID 仅按 commentID 删除评论（管理端使用，调用方已校验简历所有权）
+func (r *repository) DeleteCommentByID(ctx context.Context, commentID string) error {
 	ct, err := r.pool.Exec(ctx, `DELETE FROM share_comments WHERE id = $1`, commentID)
 	if err != nil {
 		return fmt.Errorf("delete comment: %w", err)
