@@ -2,11 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 
 	"resumecraft-pdf-backend/internal/middleware"
 	"resumecraft-pdf-backend/internal/model"
+	"resumecraft-pdf-backend/internal/service/resume"
 	"resumecraft-pdf-backend/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -161,16 +163,26 @@ func (h *Handler) ListAllComments(c *gin.Context) {
 }
 
 // DeleteComment 删除分享评论
-// DELETE /api/share/:token/comments/:commentId
+// DELETE /api/share/:token/comments/:commentId?visitorId=xxx
 func (h *Handler) DeleteComment(c *gin.Context) {
+	token := c.Param("token")
 	commentID := c.Param("commentId")
+	visitorID := c.Query("visitorId")
 	if commentID == "" {
 		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "commentId required")
 		return
 	}
+	if visitorID == "" {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "visitorId required")
+		return
+	}
 
-	if err := h.resumeService.DeleteComment(c.Request.Context(), commentID); err != nil {
+	if err := h.resumeService.DeleteComment(c.Request.Context(), token, visitorID, commentID); err != nil {
 		log.Printf("[share] DeleteComment error: %v", err)
+		if errors.Is(err, resume.ErrCommentForbidden) {
+			response.JSONError(c, http.StatusForbidden, "FORBIDDEN", "无权删除该评论")
+			return
+		}
 		response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "评论不存在")
 		return
 	}
@@ -193,7 +205,7 @@ func (h *Handler) DeleteResumeComment(c *gin.Context) {
 		return
 	}
 
-	if err := h.resumeService.DeleteComment(c.Request.Context(), commentID); err != nil {
+	if err := h.resumeService.DeleteCommentByOwner(c.Request.Context(), commentID); err != nil {
 		log.Printf("[share] DeleteResumeComment error: %v", err)
 		response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "评论不存在")
 		return

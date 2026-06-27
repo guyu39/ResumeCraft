@@ -3,6 +3,8 @@ import type { ModuleType } from '@/types/resume'
 import type { ResumeEvaluateOutput } from '@/ai'
 import { aiApi, type ConversationItem } from '@/api/ai'
 import { useResumeStore } from '@/store/resumeStore'
+import { severityClassMap as sharedSeverityClassMap, severityTextMap as sharedSeverityTextMap } from './shared'
+import { buildEvaluationReportHTML } from './evaluationReport'
 
 interface ResumeScoreDrawerProps {
     open: boolean
@@ -16,9 +18,6 @@ interface ResumeScoreDrawerProps {
     error: string | null
     streamText: string
     modelName: string | null
-    currentResumeUpdatedAt: number
-    evaluatedResumeUpdatedAt: number | null
-    lastEvaluatedAt: number | null
     modeLabel?: string
     isAuthenticated?: boolean
     resumeId?: string
@@ -83,17 +82,9 @@ const levelColorClass = (score: number): string => {
     return 'text-red-600'
 }
 
-const severityClassMap: Record<'high' | 'medium' | 'low', string> = {
-    high: 'bg-red-50 text-red-700 border-red-100',
-    medium: 'bg-amber-50 text-amber-700 border-amber-100',
-    low: 'bg-blue-50 text-blue-700 border-blue-100',
-}
+const severityClassMap = sharedSeverityClassMap as Record<'high' | 'medium' | 'low', string>
 
-const severityTextMap: Record<'high' | 'medium' | 'low', string> = {
-    high: '高',
-    medium: '中',
-    low: '低',
-}
+const severityTextMap = sharedSeverityTextMap as Record<'high' | 'medium' | 'low', string>
 
 const parseStreamPreview = (streamText: string): StreamPreview => {
     const text = normalizeStreamText(streamText)
@@ -325,9 +316,6 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     error,
     streamText,
     modelName,
-    currentResumeUpdatedAt,
-    evaluatedResumeUpdatedAt,
-    lastEvaluatedAt,
     modeLabel,
     isAuthenticated,
     resumeId,
@@ -339,10 +327,10 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     restoredResult,
     onNewEvaluation,
 }) => {
-    if (!open) return null
-
     // 从 store 获取快照列表，用于在对话历史中显示快照标签
     const snapshots = useResumeStore((s) => s.snapshots)
+    const resumeTitle = useResumeStore((s) => s.resume.title)
+    const [exportingReport, setExportingReport] = useState(false)
     const getSnapshotLabel = (snapshotVersionId?: string | null): string | null => {
         if (!snapshotVersionId) return null
         const snap = snapshots.find((s) => s.id === snapshotVersionId)
@@ -351,6 +339,56 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     }
     // Use restored result for display when available
     const displayResult = restoredResult ?? result
+
+    // 导出评估报告 PDF：离屏渲染报告 HTML → html2canvas 截图 → jsPDF 按 A4 分页。
+    // 纯前端、无打印对话框、无 URL 页脚、不依赖后端 Chrome。
+    const handleExportReport = async () => {
+        if (!displayResult || exportingReport) return
+        setExportingReport(true)
+        const container = document.createElement('div')
+        container.style.position = 'fixed'
+        container.style.left = '-10000px'
+        container.style.top = '0'
+        container.style.background = '#ffffff'
+        container.innerHTML = buildEvaluationReportHTML(displayResult, {
+            resumeTitle,
+            evaluatedAt: Date.now(),
+        })
+        document.body.appendChild(container)
+        try {
+            const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+                import('html2canvas'),
+                import('jspdf'),
+            ])
+            const target = container.firstElementChild as HTMLElement
+            const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+
+            const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+            const pageW = pdf.internal.pageSize.getWidth()
+            const pageH = pdf.internal.pageSize.getHeight()
+            const imgW = pageW
+            const imgH = (canvas.height * imgW) / canvas.width
+            const imgData = canvas.toDataURL('image/jpeg', 0.92)
+
+            // 内容高于一页时按页切割
+            let remaining = imgH
+            let position = 0
+            while (remaining > 0) {
+                pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
+                remaining -= pageH
+                if (remaining > 0) {
+                    pdf.addPage()
+                    position -= pageH
+                }
+            }
+            pdf.save(`${resumeTitle || '简历'}-评估报告.pdf`)
+        } catch {
+            // 失败由按钮 loading 复位反映
+        } finally {
+            if (container.parentNode) container.parentNode.removeChild(container)
+            setExportingReport(false)
+        }
+    }
 
     // Reset history state when drawer closes
     useEffect(() => {
@@ -407,10 +445,6 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     const [showHistory, setShowHistory] = useState(false)
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
 
-    const isLatest = evaluatedResumeUpdatedAt !== null && evaluatedResumeUpdatedAt === currentResumeUpdatedAt
-    const hasVersionInfo = evaluatedResumeUpdatedAt !== null
-    const evaluatedAtText = lastEvaluatedAt ? new Date(lastEvaluatedAt).toLocaleString() : '未知'
-
     const streamPreview = useMemo(() => parseStreamPreview(streamText), [streamText])
     const streamDimensionItems = useMemo(
         () => normalizeDimensionItems(streamPreview.dimensions),
@@ -445,24 +479,24 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
         }
     }, [loading])
 
+    // 所有 Hook 调用之后再做条件 return，避免 open 切换时 Hook 数量变化（违反 Hooks 规则）
+    if (!open) return null
+
     return (
         <div className={embedded ? 'h-full' : 'fixed inset-0 z-50 bg-black/25'}>
-            <div className={embedded ? 'h-full bg-white' : 'absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl'}>
-                <div className="flex h-full flex-col">
-                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                        <div>
-                            <h4 className="text-sm font-semibold text-gray-800">AI 简历评估</h4>
-                            <p className="mt-0.5 text-xs text-gray-500">
-                                {isAuthenticated ? ((displayResult?.model ?? modelName) ?? modeLabel ?? '已连接 AI 模型') : '请先登录'}
-                            </p>
-                            {hasVersionInfo && (
-                                <p className={`mt-1 text-xs ${isLatest ? 'text-green-600' : 'text-amber-600'}`}>
-                                    {isLatest ? '版本：最新（与当前简历一致）' : '版本：已过期（简历已更新，建议重新评估）'}
-                                    <span className="ml-1 text-gray-500">评估时间：{evaluatedAtText}</span>
-                                </p>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2">
+            <div className={embedded ? 'h-full' : 'absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl'}>
+                {/* 与 JD 匹配 / 面试面板统一：灰底容器 + 圆角白卡片头部 */}
+                <div className="flex h-full flex-col bg-gray-50/80">
+                    <div className="flex-shrink-0 px-4 pt-4">
+                        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-gray-900">AI 简历评估</h3>
+                                    <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                                        {isAuthenticated ? ((displayResult?.model ?? modelName) ?? modeLabel ?? '基于当前简历内容输出评分、维度分析与改进建议。') : '请先登录后使用 AI 评估。'}
+                                    </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
                             {!isAuthenticated ? (
                                 <button
                                     type="button"
@@ -471,7 +505,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                         window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
                                         window.location.reload()
                                     }}
-                                    className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                                    className="rounded-lg bg-primary px-2.5 py-1 text-xs text-white hover:bg-primary/90"
                                 >
                                     登录
                                 </button>
@@ -480,7 +514,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                     type="button"
                                     onClick={onReevaluate}
                                     disabled={loading}
-                                    className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait"
+                                    className="rounded-lg bg-primary px-2.5 py-1 text-xs text-white hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait"
                                 >
                                     {loading ? '评估中...' : '评估'}
                                 </button>
@@ -507,22 +541,27 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                             })
                                         }
                                     }}
-                                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                                    className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
                                 >
                                     {showHistory ? '收起历史' : '查看历史'}
                                 </button>
                             )}
-                            {/* <button
-                                type="button"
-                                onClick={onClose}
-                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-                            >
-                                关闭
-                            </button> */}
+                            {isAuthenticated && displayResult && (
+                                <button
+                                    type="button"
+                                    onClick={handleExportReport}
+                                    disabled={exportingReport}
+                                    className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-wait"
+                                >
+                                    {exportingReport ? '导出中...' : '导出报告'}
+                                </button>
+                            )}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto no-scrollbar p-4">
+                    <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4">
                         {showHistory && (
                             <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
                                 <h5 className="mb-2 text-sm font-semibold text-gray-700">评估历史<span className="text-xs text-gray-500">（仅显示5条评估记录）</span></h5>

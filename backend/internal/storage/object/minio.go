@@ -17,6 +17,7 @@ type MinioClient struct {
 	client   *minio.Client
 	endpoint string
 	bucket   string
+	useSSL   bool
 }
 
 func NewMinioClient(cfg config.StorageConfig) *MinioClient {
@@ -33,6 +34,7 @@ func NewMinioClient(cfg config.StorageConfig) *MinioClient {
 		client:   client,
 		endpoint: cfg.Endpoint,
 		bucket:   cfg.Bucket,
+		useSSL:   cfg.UseSSL,
 	}
 
 	if err := mc.ensureBucket(context.Background()); err != nil {
@@ -54,6 +56,9 @@ func (m *MinioClient) Upload(ctx context.Context, key string, reader io.Reader, 
 	}
 
 	scheme := "http"
+	if m.useSSL {
+		scheme = "https"
+	}
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, m.endpoint, m.bucket, key), nil
 }
 

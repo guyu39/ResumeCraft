@@ -1,13 +1,13 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { aiApi, type InterviewQuestion, type InterviewAnswer, type InterviewEvaluation, type InterviewGenerateRequest, type InterviewEvaluateRequest, type AnalyzeTranscriptRequest } from '@/api/ai'
 
-type InterviewRound = 'technical_1' | 'technical_2' | 'hr'
+type InterviewRound = 'technical' | 'hr'
 type InterviewMode = 'simulate' | 'transcript'
 type Status = 'idle' | 'generating' | 'analyzing' | 'answering' | 'evaluating' | 'evaluated'
 
 export function useInterviewPrep() {
     const [mode, setMode] = useState<InterviewMode>('simulate')
-    const [interviewRound, setInterviewRound] = useState<InterviewRound>('technical_1')
+    const [interviewRound, setInterviewRound] = useState<InterviewRound>('technical')
 
     const [questions, setQuestions] = useState<InterviewQuestion[]>([])
     const [generating, setGenerating] = useState(false)
@@ -28,6 +28,18 @@ export function useInterviewPrep() {
     const [sessionId, setSessionId] = useState<string | null>(null)
     const [status, setStatus] = useState<Status>('idle')
 
+    // 取消正在进行的流式请求：重新发起或卸载时 abort，避免旧流的回调污染新状态、空烧 token
+    const abortRef = useRef<AbortController | null>(null)
+    const abortInflight = useCallback(() => {
+        if (abortRef.current) {
+            abortRef.current.abort()
+            abortRef.current = null
+        }
+    }, [])
+    useEffect(() => () => abortInflight(), [abortInflight])
+
+    const isAbortError = (err: unknown) => err instanceof DOMException && err.name === 'AbortError'
+
     const generateQuestions = useCallback(async (
         resumeId: string,
         content: Record<string, unknown>,
@@ -38,6 +50,10 @@ export function useInterviewPrep() {
         questionCount: number,
         snapshotVersionId?: string,
     ) => {
+        abortInflight()
+        const controller = new AbortController()
+        abortRef.current = controller
+
         setGenerating(true)
         setGenerateError(null)
         setQuestions([])
@@ -59,22 +75,25 @@ export function useInterviewPrep() {
             }
 
             const sid = await aiApi.interviewGenerate(req, (evt) => {
+                if (controller.signal.aborted) return
                 if (evt.type === 'question' && evt.question) {
                     setQuestions(prev => [...prev, evt.question!])
                 }
-            })
+            }, controller.signal)
 
             setSessionId(sid)
             setStatus('answering')
             return sid
         } catch (err) {
+            if (isAbortError(err)) return ''
             setGenerateError(err instanceof Error ? err.message : '生成面试题失败')
             setStatus('idle')
             return ''
         } finally {
+            if (abortRef.current === controller) abortRef.current = null
             setGenerating(false)
         }
-    }, [interviewRound])
+    }, [interviewRound, abortInflight])
 
     const analyzeTranscript = useCallback(async (
         resumeId: string,
@@ -85,6 +104,10 @@ export function useInterviewPrep() {
         snapshotVersionId?: string,
     ) => {
         if (!transcriptText.trim()) return ''
+
+        abortInflight()
+        const controller = new AbortController()
+        abortRef.current = controller
 
         setAnalyzing(true)
         setAnalyzeError(null)
@@ -116,75 +139,70 @@ export function useInterviewPrep() {
             let overallLevel = ''
             let overallSummary = ''
 
+            // 直接用 TranscriptAnalyzeEvent 判别联合，TS 在各分支收窄字段类型，
+            // 不再走 Record<string,unknown> 强转（之前因此漏掉了 questionText/answerText 字段名错配）
             const sid = await aiApi.interviewAnalyzeTranscript(req, (evt) => {
-                const e = evt as unknown as Record<string, unknown>
-                const t = e.type as string
+                if (controller.signal.aborted) return
 
-                if (t === 'qa_extracted') {
-                    const idx = (e.index as number) ?? 0
-                    const q = (e.questionText as string) ?? ''
-                    const a = (e.answerText as string) ?? ''
+                if (evt.type === 'qa_extracted') {
+                    const idx = evt.index ?? 0
                     setQuestions(prev => [...prev, {
                         id: `qa_${idx}`,
                         category: 'technical',
                         difficulty: 'medium',
-                        question: q,
+                        question: evt.questionText ?? '',
                         evaluationCriteria: { keyPoints: [], bonusPoints: [], redFlags: [] },
                     }])
                     setAnswers(prev => {
                         const next = new Map(prev)
                         next.set(`qa_${idx}`, {
                             questionId: `qa_${idx}`,
-                            answer: a,
+                            answer: evt.answerText ?? '',
                             skipped: false,
                             answeredAt: new Date().toISOString(),
                             fromTranscript: true,
-                            originalText: a,
+                            originalText: evt.answerText ?? '',
                         })
                         return next
                     })
-                } else if (t === 'qa_eval') {
+                } else if (evt.type === 'qa_eval') {
                     questionEvaluations.push({
-                        questionId: `qa_${(e.index as number) ?? 0}`,
-                        score: (e.score as number) ?? 0,
-                        briefFeedback: (e.briefFeedback as string) ?? '',
-                        keyPointsHit: (e.keyPointsHit as string[]) ?? [],
-                        missedPoints: (e.missedPoints as string[]) ?? [],
+                        questionId: `qa_${evt.index ?? 0}`,
+                        score: evt.score ?? 0,
+                        briefFeedback: evt.briefFeedback ?? '',
+                        keyPointsHit: evt.keyPointsHit ?? [],
+                        missedPoints: evt.missedPoints ?? [],
                         redFlagsFound: [],
                     })
-                } else if (t === 'dimension_score') {
-                    const dim = e.dimension as string
-                    if (dim) {
-                        dimensionScores[dim] = {
-                            score: (e.score as number) ?? 0,
-                            level: (e.level as string) ?? '',
-                            feedback: (e.feedback as string) ?? '',
+                } else if (evt.type === 'dimension_score') {
+                    if (evt.dimension) {
+                        dimensionScores[evt.dimension] = {
+                            score: evt.score ?? 0,
+                            level: evt.level ?? '',
+                            feedback: evt.feedback ?? '',
                         }
                     }
-                } else if (t === 'round_score') {
-                    const r = e.round as string
-                    if (r) {
-                        roundScores[r] = (e.score as number) ?? 0
-                        const reason = (e.reason as string) ?? ''
-                        if (reason) roundReasons[r] = reason
+                } else if (evt.type === 'round_score') {
+                    if (evt.round) {
+                        roundScores[evt.round] = evt.score ?? 0
+                        if (evt.reason) roundReasons[evt.round] = evt.reason
                     }
-                } else if (t === 'overall') {
-                    overallScore = (e.score as number) ?? 0
-                    overallLevel = (e.level as string) ?? ''
-                    overallSummary = (e.summary as string) ?? ''
-                    const rs = e.roundScores as Record<string, number> | undefined
-                    if (rs) {
-                        for (const [k, v] of Object.entries(rs)) roundScores[k] = v
+                } else if (evt.type === 'overall') {
+                    overallScore = evt.score ?? 0
+                    overallLevel = evt.level ?? ''
+                    overallSummary = evt.summary ?? ''
+                    if (evt.roundScores) {
+                        for (const [k, v] of Object.entries(evt.roundScores)) roundScores[k] = v
                     }
-                } else if (t === 'improvement') {
+                } else if (evt.type === 'improvement') {
                     improvementSuggestions.push({
-                        priority: (e.priority as 'high' | 'medium' | 'low') ?? 'medium',
-                        area: (e.area as string) ?? '',
-                        suggestion: (e.suggestion as string) ?? '',
-                        estimatedGain: (e.estimatedGain as number) ?? 0,
-                        targetRound: (e.targetRound as string) ?? '',
+                        priority: (evt.priority as 'high' | 'medium' | 'low') ?? 'medium',
+                        area: evt.area ?? '',
+                        suggestion: evt.suggestion ?? '',
+                        estimatedGain: evt.estimatedGain ?? 0,
+                        targetRound: evt.targetRound ?? '',
                     })
-                } else if (t === 'finish') {
+                } else if (evt.type === 'finish') {
                     // 流结束时，把累积数据组装为 evaluation 并写入 state
                     setEvaluation({
                         summary: overallSummary
@@ -201,18 +219,20 @@ export function useInterviewPrep() {
                     })
                     setStatus('evaluated')
                 }
-            })
+            }, controller.signal)
 
             setSessionId(sid)
             return sid
         } catch (err) {
+            if (isAbortError(err)) return ''
             setAnalyzeError(err instanceof Error ? err.message : '分析录音失败')
             setStatus('idle')
             return ''
         } finally {
+            if (abortRef.current === controller) abortRef.current = null
             setAnalyzing(false)
         }
-    }, [interviewRound, transcriptText, transcriptSource])
+    }, [interviewRound, transcriptText, transcriptSource, abortInflight])
 
     const setAnswer = useCallback((questionId: string, answer: string) => {
         setAnswers(prev => {
@@ -251,6 +271,10 @@ export function useInterviewPrep() {
     const submitForEvaluation = useCallback(async () => {
         if (!sessionId) return
 
+        abortInflight()
+        const controller = new AbortController()
+        abortRef.current = controller
+
         setEvaluating(true)
         setEvaluateError(null)
         setEvaluation(null)
@@ -275,6 +299,7 @@ export function useInterviewPrep() {
             }
 
             await aiApi.interviewEvaluate(req, (evt) => {
+                if (controller.signal.aborted) return
                 if (evt.type === 'dimension_score') {
                     const ds = evt as { type: 'dimension_score'; dimension: string; score: number; level: string; feedback: string }
                     evalData = { ...evalData, dimensionScores: { ...evalData.dimensionScores, [ds.dimension]: { score: ds.score, level: ds.level, feedback: ds.feedback } } }
@@ -287,7 +312,7 @@ export function useInterviewPrep() {
                 }
                 if (evt.type === 'overall') {
                     const ov = evt as { type: 'overall'; score: number; level: string; roundScores: Record<string, number> }
-                    evalData = { ...evalData, roundScores: ov.roundScores || evalData.roundScores, summary: `综合评分 ${ov.score} 分（${ov.level}）` }
+                    evalData = { ...evalData, overallScore: ov.score, overallLevel: ov.level, roundScores: ov.roundScores || evalData.roundScores, summary: `综合评分 ${ov.score} 分（${ov.level}）` }
                     setEvaluation({ ...evalData })
                 }
                 if (evt.type === 'question_eval') {
@@ -300,16 +325,18 @@ export function useInterviewPrep() {
                     evalData = { ...evalData, improvementSuggestions: [...evalData.improvementSuggestions, { priority: imp.priority as 'high' | 'medium' | 'low', area: imp.area, suggestion: imp.suggestion, estimatedGain: imp.estimatedGain, targetRound: imp.targetRound }] }
                     setEvaluation({ ...evalData })
                 }
-            })
+            }, controller.signal)
 
             setStatus('evaluated')
         } catch (err) {
+            if (isAbortError(err)) return
             setEvaluateError(err instanceof Error ? err.message : '评估失败')
             setStatus('answering')
         } finally {
+            if (abortRef.current === controller) abortRef.current = null
             setEvaluating(false)
         }
-    }, [sessionId, answers, interviewRound])
+    }, [sessionId, answers, interviewRound, abortInflight])
 
     const reset = useCallback(() => {
         setQuestions([])
@@ -338,8 +365,11 @@ export function useInterviewPrep() {
         if (session.mode === 'transcript' || session.mode === 'simulate') {
             setMode(session.mode)
         }
-        if (session.interviewRound === 'technical_1' || session.interviewRound === 'technical_2' || session.interviewRound === 'hr') {
-            setInterviewRound(session.interviewRound)
+        // 兼容历史记录里的 technical_1/technical_2，统一映射为 technical
+        if (session.interviewRound === 'hr') {
+            setInterviewRound('hr')
+        } else if (session.interviewRound === 'technical' || session.interviewRound === 'technical_1' || session.interviewRound === 'technical_2') {
+            setInterviewRound('technical')
         }
         setQuestions(session.questions || [])
         const answerMap = new Map<string, InterviewAnswer>()

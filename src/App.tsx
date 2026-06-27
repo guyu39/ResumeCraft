@@ -6,7 +6,6 @@ import React, { useEffect, useState } from 'react'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import AppShell from '@/components/layout/AppShell'
-import PreviewPage from '@/components/layout/PreviewPage'
 import ShareViewPage from '@/pages/ShareViewPage'
 import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
@@ -50,9 +49,17 @@ const App: React.FC = () => {
   const [cloudResumes, setCloudResumes] = useState<any[]>([])
   const [showLogin, setShowLogin] = useState(false)
 
-  const pathname = window.location.pathname
+  // 用 state 持有 pathname 并监听 popstate，使浏览器前进/后退键能正确切换页面。
+  // （此前直接读 window.location.pathname 且无监听，回退时 URL 变了但 React 不重渲染，
+  //  表现为「浏览器回退键失效」。）
+  const [pathname, setPathname] = useState(window.location.pathname)
+  useEffect(() => {
+    const onPopState = () => setPathname(window.location.pathname)
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
   const isSharePage = pathname.startsWith('/share/')
-  const isPreviewPage = pathname === '/preview'
   const isEditorPage = pathname === '/editor'
 
   // 检查是否需要显示登录页
@@ -169,14 +176,6 @@ const App: React.FC = () => {
     loadCloudResumes()
   }, [authChecked, isAuthenticated, initResume])
 
-  // 编辑页和预览页需要恢复简历
-  useEffect(() => {
-    if (!authChecked || !isAuthenticated) return
-    if (isEditorPage || isPreviewPage) {
-      // 已登录时，云端简历已在上面加载
-    }
-  }, [authChecked, isAuthenticated, isEditorPage, isPreviewPage])
-
   // 等待认证状态确定
   if (!authChecked) {
     return (
@@ -194,7 +193,6 @@ const App: React.FC = () => {
     return <LoginPage />
   }
 
-  if (isPreviewPage) return <PreviewPage />
   if (isEditorPage) return <AppShell />
 
   // 简历列表页

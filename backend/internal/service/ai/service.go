@@ -42,16 +42,18 @@ type Service interface {
 	StreamEvaluate(ctx context.Context, userID string, req model.EvaluateRequest, onEvent func(StreamEvent)) (*model.EvaluateResponse, error)
 	StreamJDMatch(ctx context.Context, userID string, req model.JDMatchRequest, onEvent func(StreamEvent)) (*model.JDMatchResponse, error)
 	ScoreResumeForJD(ctx context.Context, userID string, req model.JDScoreRequest) (*model.JDScoreResponse, error)
-	GenerateCoverLetter(ctx context.Context, userID string, req model.CoverLetterRequest) (*model.CoverLetterResponse, error)
 	RewriteBullet(ctx context.Context, userID string, req model.BulletRewriteRequest) (*model.BulletRewriteResponse, error)
+	RewriteModule(ctx context.Context, userID string, req model.ModuleRewriteRequest) (*model.ModuleRewriteResponse, error)
+	OptimizeForJD(ctx context.Context, userID string, req model.JDOptimizeRequest) (map[string]interface{}, []string, int, string, error)
 	Suggest(ctx context.Context, userID string, req model.SuggestRequest) (*model.SuggestResponse, error)
 
 	// 面试准备
 	GenerateInterviewQuestions(ctx context.Context, userID string, req model.InterviewGenerateRequest, onEvent func(StreamEvent)) error
 	EvaluateInterviewAnswers(ctx context.Context, userID string, req model.InterviewEvaluateRequest, onEvent func(StreamEvent)) error
+	GenerateFollowup(ctx context.Context, userID string, req model.InterviewFollowupRequest) (string, bool, error)
 	AnalyzeTranscript(ctx context.Context, userID string, req model.AnalyzeTranscriptRequest, onEvent func(StreamEvent)) error
 	SaveInterviewProgress(ctx context.Context, userID, sessionID string, req model.SaveInterviewProgressRequest) error
-	ListInterviewSessions(ctx context.Context, userID string, limit, offset int) (*model.InterviewSessionListResponse, error)
+	ListInterviewSessions(ctx context.Context, userID, resumeID string, limit, offset int) (*model.InterviewSessionListResponse, error)
 	GetInterviewSession(ctx context.Context, userID, sessionID string) (*model.InterviewSession, error)
 	DeleteInterviewSession(ctx context.Context, userID, sessionID string) error
 
@@ -973,99 +975,6 @@ func (s *service) ScoreResumeForJD(ctx context.Context, userID string, req model
 	return resp, nil
 }
 
-// GenerateCoverLetter 生成求职信
-func (s *service) GenerateCoverLetter(ctx context.Context, userID string, req model.CoverLetterRequest) (*model.CoverLetterResponse, error) {
-	cfg, err := s.cfgRepo.GetByUserID(ctx, userID)
-	if err != nil {
-		return nil, ErrAIConfigNotFound
-	}
-	if !cfg.Enabled {
-		return nil, fmt.Errorf("AI 功能未启用")
-	}
-	apiKey, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt API key")
-	}
-
-	prompt := buildCoverLetterPrompt(req.Content, req.JDText, req.JobTitle, req.CompanyName, req.Tone, req.Language)
-
-	// 脱敏
-	maskedPrompt, san := s.maskPrompt(prompt)
-	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
-		APIKey:    apiKey,
-		BaseURL:   cfg.BaseURL,
-		Model:     cfg.DefaultModel,
-		Prompt:    maskedPrompt,
-		TimeoutMs: cfg.TimeoutMs,
-	})
-	if err != nil {
-		log.Printf("[ai] GenerateCoverLetter failed: %v", err)
-		return nil, ErrAIRequestFailed
-	}
-	// 还原脱敏
-	result.Text = s.unmaskResponse(san, result.Text)
-
-	coverResp, err := parseCoverLetterResponse(result.Text)
-	if err != nil {
-		log.Printf("[ai] Failed to parse cover letter response: %v", err)
-		return nil, fmt.Errorf("failed to parse AI response")
-	}
-	coverResp.Model = cfg.DefaultModel
-	coverResp.JobTitle = strings.TrimSpace(req.JobTitle)
-	coverResp.CompanyName = strings.TrimSpace(req.CompanyName)
-	coverResp.JDText = strings.TrimSpace(req.JDText)
-
-	convID := uuid.New().String()
-	contextData := map[string]any{
-		"title":          coverResp.Title,
-		"coverLetter":    coverResp.CoverLetter,
-		"highlightsUsed": coverResp.HighlightsUsed,
-		"tips":           coverResp.Tips,
-		"model":          coverResp.Model,
-		"jobTitle":       req.JobTitle,
-		"companyName":    req.CompanyName,
-		"jdText":         req.JDText,
-		"tone":           req.Tone,
-		"language":       req.Language,
-	}
-	contextJSON, _ := json.Marshal(contextData)
-	title := "求职信生成"
-	if strings.TrimSpace(req.JobTitle) != "" {
-		title = fmt.Sprintf("求职信 - %s", strings.TrimSpace(req.JobTitle))
-	}
-	conversation := &aiStorage.ConversationRecord{
-		ID:                convID,
-		UserID:            userID,
-		ResumeID:          &req.ResumeID,
-		SnapshotVersionID: req.SnapshotVersionID,
-		Type:              string(model.ConversationTypeCoverLetter),
-		Title:             stringPtr(title),
-		Context:           contextJSON,
-	}
-	if err := s.repo.Create(context.Background(), conversation); err != nil {
-		log.Printf("[ai] Failed to create cover letter conversation: %v", err)
-	} else if conversation.ResumeID != nil {
-		s.invalidateConvCache(context.Background(), userID, *conversation.ResumeID)
-	}
-	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
-		ID:             uuid.New().String(),
-		ConversationID: convID,
-		Role:           "user",
-		Content:        prompt,
-		Model:          &cfg.DefaultModel,
-	})
-	coverResp.ConversationID = convID
-	s.repo.AddMessage(context.Background(), &aiStorage.MessageRecord{
-		ID:             uuid.New().String(),
-		ConversationID: convID,
-		Role:           "assistant",
-		Content:        result.Text,
-		Model:          &cfg.DefaultModel,
-	})
-
-	return coverResp, nil
-}
-
 // PartialEvaluateResult 部分评估结果（流式推送用）
 type PartialEvaluateResult struct {
 	Raw          string                    `json:"raw,omitempty"`
@@ -1113,6 +1022,8 @@ type StreamEvent struct {
 	BriefFeedback string         `json:"briefFeedback,omitempty"`
 	KeyPointsHit  []string       `json:"keyPointsHit,omitempty"`
 	MissedPoints  []string       `json:"missedPoints,omitempty"`
+	RedFlagsFound []string       `json:"redFlagsFound,omitempty"`
+	QuestionID    string         `json:"questionId,omitempty"`
 	Dimension     string         `json:"dimension,omitempty"`
 	Feedback      string         `json:"feedback,omitempty"`
 	Round         string         `json:"round,omitempty"`
@@ -1625,54 +1536,6 @@ func buildJDScorePrompt(content map[string]interface{}, jdText, targetTitle, com
 %s`, strings.TrimSpace(targetTitle), strings.TrimSpace(companyName), strings.TrimSpace(jdText), string(resumeJSON))
 }
 
-func buildCoverLetterPrompt(content map[string]interface{}, jdText, jobTitle, companyName, tone, language string) string {
-	resumeJSON, _ := json.Marshal(sanitizeAIResumeContent(content))
-	if strings.TrimSpace(tone) == "" {
-		tone = "professional"
-	}
-	if strings.TrimSpace(language) == "" {
-		language = "zh-CN"
-	}
-
-	return fmt.Sprintf(`你是资深职业顾问，请基于候选人简历和目标岗位信息生成专业求职信或投递邮件正文。
-
-【隐私保护声明 — 必须遵守】
-简历中以 [NAME_N]、[PHONE_N]、[EMAIL_N] 等固定格式出现的内容均为已填写真实信息的隐私脱敏标记。生成的求职信中可以保留这些脱敏标记，禁止将其视为缺失或错误。
-
-【强制规则】
-1. 只返回一个 JSON 对象，禁止输出 Markdown、代码块、注释或额外说明。
-2. 不编造简历中不存在的经历、公司、奖项或数据。
-3. 求职信要自然、具体、适合直接复制使用，避免空泛套话。
-4. 如果 JD 为空，基于岗位名称和简历亮点生成通用但专业的版本。
-5. language 为 zh-CN 时使用中文；为 en-US 时使用英文。
-
-【返回格式】
-{
-  "title": "求职信 - 岗位名称",
-  "coverLetter": "完整求职信正文",
-  "highlightsUsed": ["使用到的简历亮点"],
-  "tips": ["投递前建议"]
-}
-
-【目标岗位】
-%s
-
-【目标公司】
-%s
-
-【语气风格】
-%s
-
-【语言】
-%s
-
-【岗位 JD】
-%s
-
-【简历 JSON】
-%s`, strings.TrimSpace(jobTitle), strings.TrimSpace(companyName), strings.TrimSpace(tone), strings.TrimSpace(language), strings.TrimSpace(jdText), string(resumeJSON))
-}
-
 func buildSuggestPrompt(moduleType, fieldKey, content string) string {
 	return fmt.Sprintf(`你是资深简历润色专家，严格遵循以下规则提供修改建议，禁止任何违规输出。
 
@@ -1873,36 +1736,6 @@ func parseJDMatchResponse(text string) (*model.JDMatchResponse, error) {
 	}
 
 	return resp, nil
-}
-
-func parseCoverLetterResponse(text string) (*model.CoverLetterResponse, error) {
-	firstBrace := strings.Index(text, "{")
-	lastBrace := strings.LastIndex(text, "}")
-	if firstBrace == -1 || lastBrace == -1 || lastBrace <= firstBrace {
-		return nil, fmt.Errorf("invalid JSON response")
-	}
-	jsonStr := text[firstBrace : lastBrace+1]
-
-	var resp struct {
-		Title          string   `json:"title"`
-		CoverLetter    string   `json:"coverLetter"`
-		HighlightsUsed []string `json:"highlightsUsed"`
-		Tips           []string `json:"tips"`
-	}
-	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(resp.CoverLetter) == "" {
-		return nil, fmt.Errorf("cover letter is empty")
-	}
-
-	return &model.CoverLetterResponse{
-		Title:          resp.Title,
-		CoverLetter:    resp.CoverLetter,
-		HighlightsUsed: resp.HighlightsUsed,
-		Tips:           resp.Tips,
-		RawText:        text,
-	}, nil
 }
 
 func parseSuggestResponse(text string) (*model.SuggestResponse, error) {

@@ -10,6 +10,7 @@ import { shareApi, type ShareComment, type ShareResumeView } from '@/api/resume'
 import { getVisitorId } from '@/utils/visitor'
 import { DEFAULT_RESUME_STYLE_SETTINGS, type Resume } from '@/types/resume'
 import ClassicTemplate from '@/components/resume/preview/ClassicTemplate'
+import ToastContainer, { toast } from '@/components/common/Toast'
 
 /* === 常量 === */
 const RESUME_W = 794
@@ -211,7 +212,8 @@ const ShareViewPage: React.FC = () => {
     if (!token) return
     shareApi.view(token).then(viewRes => {
       setData(viewRes)
-      return shareApi.listComments(token, visitorId, viewRes.latestSnapshotId || undefined)
+      // 评论跨快照保留，列表不再按 snapshot 过滤
+      return shareApi.listComments(token, visitorId)
     }).then(commentsRes => {
       setComments(commentsRes.items || [])
     }).catch(() => {
@@ -220,14 +222,27 @@ const ShareViewPage: React.FC = () => {
   }, [token, visitorId])
 
   const handleSubmit = useCallback(async (text: string, name: string) => {
-    if (!active) return; setSending(true); const [mid, idx] = active.split('#')
-    try { const c = await shareApi.addComment(token, text, name, mid, Number(idx), visitorId, data?.latestSnapshotId || undefined); setComments(p => [...p, c]) } catch { /* */ }
-    setSending(false)
+    if (!active) return
+    setSending(true)
+    const [mid, idx] = active.split('#')
+    try {
+      const c = await shareApi.addComment(token, text, name, mid, Number(idx), visitorId, data?.latestSnapshotId || undefined)
+      setComments(p => [...p, c])
+    } catch {
+      toast('评论发送失败，请重试')
+    } finally {
+      setSending(false)
+    }
   }, [active, token, visitorId, data?.latestSnapshotId])
 
   const handleDeleteComment = useCallback(async (commentId: string) => {
-    try { await shareApi.deleteComment(token, commentId); setComments(p => p.filter(c => c.id !== commentId)) } catch { /* ignore */ }
-  }, [token])
+    try {
+      await shareApi.deleteComment(token, commentId, visitorId)
+      setComments(p => p.filter(c => c.id !== commentId))
+    } catch {
+      toast('删除失败，只能删除自己的评论')
+    }
+  }, [token, visitorId])
 
   // 渲染每个 item 左侧的评论图标（始终显示，count=0 时显示灰色图标）
   const renderItemCommentIcon = useCallback((moduleId: string, itemIndex: number) => {
@@ -291,6 +306,7 @@ const ShareViewPage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
+      <ToastContainer />
 
       {/* ======== PC Header ======== */}
       <header className="hidden md:flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 flex-shrink-0">

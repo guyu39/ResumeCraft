@@ -104,7 +104,8 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 					aiGroup.POST("/jd-match/stream", aiLimiter, h.JDMatchStream)
 					aiGroup.POST("/score", aiLimiter, h.ScoreResumeForJD)
 					aiGroup.POST("/rewrite/bullet", aiLimiter, h.RewriteBullet)
-					aiGroup.POST("/cover-letter", aiLimiter, h.GenerateCoverLetter)
+					aiGroup.POST("/rewrite/module", aiLimiter, h.RewriteModule)
+					aiGroup.POST("/jd-optimize", aiLimiter, h.OptimizeForJD)
 					aiGroup.POST("/suggest", aiLimiter, h.SuggestContent)
 					aiGroup.POST("/translate", aiLimiter, h.TranslateResume)
 					aiGroup.POST("/enhance", aiLimiter, h.EnhanceContent)
@@ -113,7 +114,8 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 					aiGroup.POST("/jd-match/stream", h.JDMatchStream)
 					aiGroup.POST("/score", h.ScoreResumeForJD)
 					aiGroup.POST("/rewrite/bullet", h.RewriteBullet)
-					aiGroup.POST("/cover-letter", h.GenerateCoverLetter)
+					aiGroup.POST("/rewrite/module", h.RewriteModule)
+					aiGroup.POST("/jd-optimize", h.OptimizeForJD)
 					aiGroup.POST("/suggest", h.SuggestContent)
 					aiGroup.POST("/translate", h.TranslateResume)
 					aiGroup.POST("/enhance", h.EnhanceContent)
@@ -128,10 +130,12 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 						interviewGroup.POST("/generate", aiLimiter, h.GenerateInterviewQuestions)
 						interviewGroup.POST("/evaluate", aiLimiter, h.EvaluateInterviewAnswers)
 						interviewGroup.POST("/analyze-transcript", aiLimiter, h.AnalyzeTranscript)
+						interviewGroup.POST("/followup", aiLimiter, h.GenerateFollowup)
 					} else {
 						interviewGroup.POST("/generate", h.GenerateInterviewQuestions)
 						interviewGroup.POST("/evaluate", h.EvaluateInterviewAnswers)
 						interviewGroup.POST("/analyze-transcript", h.AnalyzeTranscript)
+						interviewGroup.POST("/followup", h.GenerateFollowup)
 					}
 					interviewGroup.PUT("/sessions/:id/progress", h.SaveInterviewProgress)
 					// 面试历史查询（轻量级，不挂载 aiLimiter）

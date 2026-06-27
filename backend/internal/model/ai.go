@@ -296,32 +296,6 @@ type JDScoreImprovement struct {
 	Priority      string `json:"priority"`
 }
 
-// CoverLetterRequest 求职信生成请求
-type CoverLetterRequest struct {
-	ResumeID          string                 `json:"resumeId" binding:"required"`
-	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
-	Content           map[string]interface{} `json:"content" binding:"required"`
-	JDText            string                 `json:"jdText"`
-	JobTitle          string                 `json:"jobTitle" binding:"required"`
-	CompanyName       string                 `json:"companyName"`
-	Tone              string                 `json:"tone"`
-	Language          string                 `json:"language"`
-}
-
-// CoverLetterResponse 求职信生成响应
-type CoverLetterResponse struct {
-	Title          string   `json:"title"`
-	CoverLetter    string   `json:"coverLetter"`
-	HighlightsUsed []string `json:"highlightsUsed"`
-	Tips           []string `json:"tips"`
-	JobTitle       string   `json:"jobTitle,omitempty"`
-	CompanyName    string   `json:"companyName,omitempty"`
-	JDText         string   `json:"jdText,omitempty"`
-	RawText        string   `json:"rawText,omitempty"`
-	Model          string   `json:"model"`
-	ConversationID string   `json:"conversationId"`
-}
-
 // BulletRewriteRequest Bullet Point 重写请求
 type BulletRewriteRequest struct {
 	ResumeID         string `json:"resumeId" binding:"required"`
@@ -353,6 +327,52 @@ type BulletRewriteVersion struct {
 	Text       string   `json:"text"`
 	Highlights []string `json:"highlights"`
 	Confidence float64  `json:"confidence"`
+}
+
+// ModuleRewriteRequest 整模块批量改写请求
+type ModuleRewriteRequest struct {
+	ResumeID         string                 `json:"resumeId" binding:"required"`
+	ModuleType       string                 `json:"moduleType" binding:"required"`
+	ModuleInstanceID string                 `json:"moduleInstanceId"`
+	Content          map[string]interface{} `json:"content" binding:"required"` // 模块完整数据（含 items）
+	JDText           string                 `json:"jdText"`
+	TargetTitle      string                 `json:"targetTitle"`
+	CompanyName      string                 `json:"companyName"`
+}
+
+// ModuleRewriteItem 单条改写结果（与原条目按 index 对齐）
+type ModuleRewriteItem struct {
+	Index      int      `json:"index"`
+	Original   string   `json:"original"`
+	Rewritten  string   `json:"rewritten"`
+	Highlights []string `json:"highlights"`
+}
+
+// ModuleRewriteResponse 整模块改写响应
+type ModuleRewriteResponse struct {
+	ModuleType     string              `json:"moduleType"`
+	Items          []ModuleRewriteItem `json:"items"`
+	Model          string              `json:"model"`
+	RawText        string              `json:"rawText,omitempty"`
+	ConversationID string              `json:"conversationId"`
+}
+
+// JDOptimizeRequest JD 定向优化请求
+type JDOptimizeRequest struct {
+	ResumeID    string                 `json:"resumeId" binding:"required"`
+	Content     map[string]interface{} `json:"content" binding:"required"` // 当前简历完整 content（含 modules）
+	JDText      string                 `json:"jdText" binding:"required"`
+	TargetTitle string                 `json:"targetTitle"`
+	CompanyName string                 `json:"companyName"`
+}
+
+// JDOptimizeResponse JD 定向优化响应（快照在 handler 落库后回填 snapshotId/label）
+type JDOptimizeResponse struct {
+	SnapshotID   string   `json:"snapshotId"`
+	Label        string   `json:"label"`
+	ChangedCount int      `json:"changedCount"`
+	Notes        []string `json:"notes"`
+	Model        string   `json:"model"`
 }
 
 // SuggestRequest 润色请求
@@ -496,6 +516,21 @@ type InterviewEvaluateRequest struct {
 	SessionID      string            `json:"sessionId" binding:"required"`
 	Answers        []InterviewAnswer `json:"answers" binding:"required"`
 	InterviewRound string            `json:"interviewRound"`
+}
+
+// InterviewFollowupTurn 追问对话中的一轮（user=候选人回答 / assistant=面试官追问）
+type InterviewFollowupTurn struct {
+	Role    string `json:"role"` // user | assistant
+	Content string `json:"content"`
+}
+
+// InterviewFollowupRequest 面试追问请求
+type InterviewFollowupRequest struct {
+	SessionID  string                  `json:"sessionId" binding:"required"`
+	QuestionID string                  `json:"questionId" binding:"required"`
+	Question   string                  `json:"question" binding:"required"`
+	Answer     string                  `json:"answer" binding:"required"`
+	History    []InterviewFollowupTurn `json:"history"`
 }
 
 type AnalyzeTranscriptRequest struct {

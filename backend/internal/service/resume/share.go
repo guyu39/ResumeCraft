@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
 	"resumecraft-pdf-backend/internal/model"
+	resumeRepo "resumecraft-pdf-backend/internal/storage/resume"
 )
 
 func generateToken() string {
@@ -75,17 +77,30 @@ func (s *service) ListComments(ctx context.Context, token, visitorID, snapshotID
 		return nil, err
 	}
 
-	// 如果前端没传，回退到分享链接绑定的快照
-	sid := snapshotID
-	if sid == "" && share.SnapshotID != nil {
-		sid = *share.SnapshotID
-	}
-
-	return s.repo.ListComments(ctx, share.ID, visitorID, sid)
+	// 评论跨快照保留：snapshotID 参数不再参与过滤（repo 仅按 share_id + visitor_id 查），
+	// 保留入参仅为向后兼容前端调用签名。
+	_ = snapshotID
+	return s.repo.ListComments(ctx, share.ID, visitorID)
 }
 
-func (s *service) DeleteComment(ctx context.Context, commentID string) error {
-	return s.repo.DeleteComment(ctx, commentID)
+// DeleteComment 访客删除自己的评论：校验 token + visitorId 归属，防止越权删他人评论
+func (s *service) DeleteComment(ctx context.Context, token, visitorID, commentID string) error {
+	share, err := s.GetShareLink(ctx, token)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.DeleteComment(ctx, share.ID, visitorID, commentID); err != nil {
+		if errors.Is(err, resumeRepo.ErrCommentForbidden) {
+			return ErrCommentForbidden
+		}
+		return err
+	}
+	return nil
+}
+
+// DeleteCommentByOwner 简历所有者删除任意评论（管理端，调用方已校验所有权）
+func (s *service) DeleteCommentByOwner(ctx context.Context, commentID string) error {
+	return s.repo.DeleteCommentByID(ctx, commentID)
 }
 
 func (s *service) ListAllComments(ctx context.Context, userID, resumeID string) (*model.AdminCommentsResponse, error) {

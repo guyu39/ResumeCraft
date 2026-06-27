@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -162,6 +163,35 @@ func (h *Handler) EvaluateInterviewAnswers(c *gin.Context) {
 	}
 }
 
+// GenerateFollowup 面试追问
+// POST /api/ai/interview/followup
+func (h *Handler) GenerateFollowup(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.InterviewFollowupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	followup, done, err := h.aiService.GenerateFollowup(c.Request.Context(), userID.(string), req)
+	if err != nil {
+		if errors.Is(err, ai.ErrAIConfigNotFound) {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[interview] GenerateFollowup error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "生成追问失败")
+		return
+	}
+
+	response.JSONSuccess(c, gin.H{"followup": followup, "done": done})
+}
+
 func (h *Handler) AnalyzeTranscript(c *gin.Context) {
 	userID, ok := c.Get(middleware.ContextUserIDKey)
 	if !ok {
@@ -249,7 +279,7 @@ func (h *Handler) SaveInterviewProgress(c *gin.Context) {
 }
 
 // ListInterviewSessions 面试历史列表
-// GET /api/ai/interview/sessions?limit=20&offset=0
+// GET /api/ai/interview/sessions?resumeId=xxx&limit=20&offset=0
 func (h *Handler) ListInterviewSessions(c *gin.Context) {
 	userID, ok := c.Get(middleware.ContextUserIDKey)
 	if !ok {
@@ -257,6 +287,7 @@ func (h *Handler) ListInterviewSessions(c *gin.Context) {
 		return
 	}
 
+	resumeID := c.Query("resumeId")
 	limit := 20
 	offset := 0
 	if v := c.Query("limit"); v != "" {
@@ -270,7 +301,7 @@ func (h *Handler) ListInterviewSessions(c *gin.Context) {
 		}
 	}
 
-	resp, err := h.aiService.ListInterviewSessions(c.Request.Context(), userID.(string), limit, offset)
+	resp, err := h.aiService.ListInterviewSessions(c.Request.Context(), userID.(string), resumeID, limit, offset)
 	if err != nil {
 		log.Printf("[interview] ListInterviewSessions error: %v", err)
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "查询面试历史失败")
@@ -297,7 +328,7 @@ func (h *Handler) GetInterviewSession(c *gin.Context) {
 
 	session, err := h.aiService.GetInterviewSession(c.Request.Context(), userID.(string), sessionID)
 	if err != nil {
-		if err == ai.ErrInterviewSessionNotFound {
+		if errors.Is(err, ai.ErrInterviewSessionNotFound) {
 			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "面试会话不存在或无权访问")
 			return
 		}
@@ -325,7 +356,7 @@ func (h *Handler) DeleteInterviewSession(c *gin.Context) {
 	}
 
 	if err := h.aiService.DeleteInterviewSession(c.Request.Context(), userID.(string), sessionID); err != nil {
-		if err == ai.ErrInterviewSessionNotFound {
+		if errors.Is(err, ai.ErrInterviewSessionNotFound) {
 			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "面试会话不存在或无权访问")
 			return
 		}

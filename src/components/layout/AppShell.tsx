@@ -21,7 +21,12 @@ const STORAGE_KEY_LEFT_COLLAPSED = 'resumecraft_panel_left_collapsed'
 const MIN_LEFT = 200; const MAX_LEFT = 320; const DEFAULT_LEFT = 300
 const MIN_RIGHT = 300; const MAX_RIGHT = 550; const DEFAULT_RIGHT = 600
 const MIDDLE_MIN = 550
-const GUTTER_TOTAL = 1.5 * 2 // 两个分隔条宽度
+// 三栏之外的固定横向开销（必须与 JSX 中的 padding/gap/拖拽条实际像素一致，
+// 否则拖拽上限算多了会让总宽超出视口，被 overflow-hidden 裁掉最右侧右栏）：
+//   外层 p-3 左右各 12px = 24
+//   内层 gap-3 共 4 个间隙 × 12px = 48
+//   两个拖拽条 w-1.5 各 6px = 12
+const GUTTER_TOTAL = 24 + 48 + 12 // = 84
 
 /** 从 localStorage 读取并归一化面板宽度（适配当前视口） */
 function loadPanelWidths(): { left: number; right: number } {
@@ -169,7 +174,7 @@ const AppShell: React.FC = () => {
       window.getSelection()?.removeAllRanges()
 
       if (拖拽中 === 'left') {
-        const 可用最大左栏 = Math.min(MAX_LEFT, window.innerWidth - 右栏宽度Ref.current - MIDDLE_MIN)
+        const 可用最大左栏 = Math.min(MAX_LEFT, window.innerWidth - 右栏宽度Ref.current - MIDDLE_MIN - GUTTER_TOTAL)
         const 新宽度 = Math.max(MIN_LEFT, Math.min(可用最大左栏, e.clientX))
         左栏宽度Ref.current = 新宽度
         设置左栏宽度(新宽度)
@@ -178,7 +183,7 @@ const AppShell: React.FC = () => {
 
       if (拖拽中 === 'right') {
         const 从右侧计算 = window.innerWidth - e.clientX
-        const 可用最大右栏 = Math.min(MAX_RIGHT, window.innerWidth - 左栏宽度Ref.current - MIDDLE_MIN)
+        const 可用最大右栏 = Math.min(MAX_RIGHT, window.innerWidth - 左栏宽度Ref.current - MIDDLE_MIN - GUTTER_TOTAL)
         const 新宽度 = Math.max(MIN_RIGHT, Math.min(可用最大右栏, 从右侧计算))
         右栏宽度Ref.current = 新宽度
         设置右栏宽度(新宽度)

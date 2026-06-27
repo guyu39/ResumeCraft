@@ -29,20 +29,26 @@ type roundConfig struct {
 }
 
 var roundConfigs = map[string]roundConfig{
-	"technical_1": {
-		name: "技术一面（初筛）", description: "技术一面（初筛），侧重基础技术能力和项目概述，难度偏基础",
-		techW: 40, projectW: 25, industryW: 15, softSkillW: 10, behavioralW: 10,
-		basicPct: 40, mediumPct: 45, advancedPct: 15,
-	},
-	"technical_2": {
-		name: "技术二面（深挖）", description: "技术二面（深挖），侧重架构设计、系统思维和技术深度，难度偏进阶",
-		techW: 30, projectW: 35, industryW: 15, softSkillW: 10, behavioralW: 10,
-		basicPct: 20, mediumPct: 40, advancedPct: 40,
+	"technical": {
+		name: "技术面", description: "技术面，综合考察基础技术能力、项目深度与系统设计，难度由浅入深",
+		techW: 35, projectW: 30, industryW: 15, softSkillW: 10, behavioralW: 10,
+		basicPct: 30, mediumPct: 45, advancedPct: 25,
 	},
 	"hr": {
 		name: "HR 面", description: "HR 面，侧重软技能、团队协作、职业规划和行为面试，不涉及技术细节",
 		techW: 0, projectW: 15, industryW: 10, softSkillW: 40, behavioralW: 35,
 		basicPct: 30, mediumPct: 50, advancedPct: 20,
+	},
+	// 兼容历史数据：旧的 technical_1/technical_2 记录映射到 technical
+	"technical_1": {
+		name: "技术面", description: "技术面，综合考察基础技术能力、项目深度与系统设计，难度由浅入深",
+		techW: 35, projectW: 30, industryW: 15, softSkillW: 10, behavioralW: 10,
+		basicPct: 30, mediumPct: 45, advancedPct: 25,
+	},
+	"technical_2": {
+		name: "技术面", description: "技术面，综合考察基础技术能力、项目深度与系统设计，难度由浅入深",
+		techW: 35, projectW: 30, industryW: 15, softSkillW: 10, behavioralW: 10,
+		basicPct: 30, mediumPct: 45, advancedPct: 25,
 	},
 }
 
@@ -61,11 +67,11 @@ func (s *service) GenerateInterviewQuestions(ctx context.Context, userID string,
 
 	roundKey := req.InterviewRound
 	if roundKey == "" {
-		roundKey = "technical_1"
+		roundKey = "technical"
 	}
 	rc, ok := roundConfigs[roundKey]
 	if !ok {
-		rc = roundConfigs["technical_1"]
+		rc = roundConfigs["technical"]
 	}
 
 	questionCount := req.QuestionCount
@@ -250,15 +256,108 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 	if roundKey == "" {
 		roundKey = session.InterviewRound
 	}
+	// 归一化历史值：technical_1/technical_2 → technical
+	if roundKey == "technical_1" || roundKey == "technical_2" {
+		roundKey = "technical"
+	}
 	rc, ok := roundConfigs[roundKey]
 	if !ok {
-		rc = roundConfigs["technical_1"]
+		roundKey = "technical"
+		rc = roundConfigs["technical"]
 	}
 
-	prompt := s.buildInterviewEvaluatePrompt(questions, req.Answers, session.TargetTitle, session.CompanyName, rc)
+	// 读取出题范围（评估维度据此收窄）
+	var focusAreas []string
+	if len(session.FocusAreas) > 0 {
+		_ = json.Unmarshal(session.FocusAreas, &focusAreas)
+	}
+
+	prompt := s.buildInterviewEvaluatePrompt(questions, req.Answers, session.TargetTitle, session.CompanyName, rc, roundKey, focusAreas)
+
+	// 允许的维度集合（与 prompt 约束一致），用于过滤 LLM 越界输出的维度，消除"其他"标签
+	allowedDims := map[string]bool{}
+	if roundKey == "hr" {
+		for _, d := range []string{"soft_skill", "behavioral", "industry"} {
+			allowedDims[d] = true
+		}
+	} else {
+		for _, d := range []string{"technical", "project", "industry", "soft_skill"} {
+			allowedDims[d] = true
+		}
+	}
+	if len(focusAreas) > 0 {
+		focusSet := map[string]bool{}
+		for _, f := range focusAreas {
+			focusSet[f] = true
+		}
+		narrowed := map[string]bool{}
+		for d := range allowedDims {
+			if focusSet[d] || d == "soft_skill" || d == "behavioral" {
+				narrowed[d] = true
+			}
+		}
+		if len(narrowed) > 0 {
+			allowedDims = narrowed
+		}
+	}
 
 	// 流式累积缓冲
 	var streamBuf strings.Builder
+
+	// 累积评估结果用于落库（与 AnalyzeTranscript 路径保持一致，避免评估完成后数据丢失）
+	dimensionMap := make(map[string]model.InterviewDimScore)
+	roundScoreMap := make(map[string]int)
+	var questionEvals []model.InterviewQEval
+	var improvements []model.InterviewImprovement
+	var overallScore *int
+	var overallLevel string
+	var overallSummary string
+
+	// 包装 onEvent：透传给前端的同时截获并累积事件数据（读平铺字段，与 flush 输出一致）
+	captureEvent := func(evt StreamEvent) {
+		// 过滤越界维度：LLM 偶尔输出预定义集合外的 dimension，会在前端显示为"其他"，这里直接丢弃
+		if evt.Type == "dimension_score" && evt.Dimension != "" && !allowedDims[evt.Dimension] {
+			return
+		}
+		onEvent(evt)
+		switch evt.Type {
+		case "question_eval":
+			questionEvals = append(questionEvals, model.InterviewQEval{
+				QuestionID:    evt.QuestionID,
+				Score:         valueOrZero(evt.Score),
+				BriefFeedback: evt.BriefFeedback,
+				KeyPointsHit:  evt.KeyPointsHit,
+				MissedPoints:  evt.MissedPoints,
+				RedFlagsFound: evt.RedFlagsFound,
+			})
+		case "dimension_score":
+			if evt.Dimension != "" {
+				dimensionMap[evt.Dimension] = model.InterviewDimScore{
+					Score: valueOrZero(evt.Score), Level: evt.Level, Feedback: evt.Feedback,
+				}
+			}
+		case "round_score":
+			if evt.Round != "" {
+				roundScoreMap[evt.Round] = valueOrZero(evt.Score)
+			}
+		case "overall":
+			v := valueOrZero(evt.Score)
+			overallScore = &v
+			overallLevel = evt.Level
+			overallSummary = evt.Summary
+			for k, val := range evt.RoundScores {
+				roundScoreMap[k] = val
+			}
+		case "improvement":
+			improvements = append(improvements, model.InterviewImprovement{
+				Priority:      evt.Priority,
+				Area:          evt.Area,
+				Suggestion:    evt.Suggestion,
+				EstimatedGain: valueOrZero(evt.EstimatedGain),
+				TargetRound:   evt.TargetRound,
+			})
+		}
+	}
 
 	completeReq := CompleteRequest{
 		APIKey:    apiKey,
@@ -267,7 +366,7 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 		Prompt:    prompt,
 		TimeoutMs: cfg.TimeoutMs,
 		Stream:    true,
-		MaxTokens: 6000,
+		MaxTokens: 12000,
 		OnProgress: func(delta string) {
 			streamBuf.WriteString(delta)
 			content := streamBuf.String()
@@ -279,7 +378,7 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 			remainder := content[lastNewline+1:]
 			streamBuf.Reset()
 			streamBuf.WriteString(remainder)
-			s.flushInterviewEvalChunk(completedLines, onEvent)
+			s.flushInterviewEvalChunk(completedLines, captureEvent)
 		},
 	}
 
@@ -296,11 +395,48 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 	// 兜底处理尾行
 	tail := streamBuf.String()
 	if strings.TrimSpace(tail) != "" {
-		s.flushInterviewEvalChunk(tail, onEvent)
+		s.flushInterviewEvalChunk(tail, captureEvent)
+	}
+
+	// === 持久化评估结果 ===
+	// 用独立 ctx：即使原 ctx 被 client 关闭，写库也要完成，避免评估结果丢失
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer persistCancel()
+
+	// 先把本次提交的回答落库（保持 answers 与评估一致）
+	answersJSON, _ := json.Marshal(req.Answers)
+	answeredCount, skippedCount := 0, 0
+	for _, a := range req.Answers {
+		if a.Skipped {
+			skippedCount++
+		} else {
+			answeredCount++
+		}
+	}
+	if err := s.interviewRepo.UpdateSessionProgress(persistCtx, userID, req.SessionID, answersJSON, answeredCount, skippedCount); err != nil {
+		log.Printf("[interview] persist evaluate progress failed: %v", err)
+	}
+
+	evaluation := model.InterviewEvaluation{
+		Summary:                overallSummary,
+		OverallScore:           overallScore,
+		OverallLevel:           overallLevel,
+		DimensionScores:        dimensionMap,
+		RoundScores:            roundScoreMap,
+		QuestionEvaluations:    questionEvals,
+		ImprovementSuggestions: improvements,
+		Model:                  cfg.DefaultModel,
+		EvaluatedAt:            time.Now().UTC().Format(time.RFC3339),
+	}
+	evaluationJSON, _ := json.Marshal(evaluation)
+
+	scoreVal := valueOrZero(overallScore)
+	if err := s.interviewRepo.UpdateSessionEvaluation(persistCtx, userID, req.SessionID, evaluationJSON, scoreVal, overallLevel); err != nil {
+		log.Printf("[interview] persist evaluation failed: %v", err)
 	}
 
 	// 推送 finish 事件
-	onEvent(StreamEvent{Type: "finish"})
+	onEvent(StreamEvent{Type: "finish", SessionID: req.SessionID})
 
 	return nil
 }
@@ -320,11 +456,11 @@ func (s *service) AnalyzeTranscript(ctx context.Context, userID string, req mode
 
 	roundKey := req.InterviewRound
 	if roundKey == "" {
-		roundKey = "technical_1"
+		roundKey = "technical"
 	}
 	rc, ok := roundConfigs[roundKey]
 	if !ok {
-		rc = roundConfigs["technical_1"]
+		rc = roundConfigs["technical"]
 	}
 
 	prompt := s.buildTranscriptAnalyzePrompt(req.Content, req.TranscriptText, req.JDText, req.TargetTitle, req.CompanyName, rc)
@@ -600,8 +736,8 @@ func (s *service) SaveInterviewProgress(ctx context.Context, userID, sessionID s
 	return s.interviewRepo.UpdateSessionProgress(ctx, userID, sessionID, answersJSON, req.AnsweredCount, req.SkippedCount)
 }
 
-// ListInterviewSessions 分页查询当前用户的面试历史（轻量字段，最多 10 条）
-func (s *service) ListInterviewSessions(ctx context.Context, userID string, limit, offset int) (*model.InterviewSessionListResponse, error) {
+// ListInterviewSessions 分页查询当前用户在指定简历下的面试历史（轻量字段，最多 10 条）
+func (s *service) ListInterviewSessions(ctx context.Context, userID, resumeID string, limit, offset int) (*model.InterviewSessionListResponse, error) {
 	const maxHistory = 10
 	if limit <= 0 || limit > maxHistory {
 		limit = maxHistory
@@ -610,11 +746,11 @@ func (s *service) ListInterviewSessions(ctx context.Context, userID string, limi
 		offset = 0
 	}
 
-	records, err := s.interviewRepo.ListSessionsByUser(ctx, userID, limit, offset)
+	records, err := s.interviewRepo.ListSessionsByUser(ctx, userID, resumeID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list interview sessions: %w", err)
 	}
-	total, err := s.interviewRepo.CountSessionsByUser(ctx, userID)
+	total, err := s.interviewRepo.CountSessionsByUser(ctx, userID, resumeID)
 	if err != nil {
 		return nil, fmt.Errorf("count interview sessions: %w", err)
 	}
@@ -725,26 +861,26 @@ func (s *service) flushInterviewEvalChunk(text string, onEvent func(StreamEvent)
 
 		switch evtType {
 		case "question_eval":
-			var qe model.InterviewQEval
-			if qid, ok := raw["questionId"]; ok {
-				json.Unmarshal(qid, &qe.QuestionID)
+			var qe struct {
+				QuestionID    string   `json:"questionId"`
+				Score         int      `json:"score"`
+				BriefFeedback string   `json:"briefFeedback"`
+				KeyPointsHit  []string `json:"keyPointsHit"`
+				MissedPoints  []string `json:"missedPoints"`
+				RedFlagsFound []string `json:"redFlagsFound"`
 			}
-			if sc, ok := raw["score"]; ok {
-				json.Unmarshal(sc, &qe.Score)
-			}
-			if bf, ok := raw["briefFeedback"]; ok {
-				json.Unmarshal(bf, &qe.BriefFeedback)
-			}
-			if kp, ok := raw["keyPointsHit"]; ok {
-				json.Unmarshal(kp, &qe.KeyPointsHit)
-			}
-			if mp, ok := raw["missedPoints"]; ok {
-				json.Unmarshal(mp, &qe.MissedPoints)
-			}
-			if rf, ok := raw["redFlagsFound"]; ok {
-				json.Unmarshal(rf, &qe.RedFlagsFound)
-			}
-			onEvent(StreamEvent{Type: "question_eval", QuestionEval: &qe})
+			json.Unmarshal([]byte(line), &qe)
+			score := qe.Score
+			// 平铺字段输出，与前端 useInterviewPrep 的 evaluate 回调契约一致
+			onEvent(StreamEvent{
+				Type:          "question_eval",
+				QuestionID:    qe.QuestionID,
+				Score:         &score,
+				BriefFeedback: qe.BriefFeedback,
+				KeyPointsHit:  qe.KeyPointsHit,
+				MissedPoints:  qe.MissedPoints,
+				RedFlagsFound: qe.RedFlagsFound,
+			})
 
 		case "dimension_score":
 			var ds struct {
@@ -754,29 +890,65 @@ func (s *service) flushInterviewEvalChunk(text string, onEvent func(StreamEvent)
 				Feedback  string `json:"feedback"`
 			}
 			json.Unmarshal([]byte(line), &ds)
-			onEvent(StreamEvent{Type: "dimension_score", DimensionScore: &ds})
+			score := ds.Score
+			onEvent(StreamEvent{
+				Type:      "dimension_score",
+				Dimension: ds.Dimension,
+				Score:     &score,
+				Level:     ds.Level,
+				Feedback:  ds.Feedback,
+			})
 
 		case "round_score":
 			var rs struct {
-				Round string `json:"round"`
-				Score int    `json:"score"`
+				Round  string `json:"round"`
+				Score  int    `json:"score"`
+				Reason string `json:"reason"`
 			}
 			json.Unmarshal([]byte(line), &rs)
-			onEvent(StreamEvent{Type: "round_score", RoundScore: &rs})
+			score := rs.Score
+			onEvent(StreamEvent{
+				Type:   "round_score",
+				Round:  rs.Round,
+				Score:  &score,
+				Reason: rs.Reason,
+			})
 
 		case "overall":
 			var ov struct {
 				Score       int            `json:"score"`
 				Level       string         `json:"level"`
+				Summary     string         `json:"summary"`
 				RoundScores map[string]int `json:"roundScores"`
 			}
 			json.Unmarshal([]byte(line), &ov)
-			onEvent(StreamEvent{Type: "overall", Overall: &ov})
+			score := ov.Score
+			onEvent(StreamEvent{
+				Type:        "overall",
+				Score:       &score,
+				Level:       ov.Level,
+				Summary:     ov.Summary,
+				RoundScores: ov.RoundScores,
+			})
 
 		case "improvement":
-			var imp model.InterviewImprovement
+			var imp struct {
+				Priority      string `json:"priority"`
+				Area          string `json:"area"`
+				Suggestion    string `json:"suggestion"`
+				EstimatedGain int    `json:"estimatedGain"`
+				TargetRound   string `json:"targetRound"`
+			}
 			json.Unmarshal([]byte(line), &imp)
-			onEvent(StreamEvent{Type: "improvement", Improvement: &imp})
+			gain := imp.EstimatedGain
+			onEvent(StreamEvent{
+				Type:          "improvement",
+				Priority:      imp.Priority,
+				Area:          imp.Area,
+				Suggestion:    imp.Suggestion,
+				EstimatedGain: &gain,
+				TargetRound:   imp.TargetRound,
+			})
 		}
 	}
 }

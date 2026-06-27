@@ -18,8 +18,10 @@ import {
     History,
 } from 'lucide-react'
 import { useInterviewPrep } from '@/hooks/useInterviewPrep'
+import { aiApi } from '@/api'
 import { extractTextFromDocx, isDocxFile } from '@/utils/docxParser'
 import { InterviewHistoryDrawer } from './InterviewHistoryDrawer'
+import { scoreClass } from './shared'
 import type { InterviewSessionDetail } from '@/api/ai'
 
 interface InterviewPrepPanelProps {
@@ -35,7 +37,7 @@ interface InterviewPrepPanelProps {
     onCompanyNameChange?: (name: string) => void
 }
 
-type InterviewRound = 'technical_1' | 'technical_2' | 'hr'
+type InterviewRound = 'technical' | 'hr'
 
 const FOCUS_OPTIONS = [
     { key: 'technical', label: '技术深度', icon: Code2 },
@@ -52,8 +54,7 @@ const DIFFICULTY_CONFIG: Record<string, { label: string; class: string }> = {
 }
 
 const ROUND_CONFIG: Record<InterviewRound, { label: string; class: string }> = {
-    technical_1: { label: '①', class: 'bg-blue-50 text-blue-700' },
-    technical_2: { label: '②', class: 'bg-purple-50 text-purple-700' },
+    technical: { label: '技术', class: 'bg-blue-50 text-blue-700' },
     hr: { label: 'HR', class: 'bg-green-50 text-green-700' },
 }
 
@@ -67,12 +68,6 @@ const CATEGORY_CONFIG: Record<string, { icon: React.ElementType; label: string; 
 
 // 分类配置：与后端 model.InterviewQuestion.category 枚举对齐
 const CATEGORY_FALLBACK = { icon: Code2, label: '其他', class: 'bg-gray-50 text-gray-700 border-gray-100' }
-
-const scoreClass = (score: number) => {
-    if (score >= 85) return 'text-green-600'
-    if (score >= 70) return 'text-amber-600'
-    return 'text-red-600'
-}
 
 const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     resumeId,
@@ -99,11 +94,10 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
         analyzeTranscript,
         answers,
         setAnswer,
-        nextQuestion,
-        prevQuestion,
         evaluation,
         evaluating,
         submitForEvaluation,
+        sessionId,
         reset,
         loadSession,
     } = useInterviewPrep()
@@ -119,6 +113,60 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     const [localDropError, setLocalDropError] = useState<string | null>(null)
     const [parsingFile, setParsingFile] = useState(false)
     const [historyOpen, setHistoryOpen] = useState(false)
+    // 逐题追问对话（严格以 questionId 为 key，互不干扰）
+    const [followups, setFollowups] = useState<Record<string, { turns: Array<{ role: 'user' | 'assistant'; content: string }>; loading: boolean; done: boolean; draft: string }>>({})
+
+    // 追问轮数上限：最多 3 轮 AI 追问，达上限自动结束，避免无限追问烧 token
+    const MAX_FOLLOWUP_ROUNDS = 3
+
+    const startOrContinueFollowup = async (questionId: string, questionText: string, firstAnswer: string) => {
+        if (!sessionId) return
+        const cur = followups[questionId] ?? { turns: [], loading: false, done: false, draft: '' }
+        if (cur.loading || cur.done) return
+        const userContent = cur.turns.length === 0 ? firstAnswer : cur.draft.trim()
+        if (!userContent) return
+
+        const history = cur.turns.length === 0 ? [] : [...cur.turns, { role: 'user' as const, content: userContent }]
+        setFollowups((s) => ({
+            ...s,
+            [questionId]: {
+                turns: cur.turns.length === 0 ? [] : [...cur.turns, { role: 'user', content: userContent }],
+                loading: true,
+                done: false,
+                draft: '',
+            },
+        }))
+        try {
+            const { followup, done } = await aiApi.interviewFollowup({
+                sessionId,
+                questionId,
+                question: questionText,
+                answer: firstAnswer,
+                history,
+            })
+            setFollowups((s) => {
+                const prev = s[questionId] ?? { turns: [], loading: false, done: false, draft: '' }
+                const nextTurns = done || !followup ? prev.turns : [...prev.turns, { role: 'assistant' as const, content: followup }]
+                // AI 追问轮数（assistant 条数）达上限则结束
+                const aiRounds = nextTurns.filter((t) => t.role === 'assistant').length
+                return {
+                    ...s,
+                    [questionId]: {
+                        turns: nextTurns,
+                        loading: false,
+                        done: done || !followup || aiRounds >= MAX_FOLLOWUP_ROUNDS,
+                        draft: '',
+                    },
+                }
+            })
+        } catch {
+            setFollowups((s) => ({ ...s, [questionId]: { ...(s[questionId] ?? { turns: [], done: false, draft: '' }), loading: false } }))
+        }
+    }
+
+    const setFollowupDraft = (questionId: string, draft: string) => {
+        setFollowups((s) => ({ ...s, [questionId]: { ...(s[questionId] ?? { turns: [], loading: false, done: false }), draft } }))
+    }
 
     const toggleFocus = (key: string) => {
         setFocusAreas((prev) =>
@@ -340,8 +388,8 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                         />
 
                         {/* Interview Round */}
-                        <div className="grid grid-cols-3 gap-2">
-                            {(['technical_1', 'technical_2', 'hr'] as InterviewRound[]).map((round) => (
+                        <div className="grid grid-cols-2 gap-2">
+                            {(['technical', 'hr'] as InterviewRound[]).map((round) => (
                                 <button
                                     key={round}
                                     type="button"
@@ -352,7 +400,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                                             : 'border border-gray-200 text-gray-500 hover:bg-gray-50'
                                     }`}
                                 >
-                                    {ROUND_CONFIG[round].label} {round === 'hr' ? '' : round === 'technical_1' ? '技术一面' : '技术二面'}
+                                    {round === 'hr' ? 'HR 面' : '技术面'}
                                 </button>
                             ))}
                         </div>
@@ -374,7 +422,6 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                                     >
                                         <Icon className="h-3 w-3" />
                                         {label}
-                                        {focusAreas.includes(key) && <Check className="h-3 w-3" />}
                                     </button>
                                 ))}
                             </div>
@@ -609,29 +656,73 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                                                                     placeholder="输入你的回答..."
                                                                     className="min-h-24 w-full resize-none no-scrollbar rounded-lg border border-gray-200 px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary"
                                                                 />
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex gap-2">
-                                                                        <button
-                                                                            type="button"
-                                                                            disabled={globalIdx === 0}
-                                                                            onClick={prevQuestion}
-                                                                            className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40"
-                                                                        >
-                                                                            上一题
-                                                                        </button>
-                                                                        <button
-                                                                            type="button"
-                                                                            disabled={globalIdx === questions.length - 1}
-                                                                            onClick={nextQuestion}
-                                                                            className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40"
-                                                                        >
-                                                                            下一题
-                                                                        </button>
-                                                                    </div>
+                                                                <div className="flex items-center justify-end">
                                                                     <span className="text-xs text-gray-400">
                                                                         {globalIdx + 1} / {questions.length}
                                                                     </span>
                                                                 </div>
+
+                                                                {/* 追问对话区（严格按 questionId 渲染，与展开索引无关，避免切题串台） */}
+                                                                {(() => {
+                                                                    const qid = questions[globalIdx].id
+                                                                    const qText = questions[globalIdx].question
+                                                                    const ans = answers.get(qid)?.answer?.trim() || ''
+                                                                    const fu = followups[qid]
+                                                                    const started = !!fu && (fu.turns.length > 0 || fu.loading || fu.done)
+                                                                    return (
+                                                                        <div className="mt-1 border-t border-gray-100 pt-2">
+                                                                            {!started ? (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    disabled={!ans}
+                                                                                    onClick={() => startOrContinueFollowup(qid, qText, ans)}
+                                                                                    className="flex items-center gap-1 rounded-lg border border-primary/30 px-2.5 py-1 text-xs text-primary hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                                    title={ans ? '让 AI 基于你的回答提出一个追问' : '请先填写回答'}
+                                                                                >
+                                                                                    <MessageCircle className="h-3.5 w-3.5" />模拟追问
+                                                                                </button>
+                                                                            ) : (
+                                                                                <div className="space-y-2">
+                                                                                    {fu.turns.map((t, ti) => (
+                                                                                        <div key={ti} className={`rounded-lg px-2.5 py-1.5 text-xs leading-relaxed ${t.role === 'assistant' ? 'bg-primary/5 text-gray-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                                            <span className="mr-1 font-medium text-gray-400">{t.role === 'assistant' ? '面试官' : '我'}：</span>
+                                                                                            {t.content}
+                                                                                        </div>
+                                                                                    ))}
+                                                                                    {fu.loading && (
+                                                                                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                                                                                            <Loader2 className="h-3 w-3 animate-spin" />AI 思考中...
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {fu.done && (
+                                                                                        <p className="text-xs text-gray-400">追问结束</p>
+                                                                                    )}
+                                                                                    {/* 手动追问：AI 给出追问后，由用户先作答，再手动点「继续追问」生成下一问 */}
+                                                                                    {!fu.loading && !fu.done && fu.turns.length > 0 && (
+                                                                                        <div className="space-y-2">
+                                                                                            <textarea
+                                                                                                value={fu.draft}
+                                                                                                onChange={(e) => setFollowupDraft(qid, e.target.value)}
+                                                                                                placeholder="回答这个追问..."
+                                                                                                className="min-h-20 w-full resize-none no-scrollbar rounded-lg border border-gray-200 px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary"
+                                                                                            />
+                                                                                            <div className="flex justify-end">
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    disabled={!fu.draft.trim()}
+                                                                                                    onClick={() => startOrContinueFollowup(qid, qText, ans)}
+                                                                                                    className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90 disabled:opacity-40"
+                                                                                                >
+                                                                                                    <MessageCircle className="h-3.5 w-3.5" />继续追问
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )
+                                                                })()}
                                                             </div>
                                                         )}
                                                     </div>
@@ -721,9 +812,8 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                                                             </span>
                                                         )}
                                                         <span className="text-sm font-medium text-gray-700">
-                                                            {roundKey === 'technical_1' ? '技术一面'
-                                                                : roundKey === 'technical_2' ? '技术二面'
-                                                                : roundKey === 'hr' ? 'HR 面'
+                                                            {roundKey === 'hr' ? 'HR 面'
+                                                                : (roundKey === 'technical' || roundKey === 'technical_1' || roundKey === 'technical_2') ? '技术面'
                                                                 : roundKey}
                                                         </span>
                                                     </div>
@@ -858,6 +948,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
             <InterviewHistoryDrawer
                 open={historyOpen}
                 onClose={() => setHistoryOpen(false)}
+                resumeId={resumeId}
                 onLoadSession={(detail: InterviewSessionDetail) => {
                     // 兜底：detail 顶层的 overallScore/passLevel 是从数据库列直接读的，
                     // 而 evaluation 里的 overallScore 来自 JSON。两者不一致时以列值为准。

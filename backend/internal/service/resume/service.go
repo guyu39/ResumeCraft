@@ -13,6 +13,7 @@ var (
 	ErrDuplicateTitle  = errors.New("resume title already exists")
 	ErrDuplicateLabel  = errors.New("snapshot label already exists")
 	ErrVersionConflict = errors.New("version conflict")
+	ErrCommentForbidden = errors.New("comment not found or not owned by visitor")
 )
 
 type Service interface {
@@ -21,11 +22,12 @@ type Service interface {
 	GetByID(ctx context.Context, userID, resumeID string) (*model.ResumeDetail, error)
 	Update(ctx context.Context, userID, resumeID string, req model.UpdateResumeRequest) (*model.ResumeUpdateResponse, error)
 	Delete(ctx context.Context, userID, resumeID string) error
-	RestoreVersion(ctx context.Context, userID, resumeID, versionID string) (*model.ResumeUpdateResponse, error)
+	RestoreVersion(ctx context.Context, userID, resumeID, versionID string, expectedVersion *int64) (*model.ResumeUpdateResponse, error)
 
 	// 版本快照
 	ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error)
 	CreateManualSnapshot(ctx context.Context, userID, resumeID string, label string) (*model.VersionSnapshot, error)
+	CreateSnapshotWithContent(ctx context.Context, userID, resumeID string, contentJSON []byte, label string) (string, error)
 	UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error
 	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
 	GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error)
@@ -40,7 +42,8 @@ type Service interface {
 	// 分享评论
 	AddComment(ctx context.Context, token, authorName, content, moduleID, visitorID string, itemIndex int, snapshotID *string) (*model.ShareComment, error)
 	ListComments(ctx context.Context, token, visitorID, snapshotID string) ([]model.ShareComment, error)
-	DeleteComment(ctx context.Context, commentID string) error
+	DeleteComment(ctx context.Context, token, visitorID, commentID string) error
+	DeleteCommentByOwner(ctx context.Context, commentID string) error
 	ListAllComments(ctx context.Context, userID, resumeID string) (*model.AdminCommentsResponse, error)
 
 	// 分享视图
@@ -134,7 +137,7 @@ func (s *service) Delete(ctx context.Context, userID, resumeID string) error {
 	return nil
 }
 
-func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionID string) (*model.ResumeUpdateResponse, error) {
+func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionID string, expectedVersion *int64) (*model.ResumeUpdateResponse, error) {
 	// 获取版本内容
 	versionContent, err := s.repo.GetVersionContent(ctx, versionID)
 	if err != nil {
@@ -144,8 +147,8 @@ func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionI
 		return nil, err
 	}
 
-	// 恢复简历
-	resp, err := s.repo.RestoreFromVersion(ctx, userID, resumeID, versionContent)
+	// 恢复简历（expectedVersion 非 nil 时启用乐观锁）
+	resp, err := s.repo.RestoreFromVersion(ctx, userID, resumeID, versionID, versionContent, expectedVersion)
 	if err != nil {
 		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound
@@ -184,6 +187,18 @@ func (s *service) CreateManualSnapshot(ctx context.Context, userID, resumeID str
 		return nil, err
 	}
 	return snapshot, nil
+}
+
+// CreateSnapshotWithContent 用指定 content 建 manual 快照（AI 优化产出落库）
+func (s *service) CreateSnapshotWithContent(ctx context.Context, userID, resumeID string, contentJSON []byte, label string) (string, error) {
+	id, err := s.repo.CreateSnapshotWithContent(ctx, userID, resumeID, contentJSON, label)
+	if err != nil {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
+			return "", ErrResumeNotFound
+		}
+		return "", err
+	}
+	return id, nil
 }
 
 func (s *service) UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error {

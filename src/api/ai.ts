@@ -3,6 +3,7 @@
 // ============================================================
 
 import { apiClient } from './client'
+import { streamSSE } from './streamSSE'
 
 export interface AIConfigRequest {
     provider: string
@@ -222,30 +223,6 @@ export interface JDScoreResponse {
     conversationId: string
 }
 
-export interface CoverLetterRequest {
-    resumeId: string
-    snapshotVersionId?: string
-    content: Record<string, unknown>
-    jdText?: string
-    jobTitle: string
-    companyName?: string
-    tone?: string
-    language?: string
-}
-
-export interface CoverLetterResponse {
-    title: string
-    coverLetter: string
-    highlightsUsed: string[]
-    tips: string[]
-    jobTitle?: string
-    companyName?: string
-    jdText?: string
-    rawText?: string
-    model: string
-    conversationId: string
-}
-
 export interface BulletRewriteRequest {
     resumeId: string
     snapshotVersionId?: string
@@ -274,6 +251,31 @@ export interface BulletRewriteResponse {
     companyName?: string
     rawText?: string
     model: string
+    conversationId: string
+}
+
+export interface ModuleRewriteRequest {
+    resumeId: string
+    moduleType: string
+    moduleInstanceId?: string
+    content: Record<string, unknown>
+    jdText?: string
+    targetTitle?: string
+    companyName?: string
+}
+
+export interface ModuleRewriteItem {
+    index: number
+    original: string
+    rewritten: string
+    highlights: string[]
+}
+
+export interface ModuleRewriteResponse {
+    moduleType: string
+    items: ModuleRewriteItem[]
+    model: string
+    rawText?: string
     conversationId: string
 }
 
@@ -351,210 +353,113 @@ export const aiApi = {
 
     evaluateStream: (
         data: EvaluateRequest,
-        onUpdate: (partial: StreamPartialResult) => void
-    ): Promise<EvaluateResponse> => {
-        return new Promise((resolve, reject) => {
-            const token = localStorage.getItem('accessToken')
-            if (!token) {
-                reject(new Error('请登录使用'))
-                return
-            }
-
-            const xhr = new XMLHttpRequest()
-            xhr.open('POST', '/api/ai/evaluate/stream', true)
-            xhr.setRequestHeader('Content-Type', 'application/json')
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-            let lastPos = 0
-
-            xhr.onprogress = () => {
-                const text = xhr.responseText
-                const newText = text.slice(lastPos)
-                lastPos = text.length
-
-                const lines = newText.split('\n')
-                for (const line of lines) {
-                    if (line.startsWith('event:')) continue
-                    if (!line.startsWith('data: ')) continue
-                    const content = line.slice(6).trim()
-                    if (!content) continue
-
-                    try {
-                        const evt = JSON.parse(content) as {
-                            type?: string
-                            model?: string
-                            summary?: string
-                            overallScore?: number
-                            level?: string
-                            dimensions?: StreamPartialResult['dimensions']
-                            issues?: StreamPartialResult['issues']
-                            actionItems?: string[]
-                        }
-
-                        switch (evt.type) {
-                            case 'model':
-                                if (evt.model) onUpdate({ model: evt.model } as StreamPartialResult)
-                                break
-                            case 'summary':
-                                if (evt.summary !== undefined) onUpdate({ summary: evt.summary } as StreamPartialResult)
-                                break
-                            case 'overall_score':
-                                onUpdate({
-                                    overallScore: evt.overallScore,
-                                    level: evt.level ?? null,
-                                } as StreamPartialResult)
-                                break
-                            case 'dimension_score':
-                                if (evt.dimensions?.length) onUpdate({ dimensions: evt.dimensions } as StreamPartialResult)
-                                break
-                            case 'issue_item':
-                                if (evt.issues?.length) onUpdate({ issues: evt.issues } as StreamPartialResult)
-                                break
-                            case 'action_item':
-                                if (evt.actionItems?.length) onUpdate({ actionItems: evt.actionItems } as StreamPartialResult)
-                                break
-                            case 'finish':
-                                onUpdate({ finish: true } as StreamPartialResult)
-                                break
-                        }
-                    } catch {
-                        // JSON 解析失败，忽略
-                    }
+        onUpdate: (partial: StreamPartialResult) => void,
+        signal?: AbortSignal
+    ): Promise<EvaluateResponse> =>
+        streamSSE<{
+            type?: string
+            model?: string
+            summary?: string
+            overallScore?: number
+            level?: string
+            dimensions?: StreamPartialResult['dimensions']
+            issues?: StreamPartialResult['issues']
+            actionItems?: string[]
+        }, EvaluateResponse>({
+            url: '/api/ai/evaluate/stream',
+            body: data,
+            signal,
+            errorLabel: '评估失败',
+            parseDone: (raw) => JSON.parse(raw) as EvaluateResponse,
+            onEvent: (evt) => {
+                switch (evt.type) {
+                    case 'model':
+                        if (evt.model) onUpdate({ model: evt.model } as StreamPartialResult)
+                        break
+                    case 'summary':
+                        if (evt.summary !== undefined) onUpdate({ summary: evt.summary } as StreamPartialResult)
+                        break
+                    case 'overall_score':
+                        onUpdate({ overallScore: evt.overallScore, level: evt.level ?? null } as StreamPartialResult)
+                        break
+                    case 'dimension_score':
+                        if (evt.dimensions?.length) onUpdate({ dimensions: evt.dimensions } as StreamPartialResult)
+                        break
+                    case 'issue_item':
+                        if (evt.issues?.length) onUpdate({ issues: evt.issues } as StreamPartialResult)
+                        break
+                    case 'action_item':
+                        if (evt.actionItems?.length) onUpdate({ actionItems: evt.actionItems } as StreamPartialResult)
+                        break
+                    case 'finish':
+                        onUpdate({ finish: true } as StreamPartialResult)
+                        break
                 }
-            }
-
-            xhr.onload = () => {
-                // 解析最终结果（event: done 行）
-                const lines = xhr.responseText.split('\n')
-                for (const line of lines) {
-                    if (!line.startsWith('event: done')) continue
-                    const dataLine = lines[lines.indexOf(line) + 1]
-                    if (dataLine && dataLine.startsWith('data: ')) {
-                        try {
-                            const result = JSON.parse(dataLine.slice(6)) as EvaluateResponse
-                            resolve(result)
-                            return
-                        } catch {
-                            // ignore
-                        }
-                    }
-                }
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    reject(new Error('未收到评估结果'))
-                } else {
-                    reject(new Error(`请求失败: ${xhr.status}`))
-                }
-            }
-
-            xhr.onerror = () => {
-                reject(new Error('网络错误'))
-            }
-
-            xhr.send(JSON.stringify(data))
-        })
-    },
+            },
+        }),
 
     jdMatchStream: (
         data: JDMatchRequest,
-        onUpdate: (partial: JDMatchStreamPartialResult) => void
-    ): Promise<JDMatchResponse> => {
-        return new Promise((resolve, reject) => {
-            const token = localStorage.getItem('accessToken')
-            if (!token) {
-                reject(new Error('请登录使用'))
-                return
-            }
-
-            const xhr = new XMLHttpRequest()
-            xhr.open('POST', '/api/ai/jd-match/stream', true)
-            xhr.setRequestHeader('Content-Type', 'application/json')
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-            let lastPos = 0
-
-            xhr.onprogress = () => {
-                const text = xhr.responseText
-                const newText = text.slice(lastPos)
-                lastPos = text.length
-
-                const lines = newText.split('\n')
-                for (const line of lines) {
-                    if (line.startsWith('event:')) continue
-                    if (!line.startsWith('data: ')) continue
-                    const content = line.slice(6).trim()
-                    if (!content) continue
-
-                    try {
-                        const evt = JSON.parse(content) as JDMatchStreamPartialResult & { type?: string }
-                        switch (evt.type) {
-                            case 'model':
-                                if (evt.model) onUpdate({ model: evt.model })
-                                break
-                            case 'summary':
-                                if (evt.summary !== undefined) onUpdate({ summary: evt.summary })
-                                break
-                            case 'match_score':
-                                onUpdate({ matchScore: evt.matchScore, level: evt.level })
-                                break
-                            case 'keyword_match':
-                                if (evt.keywordMatches?.length) onUpdate({ keywordMatches: evt.keywordMatches })
-                                break
-                            case 'strength_item':
-                                if (evt.strengths?.length) onUpdate({ strengths: evt.strengths })
-                                break
-                            case 'gap_item':
-                                if (evt.gaps?.length) onUpdate({ gaps: evt.gaps })
-                                break
-                            case 'resume_suggestion':
-                                if (evt.resumeSuggestions?.length) onUpdate({ resumeSuggestions: evt.resumeSuggestions })
-                                break
-                            case 'action_item':
-                                if (evt.actionItems?.length) onUpdate({ actionItems: evt.actionItems })
-                                break
-                            case 'finish':
-                                onUpdate({ finish: true })
-                                break
-                        }
-                    } catch {
-                        // 忽略非 JSON 的 SSE 数据行
-                    }
+        onUpdate: (partial: JDMatchStreamPartialResult) => void,
+        signal?: AbortSignal
+    ): Promise<JDMatchResponse> =>
+        streamSSE<JDMatchStreamPartialResult & { type?: string }, JDMatchResponse>({
+            url: '/api/ai/jd-match/stream',
+            body: data,
+            signal,
+            errorLabel: 'JD 匹配失败',
+            parseDone: (raw) => JSON.parse(raw) as JDMatchResponse,
+            onEvent: (evt) => {
+                switch (evt.type) {
+                    case 'model':
+                        if (evt.model) onUpdate({ model: evt.model })
+                        break
+                    case 'summary':
+                        if (evt.summary !== undefined) onUpdate({ summary: evt.summary })
+                        break
+                    case 'match_score':
+                        onUpdate({ matchScore: evt.matchScore, level: evt.level })
+                        break
+                    case 'keyword_match':
+                        if (evt.keywordMatches?.length) onUpdate({ keywordMatches: evt.keywordMatches })
+                        break
+                    case 'strength_item':
+                        if (evt.strengths?.length) onUpdate({ strengths: evt.strengths })
+                        break
+                    case 'gap_item':
+                        if (evt.gaps?.length) onUpdate({ gaps: evt.gaps })
+                        break
+                    case 'resume_suggestion':
+                        if (evt.resumeSuggestions?.length) onUpdate({ resumeSuggestions: evt.resumeSuggestions })
+                        break
+                    case 'action_item':
+                        if (evt.actionItems?.length) onUpdate({ actionItems: evt.actionItems })
+                        break
+                    case 'finish':
+                        onUpdate({ finish: true })
+                        break
                 }
-            }
-
-            xhr.onload = () => {
-                const lines = xhr.responseText.split('\n')
-                for (let i = 0; i < lines.length; i += 1) {
-                    if (!lines[i].startsWith('event: done')) continue
-                    const dataLine = lines[i + 1]
-                    if (dataLine && dataLine.startsWith('data: ')) {
-                        try {
-                            resolve(JSON.parse(dataLine.slice(6)) as JDMatchResponse)
-                            return
-                        } catch {
-                            // ignore
-                        }
-                    }
-                }
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    reject(new Error('未收到 JD 匹配结果'))
-                } else {
-                    reject(new Error(`请求失败: ${xhr.status}`))
-                }
-            }
-
-            xhr.onerror = () => reject(new Error('网络错误'))
-            xhr.send(JSON.stringify(data))
-        })
-    },
+            },
+        }),
 
     score: (data: JDScoreRequest) =>
         apiClient.post<JDScoreResponse>('/ai/score', data, { auth: true }),
 
-    generateCoverLetter: (data: CoverLetterRequest) =>
-        apiClient.post<CoverLetterResponse>('/ai/cover-letter', data, { auth: true }),
-
     rewriteBullet: (data: BulletRewriteRequest) =>
         apiClient.post<BulletRewriteResponse>('/ai/rewrite/bullet', data, { auth: true }),
+
+    rewriteModule: (data: ModuleRewriteRequest) =>
+        apiClient.post<ModuleRewriteResponse>('/ai/rewrite/module', data, { auth: true }),
+
+    optimizeForJD: (data: {
+        resumeId: string
+        content: Record<string, unknown>
+        jdText: string
+        targetTitle?: string
+        companyName?: string
+    }) =>
+        apiClient.post<{ snapshotId: string; label: string; changedCount: number; notes: string[]; model: string }>(
+            '/ai/jd-optimize', data, { auth: true }),
 
     suggest: (data: SuggestRequest) =>
         apiClient.post<SuggestResponse>('/ai/suggest', data, { auth: true }),
@@ -615,160 +520,69 @@ export const aiApi = {
 
     interviewGenerate: (
         data: InterviewGenerateRequest,
-        onUpdate: (partial: InterviewGenerateEvent) => void
+        onUpdate: (partial: InterviewGenerateEvent) => void,
+        signal?: AbortSignal
     ): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const token = localStorage.getItem('accessToken')
-            if (!token) { reject(new Error('请登录使用')); return }
-
-            const xhr = new XMLHttpRequest()
-            xhr.open('POST', '/api/ai/interview/generate', true)
-            xhr.setRequestHeader('Content-Type', 'application/json')
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-            let lastPos = 0
-            let sessionId = ''
-
-            xhr.onprogress = () => {
-                if (xhr.status >= 400) return
-                const text = xhr.responseText
-                const newText = text.slice(lastPos)
-                lastPos = text.length
-
-                const lines = newText.split('\n')
-                for (const line of lines) {
-                    if (line.startsWith('event:')) continue
-                    if (!line.startsWith('data: ')) continue
-                    const content = line.slice(6).trim()
-                    if (!content) continue
-                    try {
-                        const evt = JSON.parse(content) as InterviewGenerateEvent
-                        onUpdate(evt)
-                        if (evt.type === 'finish' && evt.sessionId) {
-                            sessionId = evt.sessionId
-                        }
-                    } catch { /* skip */ }
-                }
-            }
-
-            xhr.onload = () => {
-                if (xhr.status >= 400) {
-                    let msg = `生成失败 (${xhr.status})`
-                    try {
-                        const body = JSON.parse(xhr.responseText)
-                        msg = body?.error?.message || body?.message || msg
-                    } catch { /* keep default */ }
-                    reject(new Error(msg))
-                    return
-                }
-                resolve(sessionId)
-            }
-            xhr.onerror = () => { reject(new Error('网络错误')) }
-            xhr.send(JSON.stringify(data))
-        })
+        let sessionId = ''
+        return streamSSE<InterviewGenerateEvent, void>({
+            url: '/api/ai/interview/generate',
+            body: data,
+            signal,
+            errorLabel: '生成失败',
+            onEvent: (evt) => {
+                onUpdate(evt)
+                if (evt.type === 'finish' && evt.sessionId) sessionId = evt.sessionId
+            },
+        }).then(() => sessionId)
     },
 
     interviewEvaluate: (
         data: InterviewEvaluateRequest,
-        onUpdate: (partial: InterviewEvaluateEvent) => void
-    ): Promise<void> => {
-        return new Promise((resolve, reject) => {
-            const token = localStorage.getItem('accessToken')
-            if (!token) { reject(new Error('请登录使用')); return }
-
-            const xhr = new XMLHttpRequest()
-            xhr.open('POST', '/api/ai/interview/evaluate', true)
-            xhr.setRequestHeader('Content-Type', 'application/json')
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-            let lastPos = 0
-
-            xhr.onprogress = () => {
-                const text = xhr.responseText
-                const newText = text.slice(lastPos)
-                lastPos = text.length
-
-                const lines = newText.split('\n')
-                for (const line of lines) {
-                    if (line.startsWith('event:')) continue
-                    if (!line.startsWith('data: ')) continue
-                    const content = line.slice(6).trim()
-                    if (!content) continue
-                    try {
-                        const evt = JSON.parse(content) as InterviewEvaluateEvent
-                        onUpdate(evt)
-                    } catch { /* skip */ }
-                }
-            }
-
-            xhr.onload = () => { resolve() }
-            xhr.onerror = () => { reject(new Error('网络错误')) }
-            xhr.send(JSON.stringify(data))
-        })
-    },
+        onUpdate: (partial: InterviewEvaluateEvent) => void,
+        signal?: AbortSignal
+    ): Promise<void> =>
+        streamSSE<InterviewEvaluateEvent, void>({
+            url: '/api/ai/interview/evaluate',
+            body: data,
+            signal,
+            errorLabel: '评估失败',
+            onEvent: onUpdate,
+        }),
 
     interviewAnalyzeTranscript: (
         data: AnalyzeTranscriptRequest,
-        onUpdate: (partial: TranscriptAnalyzeEvent) => void
+        onUpdate: (partial: TranscriptAnalyzeEvent) => void,
+        signal?: AbortSignal
     ): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const token = localStorage.getItem('accessToken')
-            if (!token) { reject(new Error('请登录使用')); return }
-
-            const xhr = new XMLHttpRequest()
-            xhr.open('POST', '/api/ai/interview/analyze-transcript', true)
-            xhr.setRequestHeader('Content-Type', 'application/json')
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-            let lastPos = 0
-            let sessionId = ''
-
-            xhr.onprogress = () => {
-                if (xhr.status >= 400) return
-                const text = xhr.responseText
-                const newText = text.slice(lastPos)
-                lastPos = text.length
-
-                const lines = newText.split('\n')
-                for (const line of lines) {
-                    if (line.startsWith('event:')) continue
-                    if (!line.startsWith('data: ')) continue
-                    const content = line.slice(6).trim()
-                    if (!content) continue
-                    try {
-                        const evt = JSON.parse(content) as TranscriptAnalyzeEvent
-                        onUpdate(evt)
-                        if (evt.type === 'finish' && 'sessionId' in evt && evt.sessionId) {
-                            sessionId = evt.sessionId as string
-                        }
-                    } catch { /* skip */ }
-                }
-            }
-
-            xhr.onload = () => {
-                if (xhr.status >= 400) {
-                    let msg = `分析失败 (${xhr.status})`
-                    try {
-                        const body = JSON.parse(xhr.responseText)
-                        msg = body?.error?.message || body?.message || msg
-                    } catch { /* keep default */ }
-                    reject(new Error(msg))
-                    return
-                }
-                resolve(sessionId)
-            }
-            xhr.onerror = () => { reject(new Error('网络错误')) }
-            xhr.send(JSON.stringify(data))
-        })
+        let sessionId = ''
+        return streamSSE<TranscriptAnalyzeEvent, void>({
+            url: '/api/ai/interview/analyze-transcript',
+            body: data,
+            signal,
+            errorLabel: '分析失败',
+            onEvent: (evt) => {
+                onUpdate(evt)
+                if (evt.type === 'finish' && evt.sessionId) sessionId = evt.sessionId
+            },
+        }).then(() => sessionId)
     },
+
+    interviewFollowup: (data: {
+        sessionId: string
+        questionId: string
+        question: string
+        answer: string
+        history: Array<{ role: 'user' | 'assistant'; content: string }>
+    }) =>
+        apiClient.post<{ followup: string; done: boolean }>('/ai/interview/followup', data, { auth: true }),
 
     interviewSaveProgress: (sessionId: string, data: SaveInterviewProgressRequest) =>
         apiClient.put(`/ai/interview/sessions/${sessionId}/progress`, data, { auth: true }),
 
     // 面试历史
-    interviewListSessions: (limit = 20, offset = 0) =>
+    interviewListSessions: (resumeId: string, limit = 20, offset = 0) =>
         apiClient.get<InterviewSessionListResponse>(
-            `/ai/interview/sessions?limit=${limit}&offset=${offset}`,
+            `/ai/interview/sessions?resumeId=${encodeURIComponent(resumeId)}&limit=${limit}&offset=${offset}`,
             { auth: true }
         ),
     interviewGetSession: (sessionId: string) =>
@@ -871,7 +685,7 @@ export interface InterviewGenerateRequest {
     companyName?: string
     focusAreas?: string[]
     questionCount?: number
-    interviewRound?: 'technical_1' | 'technical_2' | 'hr'
+    interviewRound?: 'technical' | 'hr'
 }
 
 export interface InterviewEvaluateRequest {
@@ -889,7 +703,7 @@ export interface AnalyzeTranscriptRequest {
     companyName?: string
     transcriptText: string
     transcriptSource?: string
-    interviewRound?: 'technical_1' | 'technical_2' | 'hr'
+    interviewRound?: 'technical' | 'hr'
 }
 
 export interface SaveInterviewProgressRequest {
@@ -1002,10 +816,10 @@ export type InterviewEvaluateEvent =
 
 export type TranscriptAnalyzeEvent =
     | { type: 'model'; content: string }
-    | { type: 'qa_extracted'; index: number; question: string; answer: string }
+    | { type: 'qa_extracted'; index: number; questionText: string; answerText: string }
     | { type: 'qa_eval'; index: number; score: number; briefFeedback: string; keyPointsHit: string[]; missedPoints: string[] }
     | { type: 'dimension_score'; dimension: string; score: number; level: string; feedback: string }
-    | { type: 'round_score'; round: string; score: number }
-    | { type: 'overall'; score: number; level: string; roundScores: Record<string, number> }
+    | { type: 'round_score'; round: string; score: number; reason?: string }
+    | { type: 'overall'; score: number; level: string; summary?: string; roundScores: Record<string, number> }
     | { type: 'improvement'; priority: string; area: string; suggestion: string; estimatedGain: number; targetRound: string }
     | { type: 'finish'; sessionId: string; timestamp: number }
