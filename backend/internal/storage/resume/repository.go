@@ -35,6 +35,7 @@ type Repository interface {
 	// 版本快照
 	ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) ([]model.SnapshotListItem, int, error)
 	CreateManualSnapshot(ctx context.Context, userID, resumeID string, label string) (*model.VersionSnapshot, error)
+	CreateSnapshotWithContent(ctx context.Context, userID, resumeID string, contentJSON []byte, label string) (string, error)
 	UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error
 	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
 	GetSnapshotDetail(ctx context.Context, snapshotID string) (*model.VersionSnapshot, []byte, error)
@@ -707,6 +708,52 @@ func (r *repository) CreateManualSnapshot(ctx context.Context, userID, resumeID 
 	r.cleanupAutoVersions(ctx, resumeID)
 
 	return &snapshot, nil
+}
+
+// CreateSnapshotWithContent 用给定 content 直接建 manual 快照（用于 AI 优化产出）。
+// 与 CreateManualSnapshot 区别：content 来自参数而非当前简历；label 重复时自动追加序号避免冲突。
+func (r *repository) CreateSnapshotWithContent(ctx context.Context, userID, resumeID string, contentJSON []byte, label string) (string, error) {
+	// 校验简历归属
+	var exists bool
+	if err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM resumes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL)`,
+		resumeID, userID).Scan(&exists); err != nil {
+		return "", fmt.Errorf("check resume: %w", err)
+	}
+	if !exists {
+		return "", ErrResumeNotFound
+	}
+
+	// label 去重：已存在同名则追加 -2/-3…，避免 AI 多次优化同一 JD 时冲突
+	finalLabel := label
+	for i := 2; i <= 50; i++ {
+		var dup bool
+		if err := r.pool.QueryRow(ctx, `
+			SELECT EXISTS(SELECT 1 FROM resume_versions
+				WHERE resume_id = $1 AND user_id = $2 AND snapshot_type = 'manual' AND label = $3)
+		`, resumeID, userID, finalLabel).Scan(&dup); err != nil {
+			return "", fmt.Errorf("check duplicate label: %w", err)
+		}
+		if !dup {
+			break
+		}
+		finalLabel = fmt.Sprintf("%s-%d", label, i)
+	}
+
+	var snapshotID string
+	if err := r.pool.QueryRow(ctx, `
+		INSERT INTO resume_versions (resume_id, user_id, content_snapshot, snapshot_type, label)
+		VALUES ($1, $2, $3, 'manual', $4)
+		RETURNING id
+	`, resumeID, userID, contentJSON, finalLabel).Scan(&snapshotID); err != nil {
+		return "", fmt.Errorf("create snapshot with content: %w", err)
+	}
+
+	// 与 CreateManualSnapshot 一致：建手动快照后清掉默认快照
+	_, _ = r.pool.Exec(ctx, `DELETE FROM resume_versions WHERE resume_id = $1 AND snapshot_type = 'default'`, resumeID)
+	r.cleanupAutoVersions(ctx, resumeID)
+
+	return snapshotID, nil
 }
 
 // UpdateSnapshotLabel 更新快照标签

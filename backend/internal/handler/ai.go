@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"resumecraft-pdf-backend/internal/middleware"
 	"resumecraft-pdf-backend/internal/model"
@@ -386,6 +387,78 @@ func (h *Handler) RewriteModule(c *gin.Context) {
 	}
 
 	response.JSONSuccess(c, result)
+}
+
+// OptimizeForJD JD 定向优化：AI 生成优化后的简历内容，落为 manual 快照供对比/采纳
+// POST /api/ai/jd-optimize
+func (h *Handler) OptimizeForJD(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.JDOptimizeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+	if len(req.JDText) > 30000 {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "JD 内容不能超过 30000 字符")
+		return
+	}
+	if h.resumeService == nil {
+		response.JSONError(c, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "简历服务未启用")
+		return
+	}
+
+	// 1) AI 生成优化后的 content（只改文本，结构保留）
+	optimized, notes, changed, modelName, err := h.aiService.OptimizeForJD(c.Request.Context(), userID.(string), req)
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[ai] OptimizeForJD error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "JD 优化失败")
+		return
+	}
+
+	// 2) 归一化为快照 content 结构（themeColor/styleSettings/modules），与 resumes.content 一致
+	snapContent := map[string]interface{}{
+		"themeColor":    optimized["themeColor"],
+		"styleSettings": optimized["styleSettings"],
+		"modules":       optimized["modules"],
+	}
+	contentJSON, _ := json.Marshal(snapContent)
+
+	// 3) 落为 manual 快照：label = AI优化-岗位-公司（缺省部分自动省略），
+	//    label 持久化在 resume_versions.label，刷新后从快照时间轴即可追溯来历
+	label := "AI优化"
+	parts := []string{}
+	if t := strings.TrimSpace(req.TargetTitle); t != "" {
+		parts = append(parts, t)
+	}
+	if cn := strings.TrimSpace(req.CompanyName); cn != "" {
+		parts = append(parts, cn)
+	}
+	if len(parts) > 0 {
+		label = "AI优化-" + strings.Join(parts, "-")
+	}
+	snapshotID, err := h.resumeService.CreateSnapshotWithContent(c.Request.Context(), userID.(string), req.ResumeID, contentJSON, label)
+	if err != nil {
+		log.Printf("[ai] OptimizeForJD create snapshot error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "保存优化快照失败")
+		return
+	}
+
+	response.JSONSuccess(c, model.JDOptimizeResponse{
+		SnapshotID:   snapshotID,
+		Label:        label,
+		ChangedCount: changed,
+		Notes:        notes,
+		Model:        modelName,
+	})
 }
 
 // SuggestContent 内容润色建议

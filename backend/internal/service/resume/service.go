@@ -27,6 +27,7 @@ type Service interface {
 	// 版本快照
 	ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error)
 	CreateManualSnapshot(ctx context.Context, userID, resumeID string, label string) (*model.VersionSnapshot, error)
+	CreateSnapshotWithContent(ctx context.Context, userID, resumeID string, contentJSON []byte, label string) (string, error)
 	UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error
 	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
 	GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error)
@@ -186,6 +187,18 @@ func (s *service) CreateManualSnapshot(ctx context.Context, userID, resumeID str
 		return nil, err
 	}
 	return snapshot, nil
+}
+
+// CreateSnapshotWithContent 用指定 content 建 manual 快照（AI 优化产出落库）
+func (s *service) CreateSnapshotWithContent(ctx context.Context, userID, resumeID string, contentJSON []byte, label string) (string, error) {
+	id, err := s.repo.CreateSnapshotWithContent(ctx, userID, resumeID, contentJSON, label)
+	if err != nil {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
+			return "", ErrResumeNotFound
+		}
+		return "", err
+	}
+	return id, nil
 }
 
 func (s *service) UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error {

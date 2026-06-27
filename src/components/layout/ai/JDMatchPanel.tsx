@@ -3,6 +3,7 @@ import { aiApi } from '@/api'
 import type { ConversationItem, JDMatchResponse, JDScoreResponse } from '@/api/ai'
 import type { Resume } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
+import { toast } from '@/components/common/Toast'
 import { scoreClass, severityTextMap, severityClassMap } from './shared'
 
 interface JDMatchPanelProps {
@@ -60,11 +61,39 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
 
     // 从 store 获取快照列表，用于在对话历史中显示快照标签
     const snapshots = useResumeStore((s) => s.snapshots)
+    const triggerSnapshotRefresh = useResumeStore((s) => s.triggerSnapshotRefresh)
     const getSnapshotLabel = (snapshotVersionId?: string | null): string | null => {
         if (!snapshotVersionId) return null
         const snap = snapshots.find((s) => s.id === snapshotVersionId)
         if (!snap || snap.snapshotType !== 'manual') return null
         return snap.label || `v${snap.id.slice(0, 4)}`
+    }
+
+    // JD 定向优化：生成优化快照
+    const [optimizing, setOptimizing] = useState(false)
+    const [optimizeResult, setOptimizeResult] = useState<{ label: string; changedCount: number; notes: string[] } | null>(null)
+
+    const handleOptimize = async () => {
+        if (!jdText.trim() || optimizing) return
+        setOptimizing(true)
+        setOptimizeResult(null)
+        try {
+            const res = await aiApi.optimizeForJD({
+                resumeId: resume.id,
+                content: resume as unknown as Record<string, unknown>,
+                jdText: jdText.trim(),
+                targetTitle: targetTitle.trim() || undefined,
+                companyName: companyName.trim() || undefined,
+            })
+            setOptimizeResult({ label: res.label, changedCount: res.changedCount, notes: res.notes })
+            // 新快照已落库，刷新时间轴让用户能在「版本」里看到并切换/对比
+            triggerSnapshotRefresh()
+            toast(`已生成优化版「${res.label}」`, 'success')
+        } catch (err) {
+            toast(err instanceof Error ? err.message : 'JD 优化失败')
+        } finally {
+            setOptimizing(false)
+        }
     }
 
     const canSubmit = jdText.trim().length > 0 && jdText.length <= 20000 && !loading && !scoreLoading
@@ -185,6 +214,30 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                                 {scoreLoading ? '评分中...' : '深度评分'}
                             </button>
                         </div>
+                        {/* JD 定向优化：基于 JD 生成优化版简历快照 */}
+                        <button
+                            type="button"
+                            disabled={!jdText.trim() || jdText.length > 20000 || optimizing}
+                            onClick={handleOptimize}
+                            className="w-full rounded-xl bg-gradient-to-r from-primary to-indigo-500 px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {optimizing ? '生成优化版中...' : '✨ 生成优化版简历'}
+                        </button>
+                        {optimizeResult && (
+                            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                                <p className="text-xs font-medium text-gray-800">
+                                    已生成「{optimizeResult.label}」，优化 {optimizeResult.changedCount} 处
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-gray-500">在左侧「版本」时间轴可切换查看 / 对比 / 采纳</p>
+                                {optimizeResult.notes?.length > 0 && (
+                                    <ul className="mt-1.5 space-y-1">
+                                        {optimizeResult.notes.map((n, i) => (
+                                            <li key={i} className="text-[11px] leading-relaxed text-gray-600">· {n}</li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 

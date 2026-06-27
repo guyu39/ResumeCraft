@@ -357,6 +357,24 @@ type ModuleRewriteResponse struct {
 	ConversationID string              `json:"conversationId"`
 }
 
+// JDOptimizeRequest JD 定向优化请求
+type JDOptimizeRequest struct {
+	ResumeID    string                 `json:"resumeId" binding:"required"`
+	Content     map[string]interface{} `json:"content" binding:"required"` // 当前简历完整 content（含 modules）
+	JDText      string                 `json:"jdText" binding:"required"`
+	TargetTitle string                 `json:"targetTitle"`
+	CompanyName string                 `json:"companyName"`
+}
+
+// JDOptimizeResponse JD 定向优化响应（快照在 handler 落库后回填 snapshotId/label）
+type JDOptimizeResponse struct {
+	SnapshotID   string   `json:"snapshotId"`
+	Label        string   `json:"label"`
+	ChangedCount int      `json:"changedCount"`
+	Notes        []string `json:"notes"`
+	Model        string   `json:"model"`
+}
+
 // SuggestRequest 润色请求
 type SuggestRequest struct {
 	ResumeID         string `json:"resumeId" binding:"required"`

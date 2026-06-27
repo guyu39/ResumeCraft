@@ -451,6 +451,16 @@ export const aiApi = {
     rewriteModule: (data: ModuleRewriteRequest) =>
         apiClient.post<ModuleRewriteResponse>('/ai/rewrite/module', data, { auth: true }),
 
+    optimizeForJD: (data: {
+        resumeId: string
+        content: Record<string, unknown>
+        jdText: string
+        targetTitle?: string
+        companyName?: string
+    }) =>
+        apiClient.post<{ snapshotId: string; label: string; changedCount: number; notes: string[]; model: string }>(
+            '/ai/jd-optimize', data, { auth: true }),
+
     suggest: (data: SuggestRequest) =>
         apiClient.post<SuggestResponse>('/ai/suggest', data, { auth: true }),
 
