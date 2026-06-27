@@ -20,6 +20,7 @@ import {
 import { useInterviewPrep } from '@/hooks/useInterviewPrep'
 import { extractTextFromDocx, isDocxFile } from '@/utils/docxParser'
 import { InterviewHistoryDrawer } from './InterviewHistoryDrawer'
+import { scoreClass } from './shared'
 import type { InterviewSessionDetail } from '@/api/ai'
 
 interface InterviewPrepPanelProps {
@@ -67,12 +68,6 @@ const CATEGORY_CONFIG: Record<string, { icon: React.ElementType; label: string; 
 
 // 分类配置：与后端 model.InterviewQuestion.category 枚举对齐
 const CATEGORY_FALLBACK = { icon: Code2, label: '其他', class: 'bg-gray-50 text-gray-700 border-gray-100' }
-
-const scoreClass = (score: number) => {
-    if (score >= 85) return 'text-green-600'
-    if (score >= 70) return 'text-amber-600'
-    return 'text-red-600'
-}
 
 const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     resumeId,

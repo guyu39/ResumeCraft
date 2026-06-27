@@ -1,50 +1,35 @@
-import { useRef, useState } from 'react'
+import { useCallback } from 'react'
 import { aiApi } from '@/api'
 import type { CoverLetterResponse } from '@/api/ai'
 import type { Resume } from '@/types/resume'
+import { useAIRequest } from './useAIRequest'
+import { buildAICacheKey } from './aiCacheKey'
 
-interface CoverLetterState {
-    loading: boolean
-    error: string | null
-    result: CoverLetterResponse | null
-    lastGeneratedAt: number | null
-}
-
-const createDefaultState = (): CoverLetterState => ({
-    loading: false,
-    error: null,
-    result: null,
-    lastGeneratedAt: null,
-})
+type CoverLetterForm = { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }
 
 export const useCoverLetter = () => {
-    const [state, setState] = useState<CoverLetterState>(createDefaultState)
-    const requestIdRef = useRef(0)
-
-    const generateCoverLetter = async (
-        resume: Resume,
-        form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string },
-        snapshotVersionId?: string | null
-    ): Promise<CoverLetterResponse | null> => {
-        if (state.loading) {
-            return state.result
-        }
-
-        const jobTitle = form.jobTitle.trim()
-        if (!jobTitle) {
-            setState((prev) => ({ ...prev, error: '请填写目标岗位' }))
+    const req = useAIRequest<[Resume, CoverLetterForm, (string | null)?], CoverLetterResponse>({
+        defaultError: '生成求职信失败',
+        validate: (_resume, form) => {
+            if (!form.jobTitle.trim()) return '请填写目标岗位'
+            if ((form.jdText?.length ?? 0) > 20000) return 'JD 内容过长，请精简到 20000 字以内'
             return null
-        }
-        if ((form.jdText?.length ?? 0) > 20000) {
-            setState((prev) => ({ ...prev, error: 'JD 内容过长，请精简到 20000 字以内' }))
-            return null
-        }
-
-        const nextRequestId = requestIdRef.current + 1
-        requestIdRef.current = nextRequestId
-        setState((prev) => ({ ...prev, loading: true, error: null }))
-
-        try {
+        },
+        cacheKey: (resume, form, snapshotVersionId) =>
+            buildAICacheKey({
+                resumeId: resume.id,
+                resumeUpdatedAt: resume.updatedAt,
+                snapshotVersionId,
+                text: form.jdText?.trim() ?? '',
+                extra: {
+                    job: form.jobTitle.trim(),
+                    company: form.companyName?.trim(),
+                    tone: form.tone,
+                    lang: form.language,
+                },
+            }),
+        run: async (resume, form, snapshotVersionId) => {
+            const jobTitle = form.jobTitle.trim()
             const output = await aiApi.generateCoverLetter({
                 resumeId: resume.id,
                 snapshotVersionId: snapshotVersionId ?? undefined,
@@ -55,43 +40,28 @@ export const useCoverLetter = () => {
                 tone: form.tone,
                 language: form.language,
             })
-
-            if (requestIdRef.current !== nextRequestId) {
-                return null
-            }
-
-            const merged: CoverLetterResponse = {
+            return {
                 ...output,
                 jdText: form.jdText?.trim(),
                 jobTitle: output.jobTitle || jobTitle,
                 companyName: output.companyName || form.companyName?.trim(),
             }
-            setState({
-                loading: false,
-                error: null,
-                result: merged,
-                lastGeneratedAt: Date.now(),
-            })
-            return merged
-        } catch (error) {
-            if (requestIdRef.current !== nextRequestId) {
-                return null
-            }
-            const message = error instanceof Error ? error.message : '生成求职信失败'
-            setState((prev) => ({ ...prev, loading: false, error: message }))
-            return null
-        }
-    }
+        },
+    })
 
-    const resetCoverLetter = () => {
-        requestIdRef.current += 1
-        setState(createDefaultState())
-    }
+    const generateCoverLetter = useCallback(
+        (resume: Resume, form: CoverLetterForm, snapshotVersionId?: string | null) =>
+            req.execute(resume, form, snapshotVersionId),
+        [req.execute],
+    )
 
     return {
-        ...state,
-        hasResult: Boolean(state.result),
+        loading: req.loading,
+        error: req.error,
+        result: req.result,
+        lastGeneratedAt: req.lastAt,
+        hasResult: req.hasResult,
         generateCoverLetter,
-        resetCoverLetter,
+        resetCoverLetter: req.reset,
     }
 }

@@ -3,6 +3,7 @@ import type { ModuleType } from '@/types/resume'
 import type { ResumeEvaluateOutput } from '@/ai'
 import { aiApi, type ConversationItem } from '@/api/ai'
 import { useResumeStore } from '@/store/resumeStore'
+import { severityClassMap as sharedSeverityClassMap, severityTextMap as sharedSeverityTextMap } from './shared'
 
 interface ResumeScoreDrawerProps {
     open: boolean
@@ -83,17 +84,9 @@ const levelColorClass = (score: number): string => {
     return 'text-red-600'
 }
 
-const severityClassMap: Record<'high' | 'medium' | 'low', string> = {
-    high: 'bg-red-50 text-red-700 border-red-100',
-    medium: 'bg-amber-50 text-amber-700 border-amber-100',
-    low: 'bg-blue-50 text-blue-700 border-blue-100',
-}
+const severityClassMap = sharedSeverityClassMap as Record<'high' | 'medium' | 'low', string>
 
-const severityTextMap: Record<'high' | 'medium' | 'low', string> = {
-    high: '高',
-    medium: '中',
-    low: '低',
-}
+const severityTextMap = sharedSeverityTextMap as Record<'high' | 'medium' | 'low', string>
 
 const parseStreamPreview = (streamText: string): StreamPreview => {
     const text = normalizeStreamText(streamText)
@@ -339,8 +332,6 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     restoredResult,
     onNewEvaluation,
 }) => {
-    if (!open) return null
-
     // 从 store 获取快照列表，用于在对话历史中显示快照标签
     const snapshots = useResumeStore((s) => s.snapshots)
     const getSnapshotLabel = (snapshotVersionId?: string | null): string | null => {
@@ -444,6 +435,9 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
             window.clearInterval(timer)
         }
     }, [loading])
+
+    // 所有 Hook 调用之后再做条件 return，避免 open 切换时 Hook 数量变化（违反 Hooks 规则）
+    if (!open) return null
 
     return (
         <div className={embedded ? 'h-full' : 'fixed inset-0 z-50 bg-black/25'}>

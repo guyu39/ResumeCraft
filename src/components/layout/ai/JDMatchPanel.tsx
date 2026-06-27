@@ -3,10 +3,10 @@ import { aiApi } from '@/api'
 import type { ConversationItem, JDMatchResponse, JDScoreResponse } from '@/api/ai'
 import type { Resume } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
+import { scoreClass, severityTextMap, severityClassMap } from './shared'
 
 interface JDMatchPanelProps {
-    resume: Resume
-    /** 父组件已预取的对话历史列表（消除"查看历史"网络延迟） */
+    resume: Resume    /** 父组件已预取的对话历史列表（消除"查看历史"网络延迟） */
     preloadedHistory?: ConversationItem[]
     loading: boolean
     scoreLoading: boolean
@@ -25,24 +25,6 @@ interface JDMatchPanelProps {
     onResetScore: () => void
     onRestoreHistory: (result: JDMatchResponse) => void
     onRestoreScoreHistory: (result: JDScoreResponse) => void
-}
-
-const severityTextMap: Record<string, string> = {
-    high: '高',
-    medium: '中',
-    low: '低',
-}
-
-const severityClassMap: Record<string, string> = {
-    high: 'border-red-100 bg-red-50 text-red-700',
-    medium: 'border-amber-100 bg-amber-50 text-amber-700',
-    low: 'border-blue-100 bg-blue-50 text-blue-700',
-}
-
-const scoreClass = (score: number) => {
-    if (score >= 85) return 'text-green-600'
-    if (score >= 70) return 'text-amber-600'
-    return 'text-red-600'
 }
 
 const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
