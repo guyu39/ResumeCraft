@@ -15,13 +15,11 @@ import { toast } from '@/components/common/Toast'
 import { useResumeEvaluation } from '@/hooks/useResumeEvaluation'
 import { useJDMatch } from '@/hooks/useJDMatch'
 import { useJDScore } from '@/hooks/useJDScore'
-import { useCoverLetter } from '@/hooks/useCoverLetter'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
-import CoverLetterPanel from '@/components/layout/ai/CoverLetterPanel'
 import InterviewPrepPanel from '@/components/layout/ai/InterviewPrepPanel'
 import SettingsPanel from '@/components/layout/SettingsPanel'
-import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type CoverLetterResponse, type ConversationItem } from '@/api'
+import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type ConversationItem } from '@/api'
 import type { ExportFormat } from '@/api/types'
 
 // 各模块表单
@@ -153,7 +151,7 @@ const RightPanel: React.FC = () => {
     }, [resume.modules])
 
     const hasDateErrors = dateErrors.length > 0
-    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'cover_letter' | 'interview_prep'>('evaluate')
+    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'interview_prep'>('evaluate')
     const [aiConfigFromServer, setAiConfigFromServer] = useState<{
         provider: string
         baseUrl: string
@@ -167,7 +165,6 @@ const RightPanel: React.FC = () => {
     // 预取的对话历史列表（消除"查看历史"延迟）
     const [preloadedEvalHistory, setPreloadedEvalHistory] = useState<ConversationItem[]>([])
     const [preloadedJDHistory, setPreloadedJDHistory] = useState<ConversationItem[]>([])
-    const [restoredCoverLetter, setRestoredCoverLetter] = useState<CoverLetterResponse | null>(null)
     const { exportFile, exporting, error: exportError } = useExport()
     const {
         loading: evaluating,
@@ -198,14 +195,6 @@ const RightPanel: React.FC = () => {
         runScore,
         resetScore,
     } = useJDScore()
-    const {
-        loading: generatingCoverLetter,
-        error: coverLetterError,
-        result: coverLetterResult,
-        lastGeneratedAt,
-        generateCoverLetter,
-        resetCoverLetter,
-    } = useCoverLetter()
 
     // 组件挂载时从后端加载 AI 配置（按用户 ID，不依赖是否打开设置）
     // 这是 AI 配置的唯一加载点；模型名称显示等都复用此处结果，避免重复请求。
@@ -240,15 +229,19 @@ const RightPanel: React.FC = () => {
         if (!isAuthenticated) {
             return
         }
+        // cancelled 守卫：快速切 tab/换简历时，丢弃过期请求的结果，避免覆盖新状态
+        let cancelled = false
         const loadLatest = async () => {
             try {
                 // 加载更多条，然后客户端按快照过滤
                 const res = await aiApi.getConversations({ type: 'evaluate', resumeId: resume.id, pageSize: 10 })
+                if (cancelled) return
                 const items = res.items || []
                 // 保存预取列表供 Drawer 使用（消除"查看历史"延迟）
                 setPreloadedEvalHistory(items.slice(0, 5))
                 if (items.length > 0) {
                     const detail = await aiApi.getConversation(items[0].id)
+                    if (cancelled) return
                     if (detail.context) {
                         const ctx = detail.context as {
                             overallScore?: number; level?: string; summary?: string
@@ -272,10 +265,11 @@ const RightPanel: React.FC = () => {
                     setInitialEvaluation(null)
                 }
             } catch (err) {
-                console.error('Failed to load initial evaluation:', err)
+                if (!cancelled) console.error('Failed to load initial evaluation:', err)
             }
         }
         loadLatest()
+        return () => { cancelled = true }
     }, [showAIEvaluation, isAuthenticated, resume.id])
 
 
@@ -289,9 +283,12 @@ const RightPanel: React.FC = () => {
     // 切换 AI 工具标签时：加载当前快照对应的 JD 匹配 / 求职信历史
     useEffect(() => {
         if (!showAIEvaluation || !isAuthenticated) return
+        // cancelled 守卫：避免快速切 tab/换简历时旧请求覆盖新面板状态
+        let cancelled = false
         if (activeAITool === 'jd_match') {
             setRestoredJDMatch(null)
             aiApi.getConversations({ type: 'jd_match', resumeId: resume.id, pageSize: 10 }).then((res) => {
+                if (cancelled) return null
                 const items = res.items || []
                 // 保存预取列表供面板使用
                 setPreloadedJDHistory(items.slice(0, 5))
@@ -300,7 +297,11 @@ const RightPanel: React.FC = () => {
                 }
                 return null
             }).then((detail) => {
-                if (detail?.context) {
+                if (cancelled || !detail) {
+                    if (!cancelled) setRestoredJDMatch(null)
+                    return
+                }
+                if (detail.context) {
                     const ctx = detail.context as Record<string, unknown>
                     if (ctx.matchScore !== undefined) {
                         setRestoredJDMatch(ctx as unknown as JDMatchResponse)
@@ -309,23 +310,8 @@ const RightPanel: React.FC = () => {
                     setRestoredJDMatch(null)
                 }
             }).catch(() => { })
-        } else if (activeAITool === 'cover_letter') {
-            setRestoredCoverLetter(null)
-            aiApi.getConversations({ type: 'cover_letter', resumeId: resume.id, pageSize: 10 }).then((res) => {
-                const items = res.items || []
-                if (items.length > 0) {
-                    return aiApi.getConversation(items[0].id)
-                }
-                return null
-            }).then((detail) => {
-                if (detail?.context) {
-                    const ctx = detail.context as Record<string, unknown>
-                    if (ctx.coverLetter !== undefined) {
-                        setRestoredCoverLetter(ctx as unknown as CoverLetterResponse)
-                    }
-                }
-            }).catch(() => { })
         }
+        return () => { cancelled = true }
     }, [showAIEvaluation, activeAITool, isAuthenticated, resume.id])
 
     const activeModule = resume.modules.find((m) => m.id === activeModuleId) ?? null
@@ -419,12 +405,6 @@ const RightPanel: React.FC = () => {
     const handleRestoreJDScore = (result: JDScoreResponse) => {
         setRestoredJDScore(result)
         setRestoredJDMatch(null)
-    }
-
-    const handleGenerateCoverLetter = async (form: { jdText?: string; jobTitle: string; companyName?: string; tone?: string; language?: string }) => {
-        setRestoredCoverLetter(null)
-        await flushToCloud()
-        await generateCoverLetter(resume, form, activeSnapshotId)
     }
 
     const handleConversationSelect = useCallback(async (conversationId: string) => {
@@ -599,13 +579,6 @@ const RightPanel: React.FC = () => {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setActiveAITool('cover_letter')}
-                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'cover_letter' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    求职信
-                                </button>
-                                <button
-                                    type="button"
                                     onClick={() => setActiveAITool('interview_prep')}
                                     className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'interview_prep' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
@@ -659,17 +632,6 @@ const RightPanel: React.FC = () => {
                                     onResetScore={resetScore}
                                     onRestoreHistory={handleRestoreJDMatch}
                                     onRestoreScoreHistory={handleRestoreJDScore}
-                                />
-                            )}
-                            {activeAITool === 'cover_letter' && (
-                                <CoverLetterPanel
-                                    loading={generatingCoverLetter}
-                                    error={coverLetterError}
-                                    result={coverLetterResult}
-                                    restoredResult={restoredCoverLetter}
-                                    lastGeneratedAt={lastGeneratedAt}
-                                    onGenerate={handleGenerateCoverLetter}
-                                    onReset={resetCoverLetter}
                                 />
                             )}
                             {activeAITool === 'interview_prep' && (

@@ -250,7 +250,7 @@ func (h *Handler) SaveInterviewProgress(c *gin.Context) {
 }
 
 // ListInterviewSessions 面试历史列表
-// GET /api/ai/interview/sessions?limit=20&offset=0
+// GET /api/ai/interview/sessions?resumeId=xxx&limit=20&offset=0
 func (h *Handler) ListInterviewSessions(c *gin.Context) {
 	userID, ok := c.Get(middleware.ContextUserIDKey)
 	if !ok {
@@ -258,6 +258,7 @@ func (h *Handler) ListInterviewSessions(c *gin.Context) {
 		return
 	}
 
+	resumeID := c.Query("resumeId")
 	limit := 20
 	offset := 0
 	if v := c.Query("limit"); v != "" {
@@ -271,7 +272,7 @@ func (h *Handler) ListInterviewSessions(c *gin.Context) {
 		}
 	}
 
-	resp, err := h.aiService.ListInterviewSessions(c.Request.Context(), userID.(string), limit, offset)
+	resp, err := h.aiService.ListInterviewSessions(c.Request.Context(), userID.(string), resumeID, limit, offset)
 	if err != nil {
 		log.Printf("[interview] ListInterviewSessions error: %v", err)
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "查询面试历史失败")

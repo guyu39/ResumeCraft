@@ -853,6 +853,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
             <InterviewHistoryDrawer
                 open={historyOpen}
                 onClose={() => setHistoryOpen(false)}
+                resumeId={resumeId}
                 onLoadSession={(detail: InterviewSessionDetail) => {
                     // 兜底：detail 顶层的 overallScore/passLevel 是从数据库列直接读的，
                     // 而 evaluation 里的 overallScore 来自 JSON。两者不一致时以列值为准。

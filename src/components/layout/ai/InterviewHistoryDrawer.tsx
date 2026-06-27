@@ -5,6 +5,8 @@ import { aiApi, type InterviewSessionListItem, type InterviewSessionDetail } fro
 interface InterviewHistoryDrawerProps {
     open: boolean
     onClose: () => void
+    /** 当前简历 ID：仅展示该简历下的面试记录，避免跨简历串台 */
+    resumeId: string
     onLoadSession?: (session: InterviewSessionDetail) => void
 }
 
@@ -32,7 +34,7 @@ function formatTime(ts: number): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function InterviewHistoryDrawer({ open, onClose, onLoadSession }: InterviewHistoryDrawerProps) {
+export function InterviewHistoryDrawer({ open, onClose, resumeId, onLoadSession }: InterviewHistoryDrawerProps) {
     const [items, setItems] = useState<InterviewSessionListItem[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -50,7 +52,7 @@ export function InterviewHistoryDrawer({ open, onClose, onLoadSession }: Intervi
         setLoading(true)
         setError(null)
         try {
-            const resp = await aiApi.interviewListSessions(PAGE_SIZE, 0)
+            const resp = await aiApi.interviewListSessions(resumeId, PAGE_SIZE, 0)
             setItems(resp.items)
             setTotal(resp.total)
         } catch (err) {
@@ -64,7 +66,9 @@ export function InterviewHistoryDrawer({ open, onClose, onLoadSession }: Intervi
         if (open) {
             fetchPage()
         }
-    }, [open])
+        // resumeId 变化时也重新拉取
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, resumeId])
 
     const handleLoad = async (sessionId: string) => {
         setLoadingDetailId(sessionId)

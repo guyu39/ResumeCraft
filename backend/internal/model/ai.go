@@ -296,32 +296,6 @@ type JDScoreImprovement struct {
 	Priority      string `json:"priority"`
 }
 
-// CoverLetterRequest 求职信生成请求
-type CoverLetterRequest struct {
-	ResumeID          string                 `json:"resumeId" binding:"required"`
-	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
-	Content           map[string]interface{} `json:"content" binding:"required"`
-	JDText            string                 `json:"jdText"`
-	JobTitle          string                 `json:"jobTitle" binding:"required"`
-	CompanyName       string                 `json:"companyName"`
-	Tone              string                 `json:"tone"`
-	Language          string                 `json:"language"`
-}
-
-// CoverLetterResponse 求职信生成响应
-type CoverLetterResponse struct {
-	Title          string   `json:"title"`
-	CoverLetter    string   `json:"coverLetter"`
-	HighlightsUsed []string `json:"highlightsUsed"`
-	Tips           []string `json:"tips"`
-	JobTitle       string   `json:"jobTitle,omitempty"`
-	CompanyName    string   `json:"companyName,omitempty"`
-	JDText         string   `json:"jdText,omitempty"`
-	RawText        string   `json:"rawText,omitempty"`
-	Model          string   `json:"model"`
-	ConversationID string   `json:"conversationId"`
-}
-
 // BulletRewriteRequest Bullet Point 重写请求
 type BulletRewriteRequest struct {
 	ResumeID         string `json:"resumeId" binding:"required"`

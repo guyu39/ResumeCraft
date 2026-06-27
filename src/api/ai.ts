@@ -223,30 +223,6 @@ export interface JDScoreResponse {
     conversationId: string
 }
 
-export interface CoverLetterRequest {
-    resumeId: string
-    snapshotVersionId?: string
-    content: Record<string, unknown>
-    jdText?: string
-    jobTitle: string
-    companyName?: string
-    tone?: string
-    language?: string
-}
-
-export interface CoverLetterResponse {
-    title: string
-    coverLetter: string
-    highlightsUsed: string[]
-    tips: string[]
-    jobTitle?: string
-    companyName?: string
-    jdText?: string
-    rawText?: string
-    model: string
-    conversationId: string
-}
-
 export interface BulletRewriteRequest {
     resumeId: string
     snapshotVersionId?: string
@@ -444,9 +420,6 @@ export const aiApi = {
     score: (data: JDScoreRequest) =>
         apiClient.post<JDScoreResponse>('/ai/score', data, { auth: true }),
 
-    generateCoverLetter: (data: CoverLetterRequest) =>
-        apiClient.post<CoverLetterResponse>('/ai/cover-letter', data, { auth: true }),
-
     rewriteBullet: (data: BulletRewriteRequest) =>
         apiClient.post<BulletRewriteResponse>('/ai/rewrite/bullet', data, { auth: true }),
 
@@ -560,9 +533,9 @@ export const aiApi = {
         apiClient.put(`/ai/interview/sessions/${sessionId}/progress`, data, { auth: true }),
 
     // 面试历史
-    interviewListSessions: (limit = 20, offset = 0) =>
+    interviewListSessions: (resumeId: string, limit = 20, offset = 0) =>
         apiClient.get<InterviewSessionListResponse>(
-            `/ai/interview/sessions?limit=${limit}&offset=${offset}`,
+            `/ai/interview/sessions?resumeId=${encodeURIComponent(resumeId)}&limit=${limit}&offset=${offset}`,
             { auth: true }
         ),
     interviewGetSession: (sessionId: string) =>

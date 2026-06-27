@@ -355,39 +355,6 @@ func (h *Handler) RewriteBullet(c *gin.Context) {
 	response.JSONSuccess(c, result)
 }
 
-// GenerateCoverLetter 生成求职信
-// POST /api/ai/cover-letter
-func (h *Handler) GenerateCoverLetter(c *gin.Context) {
-	userID, ok := c.Get(middleware.ContextUserIDKey)
-	if !ok {
-		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
-		return
-	}
-
-	var req model.CoverLetterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
-		return
-	}
-	if len(req.JDText) > 30000 {
-		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "JD 内容不能超过 30000 字符")
-		return
-	}
-
-	result, err := h.aiService.GenerateCoverLetter(c.Request.Context(), userID.(string), req)
-	if err != nil {
-		if err == ai.ErrAIConfigNotFound {
-			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
-			return
-		}
-		log.Printf("[ai] GenerateCoverLetter error: %v", err)
-		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "生成求职信失败")
-		return
-	}
-
-	response.JSONSuccess(c, result)
-}
-
 // SuggestContent 内容润色建议
 // POST /api/ai/suggest
 func (h *Handler) SuggestContent(c *gin.Context) {

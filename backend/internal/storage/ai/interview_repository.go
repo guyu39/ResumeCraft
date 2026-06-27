@@ -51,8 +51,8 @@ type InterviewRepository interface {
 	UpdateSessionQuestions(ctx context.Context, userID, sessionID string, questions json.RawMessage, model string) error
 	UpdateSessionProgress(ctx context.Context, userID, sessionID string, answers json.RawMessage, answeredCount, skippedCount int) error
 	UpdateSessionEvaluation(ctx context.Context, userID, sessionID string, evaluation json.RawMessage, overallScore int, passLevel string) error
-	ListSessionsByUser(ctx context.Context, userID string, limit, offset int) ([]InterviewSessionRecord, error)
-	CountSessionsByUser(ctx context.Context, userID string) (int, error)
+	ListSessionsByUser(ctx context.Context, userID, resumeID string, limit, offset int) ([]InterviewSessionRecord, error)
+	CountSessionsByUser(ctx context.Context, userID, resumeID string) (int, error)
 	DeleteSession(ctx context.Context, userID, sessionID string) error
 }
 
@@ -141,7 +141,14 @@ func (r *pgInterviewRepository) UpdateSessionEvaluation(ctx context.Context, use
 	return err
 }
 
-func (r *pgInterviewRepository) ListSessionsByUser(ctx context.Context, userID string, limit, offset int) ([]InterviewSessionRecord, error) {
+func (r *pgInterviewRepository) ListSessionsByUser(ctx context.Context, userID, resumeID string, limit, offset int) ([]InterviewSessionRecord, error) {
+	// resumeID 非空时按简历隔离，避免在 A 简历看到 B 简历的面试记录
+	where := "WHERE user_id = $1"
+	args := []interface{}{userID, limit, offset}
+	if resumeID != "" {
+		where = "WHERE user_id = $1 AND resume_id = $4"
+		args = append(args, resumeID)
+	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, user_id, resume_id, snapshot_id, conversation_id,
 			target_title, company_name, jd_text, jd_hash,
@@ -151,10 +158,10 @@ func (r *pgInterviewRepository) ListSessionsByUser(ctx context.Context, userID s
 			COALESCE(evaluation, 'null'), overall_score, pass_level,
 			model, status, created_at, updated_at
 		FROM interview_sessions
-		WHERE user_id = $1
+		`+where+`
 		ORDER BY created_at DESC
 		LIMIT $2 OFFSET $3
-	`, userID, limit, offset)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,11 +186,18 @@ func (r *pgInterviewRepository) ListSessionsByUser(ctx context.Context, userID s
 	return records, nil
 }
 
-func (r *pgInterviewRepository) CountSessionsByUser(ctx context.Context, userID string) (int, error) {
+func (r *pgInterviewRepository) CountSessionsByUser(ctx context.Context, userID, resumeID string) (int, error) {
 	var count int
-	err := r.pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM interview_sessions WHERE user_id = $1
-	`, userID).Scan(&count)
+	var err error
+	if resumeID != "" {
+		err = r.pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM interview_sessions WHERE user_id = $1 AND resume_id = $2
+		`, userID, resumeID).Scan(&count)
+	} else {
+		err = r.pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM interview_sessions WHERE user_id = $1
+		`, userID).Scan(&count)
+	}
 	return count, err
 }
 

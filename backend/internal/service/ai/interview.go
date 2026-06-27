@@ -692,8 +692,8 @@ func (s *service) SaveInterviewProgress(ctx context.Context, userID, sessionID s
 	return s.interviewRepo.UpdateSessionProgress(ctx, userID, sessionID, answersJSON, req.AnsweredCount, req.SkippedCount)
 }
 
-// ListInterviewSessions 分页查询当前用户的面试历史（轻量字段，最多 10 条）
-func (s *service) ListInterviewSessions(ctx context.Context, userID string, limit, offset int) (*model.InterviewSessionListResponse, error) {
+// ListInterviewSessions 分页查询当前用户在指定简历下的面试历史（轻量字段，最多 10 条）
+func (s *service) ListInterviewSessions(ctx context.Context, userID, resumeID string, limit, offset int) (*model.InterviewSessionListResponse, error) {
 	const maxHistory = 10
 	if limit <= 0 || limit > maxHistory {
 		limit = maxHistory
@@ -702,11 +702,11 @@ func (s *service) ListInterviewSessions(ctx context.Context, userID string, limi
 		offset = 0
 	}
 
-	records, err := s.interviewRepo.ListSessionsByUser(ctx, userID, limit, offset)
+	records, err := s.interviewRepo.ListSessionsByUser(ctx, userID, resumeID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list interview sessions: %w", err)
 	}
-	total, err := s.interviewRepo.CountSessionsByUser(ctx, userID)
+	total, err := s.interviewRepo.CountSessionsByUser(ctx, userID, resumeID)
 	if err != nil {
 		return nil, fmt.Errorf("count interview sessions: %w", err)
 	}
