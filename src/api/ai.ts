@@ -254,6 +254,31 @@ export interface BulletRewriteResponse {
     conversationId: string
 }
 
+export interface ModuleRewriteRequest {
+    resumeId: string
+    moduleType: string
+    moduleInstanceId?: string
+    content: Record<string, unknown>
+    jdText?: string
+    targetTitle?: string
+    companyName?: string
+}
+
+export interface ModuleRewriteItem {
+    index: number
+    original: string
+    rewritten: string
+    highlights: string[]
+}
+
+export interface ModuleRewriteResponse {
+    moduleType: string
+    items: ModuleRewriteItem[]
+    model: string
+    rawText?: string
+    conversationId: string
+}
+
 export interface SuggestRequest {
     resumeId: string
     snapshotVersionId?: string
@@ -422,6 +447,9 @@ export const aiApi = {
 
     rewriteBullet: (data: BulletRewriteRequest) =>
         apiClient.post<BulletRewriteResponse>('/ai/rewrite/bullet', data, { auth: true }),
+
+    rewriteModule: (data: ModuleRewriteRequest) =>
+        apiClient.post<ModuleRewriteResponse>('/ai/rewrite/module', data, { auth: true }),
 
     suggest: (data: SuggestRequest) =>
         apiClient.post<SuggestResponse>('/ai/suggest', data, { auth: true }),

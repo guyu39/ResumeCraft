@@ -329,6 +329,34 @@ type BulletRewriteVersion struct {
 	Confidence float64  `json:"confidence"`
 }
 
+// ModuleRewriteRequest 整模块批量改写请求
+type ModuleRewriteRequest struct {
+	ResumeID         string                 `json:"resumeId" binding:"required"`
+	ModuleType       string                 `json:"moduleType" binding:"required"`
+	ModuleInstanceID string                 `json:"moduleInstanceId"`
+	Content          map[string]interface{} `json:"content" binding:"required"` // 模块完整数据（含 items）
+	JDText           string                 `json:"jdText"`
+	TargetTitle      string                 `json:"targetTitle"`
+	CompanyName      string                 `json:"companyName"`
+}
+
+// ModuleRewriteItem 单条改写结果（与原条目按 index 对齐）
+type ModuleRewriteItem struct {
+	Index      int      `json:"index"`
+	Original   string   `json:"original"`
+	Rewritten  string   `json:"rewritten"`
+	Highlights []string `json:"highlights"`
+}
+
+// ModuleRewriteResponse 整模块改写响应
+type ModuleRewriteResponse struct {
+	ModuleType     string              `json:"moduleType"`
+	Items          []ModuleRewriteItem `json:"items"`
+	Model          string              `json:"model"`
+	RawText        string              `json:"rawText,omitempty"`
+	ConversationID string              `json:"conversationId"`
+}
+
 // SuggestRequest 润色请求
 type SuggestRequest struct {
 	ResumeID         string `json:"resumeId" binding:"required"`

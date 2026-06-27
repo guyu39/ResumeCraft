@@ -18,6 +18,7 @@ import { useJDScore } from '@/hooks/useJDScore'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
 import InterviewPrepPanel from '@/components/layout/ai/InterviewPrepPanel'
+import ModuleRewritePanel from '@/components/layout/ai/ModuleRewritePanel'
 import SettingsPanel from '@/components/layout/SettingsPanel'
 import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type ConversationItem } from '@/api'
 import type { ExportFormat } from '@/api/types'
@@ -151,7 +152,7 @@ const RightPanel: React.FC = () => {
     }, [resume.modules])
 
     const hasDateErrors = dateErrors.length > 0
-    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'interview_prep'>('evaluate')
+    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'module_rewrite' | 'interview_prep'>('evaluate')
     const [aiConfigFromServer, setAiConfigFromServer] = useState<{
         provider: string
         baseUrl: string
@@ -560,7 +561,7 @@ const RightPanel: React.FC = () => {
                 <div className="flex-1 overflow-hidden bg-white">
                     <div className="flex h-full flex-col">
                         <div className="flex-shrink-0 border-b border-gray-100 bg-white px-4 py-3">
-                            <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 text-xs">
+                            <div className="grid grid-cols-4 gap-1 rounded-xl bg-gray-100 p-1 text-xs">
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('evaluate')}
@@ -574,6 +575,13 @@ const RightPanel: React.FC = () => {
                                     className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'jd_match' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
                                     JD 匹配
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveAITool('module_rewrite')}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'module_rewrite' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    改写
                                 </button>
                                 <button
                                     type="button"
@@ -628,6 +636,9 @@ const RightPanel: React.FC = () => {
                                     onRestoreHistory={handleRestoreJDMatch}
                                     onRestoreScoreHistory={handleRestoreJDScore}
                                 />
+                            )}
+                            {activeAITool === 'module_rewrite' && (
+                                <ModuleRewritePanel resume={resume} />
                             )}
                             {activeAITool === 'interview_prep' && (
                                 <InterviewPrepPanel

@@ -43,6 +43,7 @@ type Service interface {
 	StreamJDMatch(ctx context.Context, userID string, req model.JDMatchRequest, onEvent func(StreamEvent)) (*model.JDMatchResponse, error)
 	ScoreResumeForJD(ctx context.Context, userID string, req model.JDScoreRequest) (*model.JDScoreResponse, error)
 	RewriteBullet(ctx context.Context, userID string, req model.BulletRewriteRequest) (*model.BulletRewriteResponse, error)
+	RewriteModule(ctx context.Context, userID string, req model.ModuleRewriteRequest) (*model.ModuleRewriteResponse, error)
 	Suggest(ctx context.Context, userID string, req model.SuggestRequest) (*model.SuggestResponse, error)
 
 	// 面试准备
