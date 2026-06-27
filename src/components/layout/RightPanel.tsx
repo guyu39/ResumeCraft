@@ -173,8 +173,6 @@ const RightPanel: React.FC = () => {
         result: evaluateResult,
         streamText: evaluateStreamText,
         modelName: evaluateModelName,
-        lastEvaluatedAt,
-        evaluatedResumeUpdatedAt,
         runEvaluate,
         mode: evaluateMode,
     } = useResumeEvaluation()
@@ -562,7 +560,7 @@ const RightPanel: React.FC = () => {
                 <div className="flex-1 overflow-hidden bg-white">
                     <div className="flex h-full flex-col">
                         <div className="flex-shrink-0 border-b border-gray-100 bg-white px-4 py-3">
-                            <div className="grid grid-cols-4 gap-1 rounded-xl bg-gray-100 p-1 text-xs">
+                            <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 text-xs">
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('evaluate')}
@@ -599,9 +597,6 @@ const RightPanel: React.FC = () => {
                                     error={evaluateError}
                                     streamText={evaluateStreamText}
                                     modelName={evaluateModelName}
-                                    currentResumeUpdatedAt={resume.updatedAt}
-                                    evaluatedResumeUpdatedAt={evaluatedResumeUpdatedAt}
-                                    lastEvaluatedAt={lastEvaluatedAt}
                                     modeLabel={aiModeLabel}
                                     isAuthenticated={isAuthenticated}
                                     resumeId={resume.id}

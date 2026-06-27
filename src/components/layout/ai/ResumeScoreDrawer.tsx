@@ -17,9 +17,6 @@ interface ResumeScoreDrawerProps {
     error: string | null
     streamText: string
     modelName: string | null
-    currentResumeUpdatedAt: number
-    evaluatedResumeUpdatedAt: number | null
-    lastEvaluatedAt: number | null
     modeLabel?: string
     isAuthenticated?: boolean
     resumeId?: string
@@ -318,9 +315,6 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     error,
     streamText,
     modelName,
-    currentResumeUpdatedAt,
-    evaluatedResumeUpdatedAt,
-    lastEvaluatedAt,
     modeLabel,
     isAuthenticated,
     resumeId,
@@ -398,10 +392,6 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
     const [showHistory, setShowHistory] = useState(false)
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
 
-    const isLatest = evaluatedResumeUpdatedAt !== null && evaluatedResumeUpdatedAt === currentResumeUpdatedAt
-    const hasVersionInfo = evaluatedResumeUpdatedAt !== null
-    const evaluatedAtText = lastEvaluatedAt ? new Date(lastEvaluatedAt).toLocaleString() : '未知'
-
     const streamPreview = useMemo(() => parseStreamPreview(streamText), [streamText])
     const streamDimensionItems = useMemo(
         () => normalizeDimensionItems(streamPreview.dimensions),
@@ -441,22 +431,19 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
 
     return (
         <div className={embedded ? 'h-full' : 'fixed inset-0 z-50 bg-black/25'}>
-            <div className={embedded ? 'h-full bg-white' : 'absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl'}>
-                <div className="flex h-full flex-col">
-                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                        <div>
-                            <h4 className="text-sm font-semibold text-gray-800">AI 简历评估</h4>
-                            <p className="mt-0.5 text-xs text-gray-500">
-                                {isAuthenticated ? ((displayResult?.model ?? modelName) ?? modeLabel ?? '已连接 AI 模型') : '请先登录'}
-                            </p>
-                            {hasVersionInfo && (
-                                <p className={`mt-1 text-xs ${isLatest ? 'text-green-600' : 'text-amber-600'}`}>
-                                    {isLatest ? '版本：最新（与当前简历一致）' : '版本：已过期（简历已更新，建议重新评估）'}
-                                    <span className="ml-1 text-gray-500">评估时间：{evaluatedAtText}</span>
-                                </p>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2">
+            <div className={embedded ? 'h-full' : 'absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl'}>
+                {/* 与 JD 匹配 / 面试面板统一：灰底容器 + 圆角白卡片头部 */}
+                <div className="flex h-full flex-col bg-gray-50/80">
+                    <div className="flex-shrink-0 px-4 pt-4">
+                        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-gray-900">AI 简历评估</h3>
+                                    <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                                        {isAuthenticated ? ((displayResult?.model ?? modelName) ?? modeLabel ?? '基于当前简历内容输出评分、维度分析与改进建议。') : '请先登录后使用 AI 评估。'}
+                                    </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
                             {!isAuthenticated ? (
                                 <button
                                     type="button"
@@ -465,7 +452,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                         window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
                                         window.location.reload()
                                     }}
-                                    className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                                    className="rounded-lg bg-primary px-2.5 py-1 text-xs text-white hover:bg-primary/90"
                                 >
                                     登录
                                 </button>
@@ -474,7 +461,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                     type="button"
                                     onClick={onReevaluate}
                                     disabled={loading}
-                                    className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait"
+                                    className="rounded-lg bg-primary px-2.5 py-1 text-xs text-white hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait"
                                 >
                                     {loading ? '评估中...' : '评估'}
                                 </button>
@@ -501,22 +488,17 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                             })
                                         }
                                     }}
-                                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                                    className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
                                 >
                                     {showHistory ? '收起历史' : '查看历史'}
                                 </button>
                             )}
-                            {/* <button
-                                type="button"
-                                onClick={onClose}
-                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-                            >
-                                关闭
-                            </button> */}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto no-scrollbar p-4">
+                    <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4">
                         {showHistory && (
                             <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
                                 <h5 className="mb-2 text-sm font-semibold text-gray-700">评估历史<span className="text-xs text-gray-500">（仅显示5条评估记录）</span></h5>
