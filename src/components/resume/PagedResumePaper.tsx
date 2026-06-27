@@ -101,14 +101,24 @@ const PagedResumePaper: React.FC<PagedResumePaperProps> = ({
         const element = hiddenFullRef.current
         if (!element) return
 
-        const updatePages = () => computePageStarts(element)
+        // 首次同步计算，保证初始渲染分页正确
+        computePageStarts(element)
 
-        updatePages()
+        // ResizeObserver 回调防抖：编辑富文本时尺寸频繁变化，避免每帧都跑
+        // querySelectorAll + 排序导致输入卡顿
+        let rafId = 0
+        const scheduleUpdate = () => {
+            if (rafId) cancelAnimationFrame(rafId)
+            rafId = requestAnimationFrame(() => computePageStarts(element))
+        }
 
-        const observer = new ResizeObserver(updatePages)
+        const observer = new ResizeObserver(scheduleUpdate)
         observer.observe(element)
 
-        return () => observer.disconnect()
+        return () => {
+            if (rafId) cancelAnimationFrame(rafId)
+            observer.disconnect()
+        }
     }, [resume])
 
     const pageCount = useMemo(() => Math.max(1, pageStarts.length), [pageStarts])
@@ -118,7 +128,7 @@ const PagedResumePaper: React.FC<PagedResumePaperProps> = ({
 
     return (
         <>
-            {/* 导出专用完整内容（隐藏但保留在DOM�?*/}
+            {/* 导出专用完整内容（隐藏但保留在 DOM 中，用于测量真实高度做分页） */}
             <div
                 id="resume-paper"
                 ref={hiddenFullRef}
