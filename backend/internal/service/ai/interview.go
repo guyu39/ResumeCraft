@@ -260,6 +260,61 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 	// 流式累积缓冲
 	var streamBuf strings.Builder
 
+	// 累积评估结果用于落库（与 AnalyzeTranscript 路径保持一致，避免评估完成后数据丢失）
+	dimensionMap := make(map[string]model.InterviewDimScore)
+	roundScoreMap := make(map[string]int)
+	var questionEvals []model.InterviewQEval
+	var improvements []model.InterviewImprovement
+	var overallScore *int
+	var overallLevel string
+	var overallSummary string
+
+	// 包装 onEvent：透传给前端的同时截获并累积事件数据
+	captureEvent := func(evt StreamEvent) {
+		onEvent(evt)
+		switch evt.Type {
+		case "question_eval":
+			if evt.QuestionEval != nil {
+				questionEvals = append(questionEvals, *evt.QuestionEval)
+			}
+		case "dimension_score":
+			if ds, ok := evt.DimensionScore.(*struct {
+				Dimension string `json:"dimension"`
+				Score     int    `json:"score"`
+				Level     string `json:"level"`
+				Feedback  string `json:"feedback"`
+			}); ok && ds.Dimension != "" {
+				dimensionMap[ds.Dimension] = model.InterviewDimScore{
+					Score: ds.Score, Level: ds.Level, Feedback: ds.Feedback,
+				}
+			}
+		case "round_score":
+			if rs, ok := evt.RoundScore.(*struct {
+				Round string `json:"round"`
+				Score int    `json:"score"`
+			}); ok && rs.Round != "" {
+				roundScoreMap[rs.Round] = rs.Score
+			}
+		case "overall":
+			if ov, ok := evt.Overall.(*struct {
+				Score       int            `json:"score"`
+				Level       string         `json:"level"`
+				RoundScores map[string]int `json:"roundScores"`
+			}); ok {
+				v := ov.Score
+				overallScore = &v
+				overallLevel = ov.Level
+				for k, val := range ov.RoundScores {
+					roundScoreMap[k] = val
+				}
+			}
+		case "improvement":
+			if evt.Improvement != nil {
+				improvements = append(improvements, *evt.Improvement)
+			}
+		}
+	}
+
 	completeReq := CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
@@ -279,7 +334,7 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 			remainder := content[lastNewline+1:]
 			streamBuf.Reset()
 			streamBuf.WriteString(remainder)
-			s.flushInterviewEvalChunk(completedLines, onEvent)
+			s.flushInterviewEvalChunk(completedLines, captureEvent)
 		},
 	}
 
@@ -296,11 +351,48 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 	// 兜底处理尾行
 	tail := streamBuf.String()
 	if strings.TrimSpace(tail) != "" {
-		s.flushInterviewEvalChunk(tail, onEvent)
+		s.flushInterviewEvalChunk(tail, captureEvent)
+	}
+
+	// === 持久化评估结果 ===
+	// 用独立 ctx：即使原 ctx 被 client 关闭，写库也要完成，避免评估结果丢失
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer persistCancel()
+
+	// 先把本次提交的回答落库（保持 answers 与评估一致）
+	answersJSON, _ := json.Marshal(req.Answers)
+	answeredCount, skippedCount := 0, 0
+	for _, a := range req.Answers {
+		if a.Skipped {
+			skippedCount++
+		} else {
+			answeredCount++
+		}
+	}
+	if err := s.interviewRepo.UpdateSessionProgress(persistCtx, userID, req.SessionID, answersJSON, answeredCount, skippedCount); err != nil {
+		log.Printf("[interview] persist evaluate progress failed: %v", err)
+	}
+
+	evaluation := model.InterviewEvaluation{
+		Summary:                overallSummary,
+		OverallScore:           overallScore,
+		OverallLevel:           overallLevel,
+		DimensionScores:        dimensionMap,
+		RoundScores:            roundScoreMap,
+		QuestionEvaluations:    questionEvals,
+		ImprovementSuggestions: improvements,
+		Model:                  cfg.DefaultModel,
+		EvaluatedAt:            time.Now().UTC().Format(time.RFC3339),
+	}
+	evaluationJSON, _ := json.Marshal(evaluation)
+
+	scoreVal := valueOrZero(overallScore)
+	if err := s.interviewRepo.UpdateSessionEvaluation(persistCtx, userID, req.SessionID, evaluationJSON, scoreVal, overallLevel); err != nil {
+		log.Printf("[interview] persist evaluation failed: %v", err)
 	}
 
 	// 推送 finish 事件
-	onEvent(StreamEvent{Type: "finish"})
+	onEvent(StreamEvent{Type: "finish", SessionID: req.SessionID})
 
 	return nil
 }

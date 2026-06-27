@@ -31,6 +31,40 @@ function clearTokens() {
   localStorage.removeItem('refreshToken')
 }
 
+// 并发 401 时共享同一次刷新，避免多个请求各自刷新导致 refresh token 互相失效
+let refreshPromise: Promise<string | null> | null = null
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) return null
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        })
+        const refreshJson = await refreshRes.json()
+        if (refreshJson.code === 'OK') {
+          const { accessToken, refreshToken: newRefresh } = refreshJson.data.tokens
+          setTokens(accessToken, newRefresh)
+          return accessToken as string
+        }
+        return null
+      } catch {
+        return null
+      } finally {
+        // 无论成功失败都释放，下次 401 可重新发起
+        refreshPromise = null
+      }
+    })()
+  }
+
+  return refreshPromise
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -72,34 +106,20 @@ async function request<T>(
   } catch (err) {
     // 401 且是认证请求，尝试刷新 token 后重试一次
     if (err instanceof ApiError && err.status === 401 && options.auth !== false) {
-      const refreshToken = localStorage.getItem('refreshToken')
-      if (refreshToken) {
-        try {
-          const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken }),
-          })
-          const refreshJson = await refreshRes.json()
-          if (refreshJson.code === 'OK') {
-            const { accessToken, refreshToken: newRefresh } = refreshJson.data.tokens
-            setTokens(accessToken, newRefresh)
-            // 重试：带上新 token
-            headers['Authorization'] = `Bearer ${accessToken}`
-            const res = await fetch(`${API_BASE}${path}`, {
-              method,
-              headers,
-              body: body ? JSON.stringify(body) : undefined,
-            })
-            const json: ApiResponse<T> = await res.json()
-            if (json.code !== 'OK') {
-              throw new ApiError(json.code, json.message, res.status)
-            }
-            return json.data as T
-          }
-        } catch {
-          // refresh 失败，忽略
+      const accessToken = await refreshAccessToken()
+      if (accessToken) {
+        // 重试：带上新 token
+        headers['Authorization'] = `Bearer ${accessToken}`
+        const res = await fetch(`${API_BASE}${path}`, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+        })
+        const json: ApiResponse<T> = await res.json()
+        if (json.code !== 'OK') {
+          throw new ApiError(json.code, json.message, res.status)
         }
+        return json.data as T
       }
     }
     throw err

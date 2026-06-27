@@ -287,7 +287,7 @@ export function useInterviewPrep() {
                 }
                 if (evt.type === 'overall') {
                     const ov = evt as { type: 'overall'; score: number; level: string; roundScores: Record<string, number> }
-                    evalData = { ...evalData, roundScores: ov.roundScores || evalData.roundScores, summary: `综合评分 ${ov.score} 分（${ov.level}）` }
+                    evalData = { ...evalData, overallScore: ov.score, overallLevel: ov.level, roundScores: ov.roundScores || evalData.roundScores, summary: `综合评分 ${ov.score} 分（${ov.level}）` }
                     setEvaluation({ ...evalData })
                 }
                 if (evt.type === 'question_eval') {

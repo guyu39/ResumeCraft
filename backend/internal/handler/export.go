@@ -86,6 +86,11 @@ func (h *Handler) GetExportTask(c *gin.Context) {
 // DownloadExport 下载导出文件
 // GET /api/exports/:taskId/download
 func (h *Handler) DownloadExport(c *gin.Context) {
+	if h.exportService == nil {
+		response.JSONError(c, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "导出服务未启用")
+		return
+	}
+
 	taskID := c.Param("taskId")
 	if taskID == "" {
 		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "任务ID不能为空")

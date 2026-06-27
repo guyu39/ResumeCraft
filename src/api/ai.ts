@@ -366,13 +366,15 @@ export const aiApi = {
             xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
             let lastPos = 0
+            let buffer = ''
 
             xhr.onprogress = () => {
                 const text = xhr.responseText
-                const newText = text.slice(lastPos)
+                buffer += text.slice(lastPos)
                 lastPos = text.length
 
-                const lines = newText.split('\n')
+                const lines = buffer.split('\n')
+                buffer = lines.pop() ?? ''
                 for (const line of lines) {
                     if (line.startsWith('event:')) continue
                     if (!line.startsWith('data: ')) continue
@@ -471,13 +473,15 @@ export const aiApi = {
             xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
             let lastPos = 0
+            let buffer = ''
 
             xhr.onprogress = () => {
                 const text = xhr.responseText
-                const newText = text.slice(lastPos)
+                buffer += text.slice(lastPos)
                 lastPos = text.length
 
-                const lines = newText.split('\n')
+                const lines = buffer.split('\n')
+                buffer = lines.pop() ?? ''
                 for (const line of lines) {
                     if (line.startsWith('event:')) continue
                     if (!line.startsWith('data: ')) continue
@@ -627,15 +631,17 @@ export const aiApi = {
             xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
             let lastPos = 0
+            let buffer = ''
             let sessionId = ''
 
             xhr.onprogress = () => {
                 if (xhr.status >= 400) return
                 const text = xhr.responseText
-                const newText = text.slice(lastPos)
+                buffer += text.slice(lastPos)
                 lastPos = text.length
 
-                const lines = newText.split('\n')
+                const lines = buffer.split('\n')
+                buffer = lines.pop() ?? ''
                 for (const line of lines) {
                     if (line.startsWith('event:')) continue
                     if (!line.startsWith('data: ')) continue
@@ -682,13 +688,15 @@ export const aiApi = {
             xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
             let lastPos = 0
+            let buffer = ''
 
             xhr.onprogress = () => {
                 const text = xhr.responseText
-                const newText = text.slice(lastPos)
+                buffer += text.slice(lastPos)
                 lastPos = text.length
 
-                const lines = newText.split('\n')
+                const lines = buffer.split('\n')
+                buffer = lines.pop() ?? ''
                 for (const line of lines) {
                     if (line.startsWith('event:')) continue
                     if (!line.startsWith('data: ')) continue
@@ -721,15 +729,17 @@ export const aiApi = {
             xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
             let lastPos = 0
+            let buffer = ''
             let sessionId = ''
 
             xhr.onprogress = () => {
                 if (xhr.status >= 400) return
                 const text = xhr.responseText
-                const newText = text.slice(lastPos)
+                buffer += text.slice(lastPos)
                 lastPos = text.length
 
-                const lines = newText.split('\n')
+                const lines = buffer.split('\n')
+                buffer = lines.pop() ?? ''
                 for (const line of lines) {
                     if (line.startsWith('event:')) continue
                     if (!line.startsWith('data: ')) continue

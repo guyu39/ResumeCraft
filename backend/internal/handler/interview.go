@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -297,7 +298,7 @@ func (h *Handler) GetInterviewSession(c *gin.Context) {
 
 	session, err := h.aiService.GetInterviewSession(c.Request.Context(), userID.(string), sessionID)
 	if err != nil {
-		if err == ai.ErrInterviewSessionNotFound {
+		if errors.Is(err, ai.ErrInterviewSessionNotFound) {
 			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "面试会话不存在或无权访问")
 			return
 		}
@@ -325,7 +326,7 @@ func (h *Handler) DeleteInterviewSession(c *gin.Context) {
 	}
 
 	if err := h.aiService.DeleteInterviewSession(c.Request.Context(), userID.(string), sessionID); err != nil {
-		if err == ai.ErrInterviewSessionNotFound {
+		if errors.Is(err, ai.ErrInterviewSessionNotFound) {
 			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "面试会话不存在或无权访问")
 			return
 		}

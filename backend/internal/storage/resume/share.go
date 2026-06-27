@@ -163,7 +163,7 @@ func (r *repository) ListComments(ctx context.Context, shareID, visitorID, snaps
 			`SELECT id, share_id, author_name, content, COALESCE(module_id,''), COALESCE(item_index,0),
 			 COALESCE(snapshot_id::text, ''), COALESCE(EXTRACT(EPOCH FROM created_at) * 1000, 0)::bigint
 			 FROM share_comments
-			 WHERE share_id = $1 AND visitor_id = $2 AND snapshot_id = $3
+			 WHERE share_id = $1 AND visitor_id = $2 AND snapshot_id::text = $3
 			 ORDER BY created_at ASC`, shareID, visitorID, snapshotID,
 		)
 	} else {
