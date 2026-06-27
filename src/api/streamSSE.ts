@@ -15,19 +15,22 @@ export interface StreamSSEOptions<TEvent, TResult> {
   signal?: AbortSignal
   /** 默认错误信息前缀（如「生成失败」） */
   errorLabel?: string
+  /** 超时毫秒数，默认 120s。模型挂起时给用户明确的超时反馈，而非无限等待 */
+  timeoutMs?: number
 }
 
 /**
  * 发起一个 SSE 流式 POST 请求。
  * - 按 `\n` 切分，保留未结束的尾行到下次（跨网络分片安全）
  * - `data: {json}` → onEvent
- * - `event: done` 的下一行 `data:` → parseDone → resolve
+ * - `event: done` 的下一行 `data:` → parseDone → resolve（边收边记录，不在 onload 重扫全文）
  * - signal.abort() → xhr.abort() 并 reject(AbortError)
+ * - 超过 timeoutMs 无完成 → reject 超时错误
  */
 export function streamSSE<TEvent = unknown, TResult = void>(
   opts: StreamSSEOptions<TEvent, TResult>,
 ): Promise<TResult> {
-  const { url, body, onEvent, parseDone, signal, errorLabel = '请求失败' } = opts
+  const { url, body, onEvent, parseDone, signal, errorLabel = '请求失败', timeoutMs = 120000 } = opts
 
   return new Promise<TResult>((resolve, reject) => {
     if (signal?.aborted) {
@@ -45,6 +48,8 @@ export function streamSSE<TEvent = unknown, TResult = void>(
     xhr.open('POST', url, true)
     xhr.setRequestHeader('Content-Type', 'application/json')
     xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    // 浏览器原生超时：到点触发 ontimeout（即便流中途卡死也能解除等待）
+    xhr.timeout = timeoutMs
 
     const onAbort = () => {
       try { xhr.abort() } catch { /* ignore */ }
@@ -55,6 +60,38 @@ export function streamSSE<TEvent = unknown, TResult = void>(
 
     let lastPos = 0
     let buffer = ''
+    // 边收边解析 done：解析阶段标记下一条 data 行为最终结果，避免 onload 重切全文
+    let doneResult: TResult | undefined
+    let hasDone = false
+    let expectDoneData = false
+
+    const handleLine = (line: string) => {
+      if (line.startsWith('event: done')) {
+        expectDoneData = true
+        return
+      }
+      if (line.startsWith('event:')) {
+        expectDoneData = false
+        return
+      }
+      if (!line.startsWith('data: ')) return
+      const content = line.slice(6).trim()
+      if (!content) return
+
+      if (expectDoneData && parseDone) {
+        expectDoneData = false
+        try {
+          doneResult = parseDone(content)
+          hasDone = true
+        } catch { /* 解析失败，留待 onload 兜底报错 */ }
+        return
+      }
+      try {
+        onEvent(JSON.parse(content) as TEvent)
+      } catch {
+        // 非 JSON 数据行，忽略
+      }
+    }
 
     xhr.onprogress = () => {
       if (xhr.status >= 400) return
@@ -65,17 +102,7 @@ export function streamSSE<TEvent = unknown, TResult = void>(
       const lines = buffer.split('\n')
       // 保留最后一段未以 \n 结束的内容，等下次分片拼接，避免半截 JSON 被丢弃
       buffer = lines.pop() ?? ''
-      for (const line of lines) {
-        if (line.startsWith('event:')) continue
-        if (!line.startsWith('data: ')) continue
-        const content = line.slice(6).trim()
-        if (!content) continue
-        try {
-          onEvent(JSON.parse(content) as TEvent)
-        } catch {
-          // 非 JSON 数据行，忽略
-        }
-      }
+      for (const line of lines) handleLine(line)
     }
 
     xhr.onload = () => {
@@ -89,26 +116,21 @@ export function streamSSE<TEvent = unknown, TResult = void>(
         reject(new Error(msg))
         return
       }
+      // 处理最后一段未以 \n 结束的缓冲行
+      if (buffer) handleLine(buffer)
       if (!parseDone) {
         resolve(undefined as TResult)
         return
       }
-      // 找到 `event: done` 后紧跟的 data 行
-      const lines = xhr.responseText.split('\n')
-      for (let i = 0; i < lines.length; i += 1) {
-        if (!lines[i].startsWith('event: done')) continue
-        const dataLine = lines[i + 1]
-        if (dataLine && dataLine.startsWith('data: ')) {
-          try {
-            resolve(parseDone(dataLine.slice(6)))
-            return
-          } catch { /* ignore */ }
-        }
+      if (hasDone) {
+        resolve(doneResult as TResult)
+        return
       }
       reject(new Error('未收到结果'))
     }
 
     xhr.onerror = () => { cleanup(); reject(new Error('网络错误')) }
+    xhr.ontimeout = () => { cleanup(); reject(new Error(`${errorLabel}：请求超时，请重试`)) }
 
     xhr.send(JSON.stringify(body))
   })
