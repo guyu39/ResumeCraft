@@ -13,13 +13,21 @@ export interface ApiResponse<T = unknown> {
 // 认证相关
 export interface LoginRequest {
   email: string
-  password: string
+  loginType?: 'password' | 'code'
+  password?: string
+  code?: string
 }
 
 export interface RegisterRequest {
   email: string
   password: string
+  code: string
   displayName?: string
+}
+
+export interface SendCodeRequest {
+  email: string
+  purpose: 'register' | 'login'
 }
 
 export interface RefreshRequest {

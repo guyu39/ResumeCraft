@@ -8,13 +8,20 @@ import type {
   RegisterRequest,
   RefreshRequest,
   LogoutRequest,
+  SendCodeRequest,
   AuthPayload,
   AuthUser,
 } from './types'
 
 export const authApi = {
-  register: (data: RegisterRequest) =>
-    apiClient.post<AuthPayload>('/auth/register', data, { auth: false }),
+  sendCode: (email: string, purpose: 'register' | 'login') =>
+    apiClient.post<{ sent: boolean }>('/auth/send-code', { email, purpose } as SendCodeRequest, { auth: false }),
+
+  register: async (data: RegisterRequest) => {
+    const result = await apiClient.post<AuthPayload>('/auth/register', data, { auth: false })
+    setTokens(result.tokens.accessToken, result.tokens.refreshToken)
+    return result
+  },
 
   login: async (data: LoginRequest) => {
     const result = await apiClient.post<AuthPayload>('/auth/login', data, {

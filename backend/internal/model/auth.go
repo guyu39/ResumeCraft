@@ -1,14 +1,22 @@
 package model
 
+type SendCodeRequest struct {
+	Email   string `json:"email" binding:"required,email,max=255"`
+	Purpose string `json:"purpose" binding:"required,oneof=register login"`
+}
+
 type RegisterRequest struct {
 	Email       string `json:"email" binding:"required,email,max=255"`
 	Password    string `json:"password" binding:"required,min=8,max=72"`
+	Code        string `json:"code" binding:"required"`
 	DisplayName string `json:"displayName" binding:"max=100"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=255"`
-	Password string `json:"password" binding:"required,min=8,max=72"`
+	Email     string `json:"email" binding:"required,email,max=255"`
+	LoginType string `json:"loginType"` // password | code，空默认 password
+	Password  string `json:"password" binding:"max=72"`
+	Code      string `json:"code"`
 }
 
 type RefreshRequest struct {

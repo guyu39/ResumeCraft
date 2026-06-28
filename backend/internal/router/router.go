@@ -17,12 +17,14 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 	{
 		authGroup := api.Group("/auth")
 		{
-			// 认证路由挂载限流（注册/登录/刷新为高风险接口）
+			// 认证路由挂载限流（注册/登录/刷新/发码为高风险接口）
 			if authLimiter != nil {
+				authGroup.POST("/send-code", authLimiter, h.SendCode)
 				authGroup.POST("/register", authLimiter, h.Register)
 				authGroup.POST("/login", authLimiter, h.Login)
 				authGroup.POST("/refresh", authLimiter, h.Refresh)
 			} else {
+				authGroup.POST("/send-code", h.SendCode)
 				authGroup.POST("/register", h.Register)
 				authGroup.POST("/login", h.Login)
 				authGroup.POST("/refresh", h.Refresh)

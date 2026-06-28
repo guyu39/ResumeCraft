@@ -21,8 +21,10 @@ interface AuthState {
 }
 
 interface AuthActions {
-  login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, displayName?: string) => Promise<void>
+  loginWithPassword: (email: string, password: string) => Promise<void>
+  loginWithCode: (email: string, code: string) => Promise<void>
+  register: (email: string, password: string, code: string, displayName?: string) => Promise<void>
+  sendCode: (email: string, purpose: 'register' | 'login') => Promise<void>
   logout: () => Promise<void>
   checkAuth: () => Promise<void>
   clearError: () => void
@@ -30,21 +32,17 @@ interface AuthActions {
 
 export const useAuthStore = create<AuthState & AuthActions>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       user: null,
       isAuthenticated: !!getAccessToken(),
       isLoading: false,
       error: null,
 
-      login: async (email: string, password: string) => {
+      loginWithPassword: async (email: string, password: string) => {
         set({ isLoading: true, error: null })
         try {
-          const result = await authApi.login({ email, password })
-          set({
-            user: result.user,
-            isAuthenticated: true,
-            isLoading: false,
-          })
+          const result = await authApi.login({ email, password, loginType: 'password' })
+          set({ user: result.user, isAuthenticated: true, isLoading: false })
         } catch (err) {
           const message = err instanceof ApiError ? err.message : '登录失败'
           set({ error: message, isLoading: false })
@@ -52,15 +50,38 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         }
       },
 
-      register: async (email: string, password: string, displayName?: string) => {
+      loginWithCode: async (email: string, code: string) => {
         set({ isLoading: true, error: null })
         try {
-          await authApi.register({ email, password, displayName })
-          // 注册后自动登录
-          await get().login(email, password)
+          const result = await authApi.login({ email, code, loginType: 'code' })
+          set({ user: result.user, isAuthenticated: true, isLoading: false })
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : '登录失败'
+          set({ error: message, isLoading: false })
+          throw err
+        }
+      },
+
+      register: async (email: string, password: string, code: string, displayName?: string) => {
+        set({ isLoading: true, error: null })
+        try {
+          const result = await authApi.register({ email, password, code, displayName })
+          // 注册接口已返回 token 并自动登录
+          set({ user: result.user, isAuthenticated: true, isLoading: false })
         } catch (err) {
           const message = err instanceof ApiError ? err.message : '注册失败'
           set({ error: message, isLoading: false })
+          throw err
+        }
+      },
+
+      sendCode: async (email: string, purpose: 'register' | 'login') => {
+        set({ error: null })
+        try {
+          await authApi.sendCode(email, purpose)
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : '验证码发送失败'
+          set({ error: message })
           throw err
         }
       },

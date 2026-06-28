@@ -20,6 +20,22 @@ type Config struct {
 	Parser    ParserConfig
 	Redis     RedisConfig
 	RateLimit RateLimitConfig
+	SMTP      SMTPConfig
+}
+
+// SMTPConfig 邮件发送配置（用于注册/登录验证码）
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	FromName string
+}
+
+// Configured 返回 SMTP 是否已配置（host/port/from 齐全）
+func (c SMTPConfig) Configured() bool {
+	return c.Host != "" && c.Port > 0 && c.From != ""
 }
 
 type DBConfig struct {
@@ -187,6 +203,14 @@ func Load() Config {
 			AIRefill:       getEnvFloat64("RATE_LIMIT_AI_REFILL_PER_SEC", 0.05),
 			GlobalCapacity: getEnvInt("RATE_LIMIT_GLOBAL_CAPACITY", 120),
 			GlobalRefill:   getEnvFloat64("RATE_LIMIT_GLOBAL_REFILL_PER_SEC", 2),
+		},
+		SMTP: SMTPConfig{
+			Host:     getEnv("SMTP_HOST", ""),
+			Port:     getEnvInt("SMTP_PORT", 465),
+			Username: getEnv("SMTP_USERNAME", ""),
+			Password: getEnv("SMTP_PASSWORD", ""),
+			From:     getEnv("SMTP_FROM", ""),
+			FromName: getEnv("SMTP_FROM_NAME", "ResumeCraft"),
 		},
 	}
 }
