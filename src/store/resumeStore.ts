@@ -370,6 +370,46 @@ function loadDraftFromStorage(): Resume | null {
   }
 }
 
+// 只读地探查本地草稿（含 savedAt），不触发任何副作用（不恢复 basedOnSnapshotId、不写回）。
+// 供加载/刷新时做「本地草稿 vs 云端」新旧仲裁，避免无脑用云端覆盖未提交的本地改动。
+export function peekLocalDraft(): { data: Resume; savedAt: number } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const payload: StoragePayload = JSON.parse(raw)
+    if (payload.version !== STORAGE_VERSION) return null
+    if (!payload.data) return null
+    return { data: payload.data, savedAt: payload.savedAt ?? 0 }
+  } catch {
+    return null
+  }
+}
+
+// 内容指纹：与 useCloudSync 保持一致（title/themeColor/styleSettings/modules），用于判断本地与云端内容是否实质不同。
+// 关键：styleSettings 两边都过 DEFAULT 补全 + 稳定键序，避免「本地已 merge 完整字段 vs 云端缺字段」造成永远判不同。
+function normalizeStyleSettings(s: Partial<ResumeStyleSettings> | undefined): Record<string, unknown> {
+  const merged = { ...DEFAULT_RESUME_STYLE_SETTINGS, ...(s ?? {}) } as Record<string, unknown>
+  // 稳定键序：按 key 排序后重建，消除字段顺序差异
+  return Object.keys(merged).sort().reduce<Record<string, unknown>>((acc, k) => {
+    acc[k] = merged[k]
+    return acc
+  }, {})
+}
+
+// 单个模块归一：仅取参与内容比对的字段（id/type/title/visible/data），消除无关字段干扰
+function normalizeModule(m: { id: string; type: string; title?: string; visible?: boolean; data: unknown }) {
+  return { id: m.id, type: m.type, title: m.title ?? '', visible: m.visible !== false, data: m.data }
+}
+
+export function serializeResumeContent(r: Resume): string {
+  return JSON.stringify({
+    title: r.title ?? '',
+    themeColor: r.themeColor ?? '',
+    styleSettings: normalizeStyleSettings(r.styleSettings),
+    modules: (r.modules ?? []).map(normalizeModule),
+  })
+}
+
 // ---------- 全局落库回调（由 useCloudSync 注册） ----------
 let _flushToCloudFn: (() => Promise<boolean>) | null = null
 

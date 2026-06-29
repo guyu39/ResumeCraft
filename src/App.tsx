@@ -3,14 +3,15 @@
 // ============================================================
 
 import React, { useEffect, useState } from 'react'
-import { useResumeStore } from '@/store/resumeStore'
+import { useResumeStore, peekLocalDraft, serializeResumeContent, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import AppShell from '@/components/layout/AppShell'
 import ShareViewPage from '@/pages/ShareViewPage'
 import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
 import { resumeApi } from '@/api'
-import type { ResumeLocale, TemplateType, Module, ResumeStyleSettings } from '@/types/resume'
+import { requestConflictResolve } from '@/components/common/ConflictDialog'
+import type { ResumeLocale, TemplateType, Module, ResumeStyleSettings, Resume } from '@/types/resume'
 
 function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
@@ -48,6 +49,79 @@ const App: React.FC = () => {
   const [authChecked, setAuthChecked] = useState(false)
   const [cloudResumes, setCloudResumes] = useState<any[]>([])
   const [showLogin, setShowLogin] = useState(false)
+
+  // 把云端简历灌入 store（同步版本号/个人信息/云端 ID）。抽出供正常加载与冲突仲裁复用。
+  const hydrateFromCloud = (cloud: any) => {
+    restoreCloudSnapshotData(cloud)
+    initResume({
+      id: cloud.id,
+      title: cloud.title,
+      locale: cloud.locale as ResumeLocale,
+      template: cloud.template as TemplateType,
+      themeColor: cloud.themeColor,
+      styleSettings: cloud.styleSettings as ResumeStyleSettings,
+      modules: cloud.modules as Module[],
+      updatedAt: cloud.updatedAt,
+    })
+    setResumeVersion((cloud as any).version ?? 0)
+    setDraftsVersion((cloud as any).snapshotDraftsVersion ?? 0)
+    setPersonalData((cloud as any).personalData ?? {})
+    ;(window as any).__cloudSyncSetCloudId?.(cloud.id)
+    // initResume 已把云端数据写入 store + localStorage（覆盖本地缓存）；
+    // 再对齐 useCloudSync 同步指纹，认账「已是云端版」，避免随后又判 dirty 触发多余回写。
+    ;(window as any).__cloudSyncMarkSyncedWith?.()
+  }
+
+  // 保留本地未提交的草稿（不被云端覆盖），并对齐云端版本号以便后续落库时覆盖云端。
+  const keepLocalDraft = (draft: Resume, cloud: any) => {
+    restoreCloudSnapshotData(cloud)
+    initResume({
+      id: draft.id,
+      title: draft.title,
+      locale: draft.locale,
+      template: draft.template,
+      themeColor: draft.themeColor,
+      styleSettings: draft.styleSettings,
+      modules: draft.modules,
+      updatedAt: Date.now(),
+    })
+    // 对齐云端版本号：本地草稿提交时用云端 version 才能通过乐观锁覆盖
+    setResumeVersion((cloud as any).version ?? 0)
+    setDraftsVersion((cloud as any).snapshotDraftsVersion ?? 0)
+    ;(window as any).__cloudSyncSetCloudId?.(cloud.id)
+  }
+
+  // 加载云端简历前，先检测本地是否有「同一份简历、更新且内容不同」的未提交草稿。
+  // 有冲突 → 弹窗仲裁；否则直接用云端，避免无脑覆盖本地未落库的改动。
+  const loadCloudWithConflictCheck = async (cloud: any) => {
+    const draft = peekLocalDraft()
+    const isConflict =
+      draft &&
+      draft.data.id === cloud.id &&
+      draft.savedAt > (cloud.updatedAt ?? 0) &&
+      serializeResumeContent(draft.data) !== serializeResumeContent(cloud as Resume)
+
+    if (isConflict) {
+      // 字段级差异：本端 modules 作 currentModules(before)，云端作 comparisonModules(after)
+      const loadDiff = async () => {
+        const result = await resumeApi.diffSnapshots(
+          cloud.id, '', '',
+          draft!.data.modules as unknown[],
+          (cloud.modules ?? []) as unknown[],
+        )
+        return result.diffs
+      }
+      const choice = await requestConflictResolve(loadDiff)
+      if (choice === 'keepLocal') {
+        keepLocalDraft(draft!.data, cloud)
+        // 确认保留本地后立即落库，把本地版固化到云端（已对齐云端 version，可通过乐观锁）
+        void flushToCloud()
+        return
+      }
+      // 'useCloud' 或 取消（稍后处理）→ 用云端覆盖（云端已是最新，无需落库）
+    }
+    hydrateFromCloud(cloud)
+  }
 
   // 用 state 持有 pathname 并监听 popstate，使浏览器前进/后退键能正确切换页面。
   // （此前直接读 window.location.pathname 且无监听，回退时 URL 变了但 React 不重渲染，
@@ -108,52 +182,17 @@ const App: React.FC = () => {
         // 如果当前没有选中简历，且云端有简历，加载第一份
         const currentId = localStorage.getItem('resumecraft_current_resume_id')
         if (!currentId && result.items && result.items.length > 0) {
-          // 自动加载第一份简历
+          // 自动加载第一份简历（带本地草稿冲突检测）
           const firstResume = await resumeApi.get(result.items[0].id)
           if (firstResume) {
-            // 先恢复快照草稿和 basedOnSnapshotId（必须在 initResume 之前，
-            // 否则 initResume → saveToStorage 会用 null 覆盖 basedOnSnapshotId）
-            restoreCloudSnapshotData(firstResume)
-            initResume({
-              id: firstResume.id,
-              title: firstResume.title,
-              locale: firstResume.locale as ResumeLocale,
-              template: firstResume.template as TemplateType,
-              themeColor: firstResume.themeColor,
-              styleSettings: firstResume.styleSettings as ResumeStyleSettings,
-              modules: firstResume.modules as Module[],
-              updatedAt: firstResume.updatedAt,
-            })
-              // 同步乐观锁版本号
-              setResumeVersion((firstResume as any).version ?? 0)
-              setDraftsVersion((firstResume as any).snapshotDraftsVersion ?? 0)
-              setPersonalData((firstResume as any).personalData ?? {})
-              // 通知 useCloudSync 关于云端 ID
-              ; (window as any).__cloudSyncSetCloudId?.(firstResume.id)
+            await loadCloudWithConflictCheck(firstResume)
           }
         } else if (currentId && isValidUUID(currentId)) {
-          // 当前有选中的云端简历，加载它
+          // 当前有选中的云端简历，加载它（带本地草稿冲突检测）
           try {
             const currentResume = await resumeApi.get(currentId)
             if (currentResume) {
-              // 先恢复快照草稿和 basedOnSnapshotId（必须在 initResume 之前）
-              restoreCloudSnapshotData(currentResume)
-              initResume({
-                id: currentResume.id,
-                title: currentResume.title,
-                locale: currentResume.locale as ResumeLocale,
-                template: currentResume.template as TemplateType,
-                themeColor: currentResume.themeColor,
-                styleSettings: currentResume.styleSettings as ResumeStyleSettings,
-                modules: currentResume.modules as Module[],
-                updatedAt: currentResume.updatedAt,
-              })
-                // 同步乐观锁版本号
-                setResumeVersion((currentResume as any).version ?? 0)
-                setDraftsVersion((currentResume as any).snapshotDraftsVersion ?? 0)
-                setPersonalData((currentResume as any).personalData ?? {})
-                // 通知 useCloudSync 关于云端 ID
-                ; (window as any).__cloudSyncSetCloudId?.(currentResume.id)
+              await loadCloudWithConflictCheck(currentResume)
             }
           } catch (err) {
             console.error('[App] 加载当前云端简历失败，回退到本地:', err)

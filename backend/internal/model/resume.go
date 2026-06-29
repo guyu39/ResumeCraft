@@ -187,9 +187,11 @@ type DiffStats struct {
 }
 
 // DiffSnapshotsRequest 对比请求
+// snapshotAId/BId 可空：为空时用 currentModules/comparisonModules 直接对比内存对象
+// （用于多端冲突「本地 vs 云端」对比，无 snapshot id）。
 type DiffSnapshotsRequest struct {
-	SnapshotAID       string                   `json:"snapshotAId" binding:"required"`
-	SnapshotBID       string                   `json:"snapshotBId" binding:"required"`
+	SnapshotAID       string                   `json:"snapshotAId"`
+	SnapshotBID       string                   `json:"snapshotBId"`
 	CurrentModules    []map[string]interface{} `json:"currentModules,omitempty"`
 	ComparisonModules []map[string]interface{} `json:"comparisonModules,omitempty"`
 }
