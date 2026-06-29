@@ -168,7 +168,7 @@ const RightPanel: React.FC = () => {
     // 预取的对话历史列表（消除"查看历史"延迟）
     const [preloadedEvalHistory, setPreloadedEvalHistory] = useState<ConversationItem[]>([])
     const [preloadedJDHistory, setPreloadedJDHistory] = useState<ConversationItem[]>([])
-    const { exportFile, exporting, error: exportError } = useExport()
+    const { exportFile, exporting, error: exportError, reset: resetExport } = useExport()
     const {
         loading: evaluating,
         streamDone: evaluateStreamDone,
@@ -459,11 +459,12 @@ const RightPanel: React.FC = () => {
                 tone: 'error',
                 title: 'PDF 导出失败',
                 description: exportError,
+                onClose: resetExport,
             })
         }
 
         return notices
-    }, [exportError])
+    }, [exportError, resetExport])
 
     return (
         <>
