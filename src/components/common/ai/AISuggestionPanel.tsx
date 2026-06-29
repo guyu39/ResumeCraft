@@ -17,6 +17,8 @@ interface AISuggestionPanelProps {
     moduleInstanceId?: string
     conversationId?: string
     isAuthenticated?: boolean
+    /** 内嵌模式：不渲染自身的 fixed 遮罩与头部，仅渲染内容区（供 AIRewritePanel 等容器复用） */
+    inline?: boolean
     onApplySuggestion: (rewrite: string) => void
     onRetry: () => void
     onRefresh: () => void
@@ -37,6 +39,7 @@ const AISuggestionPanel: React.FC<AISuggestionPanelProps> = ({
     moduleInstanceId,
     conversationId,
     isAuthenticated,
+    inline = false,
     onApplySuggestion,
     onRetry,
     onRefresh,
@@ -140,78 +143,36 @@ const AISuggestionPanel: React.FC<AISuggestionPanelProps> = ({
         return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
     }
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 px-4">
-            <div className="w-full max-w-3xl rounded-xl border border-gray-200 bg-white shadow-xl">
-                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                    <div>
-                        <h4 className="text-sm font-semibold text-gray-800">AI 润色建议</h4>
-                        <p className="mt-0.5 text-xs text-gray-500">
-                            {isAuthenticated ? (modeLabel ?? '已连接 AI 模型') : '请先登录'}
-                            {isAuthenticated && fromCache && <span className="ml-1 text-green-600">· 来自缓存</span>}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {!isAuthenticated && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const currentPath = window.location.pathname
-                                    window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
-                                    window.location.reload()
-                                }}
-                                className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
-                            >
-                                登录
-                            </button>
-                        )}
-                        {suggestions.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={onRefresh}
-                                disabled={loading}
-                                className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-60 disabled:cursor-wait"
-                            >
-                                {loading ? '优化中...' : '重新生成'}
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-                        >
-                            关闭
-                        </button>
-                    </div>
+    // 内容区（tab + 历史/建议列表）。inline 模式直接返回此区块，独立模式外层包裹遮罩+头部。
+    const body = (
+        <>
+            {/* 标签页 */}
+            {showTabs && (
+                <div className="flex border-b border-gray-100">
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('suggest')}
+                        className={`px-4 py-2 text-xs font-medium transition-colors ${activeTab === 'suggest'
+                            ? 'border-b-2 border-primary text-primary'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        润色 ({suggestions.length})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('original')}
+                        className={`px-4 py-2 text-xs font-medium transition-colors ${activeTab === 'original'
+                            ? 'border-b-2 border-primary text-primary'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        原文内容 ({allRecords.length})
+                    </button>
                 </div>
+            )}
 
-                {/* 标签页 */}
-                {showTabs && (
-                    <div className="flex border-b border-gray-100">
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('suggest')}
-                            className={`px-4 py-2 text-xs font-medium transition-colors ${activeTab === 'suggest'
-                                ? 'border-b-2 border-primary text-primary'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            润色 ({suggestions.length})
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('original')}
-                            className={`px-4 py-2 text-xs font-medium transition-colors ${activeTab === 'original'
-                                ? 'border-b-2 border-primary text-primary'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            原文内容 ({allRecords.length})
-                        </button>
-                    </div>
-                )}
-
-                <div className="max-h-[70vh] overflow-y-auto no-scrollbar p-4">
+            <div className="max-h-[70vh] overflow-y-auto no-scrollbar p-4">
                     {loading && (
                         <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
                             AI 正在润色...
@@ -385,7 +346,60 @@ const AISuggestionPanel: React.FC<AISuggestionPanelProps> = ({
                             ))}
                         </div>
                     )}
+            </div>
+        </>
+    )
+
+    // 内嵌模式：仅返回内容区，由容器（AIRewritePanel）提供外框与头部
+    if (inline) {
+        return body
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 px-4">
+            <div className="w-full max-w-3xl rounded-xl border border-gray-200 bg-white shadow-xl">
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                    <div>
+                        <h4 className="text-sm font-semibold text-gray-800">AI 润色建议</h4>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                            {isAuthenticated ? (modeLabel ?? '已连接 AI 模型') : '请先登录'}
+                            {isAuthenticated && fromCache && <span className="ml-1 text-green-600">· 来自缓存</span>}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {!isAuthenticated && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const currentPath = window.location.pathname
+                                    window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
+                                    window.location.reload()
+                                }}
+                                className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                            >
+                                登录
+                            </button>
+                        )}
+                        {suggestions.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={onRefresh}
+                                disabled={loading}
+                                className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-60 disabled:cursor-wait"
+                            >
+                                {loading ? '优化中...' : '重新生成'}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                        >
+                            关闭
+                        </button>
+                    </div>
                 </div>
+                {body}
             </div>
         </div>
     )
