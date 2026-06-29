@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { RichTextSuggestionItem } from '@/ai'
 import type { BulletRewriteResponse } from '@/api/ai'
 import AISuggestionPanel from '@/components/common/ai/AISuggestionPanel'
+import InlineError from '@/components/common/InlineError'
 
 interface AIRewritePanelProps {
     open: boolean
@@ -196,7 +197,7 @@ const AIRewritePanel: React.FC<AIRewritePanelProps> = ({
                                 {bulletData?.model && <span>模型：{bulletData.model}</span>}
                             </div>
 
-                            {bulletError && <p className="mt-2 text-xs text-red-600">{bulletError}</p>}
+                            {bulletError && <InlineError message={bulletError} className="mt-2" />}
                             {!isAuthenticated && (
                                 <p className="mt-2 text-xs text-amber-600">请先登录并配置 AI 服务后再使用多版本重写。</p>
                             )}

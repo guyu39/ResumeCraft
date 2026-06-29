@@ -277,7 +277,8 @@ export function useExport(): UseExportResult {
               ? err.message
               : `${FORMAT_LABEL[format]}导出失败，请稍后重试`
         setError(message)
-        throw new Error(message)
+        // 不再 throw：失败统一由 error 状态驱动 NoticeCenter 内嵌显示，
+        // 避免调用方再 catch 后 toast 造成重复提示。
       } finally {
         setExporting(false)
       }

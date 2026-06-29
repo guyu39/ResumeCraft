@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type { RichTextSuggestionItem } from '@/ai'
 import type { SuggestRecord, ConversationDetail } from '@/api/ai'
 import { aiApi } from '@/api'
+import InlineError from '@/components/common/InlineError'
 
 interface AISuggestionPanelProps {
     open: boolean
@@ -180,16 +181,15 @@ const AISuggestionPanel: React.FC<AISuggestionPanelProps> = ({
                     )}
 
                     {!loading && error && (
-                        <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3">
-                            <p className="text-sm text-red-700">{error}</p>
+                        <InlineError message={error}>
                             <button
                                 type="button"
                                 onClick={onRetry}
-                                className="mt-2 rounded-md bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-500"
+                                className="mt-2 block rounded-md bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-500"
                             >
                                 重试
                             </button>
-                        </div>
+                        </InlineError>
                     )}
 
                     {!loading && !error && activeTab === 'suggest' && suggestions.length === 0 && prevRoundSuggestions.length === 0 && (

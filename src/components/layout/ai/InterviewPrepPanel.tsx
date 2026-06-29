@@ -23,6 +23,7 @@ import { extractTextFromDocx, isDocxFile } from '@/utils/docxParser'
 import { InterviewHistoryDrawer } from './InterviewHistoryDrawer'
 import { scoreClass } from './shared'
 import type { InterviewSessionDetail } from '@/api/ai'
+import InlineError from '@/components/common/InlineError'
 
 interface InterviewPrepPanelProps {
     resumeId: string
@@ -490,10 +491,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                                 </p>
                             )}
                             {generateError && !generating && (
-                                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
-                                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                                    <span>{generateError}</span>
-                                </div>
+                                <InlineError message={generateError} />
                             )}
                         </div>
                     )}
@@ -571,10 +569,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                                 </p>
                             )}
                             {analyzeError && !analyzing && (
-                                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
-                                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                                    <span>{analyzeError}</span>
-                                </div>
+                                <InlineError message={analyzeError} />
                             )}
                         </div>
                     )}

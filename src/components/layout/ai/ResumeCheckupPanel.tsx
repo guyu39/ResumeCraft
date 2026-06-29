@@ -4,6 +4,7 @@ import type { CheckupFinding } from '@/api/ai'
 import type { ModuleType, Resume } from '@/types/resume'
 import { aiApi } from '@/api'
 import { useResumeStore } from '@/store/resumeStore'
+import InlineError from '@/components/common/InlineError'
 import {
     getFixTier,
     locateItem,
@@ -292,7 +293,7 @@ const ResumeCheckupPanel: React.FC<ResumeCheckupPanelProps> = ({
                 {!isAuthenticated && (
                     <p className="text-xs text-amber-600">请先登录并配置 AI 服务后再使用一致性体检。</p>
                 )}
-                {error && <p className="text-xs text-red-600">{error}</p>}
+                {error && <InlineError message={error} />}
 
                 {!hasResult && !loading && !error && (
                     <div className="mt-8 text-center text-sm text-gray-400">

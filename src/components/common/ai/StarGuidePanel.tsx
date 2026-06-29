@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Wand2, Check, AlertCircle } from 'lucide-react'
 import DOMPurify from 'dompurify'
 import type { StarDimension } from '@/api/ai'
+import InlineError from '@/components/common/InlineError'
 
 interface StarGuidePanelProps {
     open: boolean
@@ -79,7 +80,7 @@ const StarGuidePanel: React.FC<StarGuidePanelProps> = ({
                     </p>
                 </div>
 
-                {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+                {error && <InlineError message={error} className="mt-2" />}
                 {!isAuthenticated && (
                     <p className="mt-2 text-xs text-amber-600">请先登录并配置 AI 服务后再使用 STAR 改写。</p>
                 )}

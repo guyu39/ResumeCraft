@@ -5,6 +5,7 @@ import type { Resume } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import { toast } from '@/components/common/Toast'
 import { scoreClass, severityTextMap, severityClassMap } from './shared'
+import InlineError from '@/components/common/InlineError'
 
 interface JDMatchPanelProps {
     resume: Resume    /** 父组件已预取的对话历史列表（消除"查看历史"网络延迟） */
@@ -194,8 +195,8 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                             <span>{jdText.length}/20000</span>
                             {modelName && <span>模型：{modelName}</span>}
                         </div>
-                        {error && <p className="text-xs text-red-600">{error}</p>}
-                        {scoreError && <p className="text-xs text-red-600">{scoreError}</p>}
+                        {error && <InlineError message={error} className="mt-1" />}
+                        {scoreError && <InlineError message={scoreError} className="mt-1" />}
                         <div className="grid grid-cols-2 gap-2">
                             <button
                                 type="button"

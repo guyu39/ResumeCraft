@@ -363,14 +363,11 @@ const RightPanel: React.FC = () => {
         const labels: Record<ExportFormat, string> = { pdf: 'PDF', markdown: 'Markdown', json: 'JSON', resume: 'Resume' }
         toast(`正在生成 ${labels[format]}，请稍候...`, 'success')
         await flushToCloud()
-        try {
-            await exportFile(resume.id, format, {
-                versionId: activeSnapshotId || '',
-                filename: resume.title,
-            })
-        } catch (err) {
-            toast(err instanceof Error ? err.message : `${labels[format]}导出失败`, 'error')
-        }
+        // 失败不再抛出：useExport 已 setError，由右侧 NoticeCenter 内嵌显示，避免重复提示
+        await exportFile(resume.id, format, {
+            versionId: activeSnapshotId || '',
+            filename: resume.title,
+        })
     }
 
     // ---------- AI 综合评估 ----------

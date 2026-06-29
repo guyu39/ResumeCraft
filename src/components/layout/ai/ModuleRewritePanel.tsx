@@ -4,6 +4,7 @@ import type { Resume, ModuleType } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import { useModuleRewrite } from '@/hooks/useModuleRewrite'
 import RichTextPreview from '@/components/common/RichTextPreview'
+import InlineError from '@/components/common/InlineError'
 
 interface ModuleRewritePanelProps {
     resume: Resume
@@ -205,7 +206,7 @@ const ModuleRewritePanel: React.FC<ModuleRewritePanelProps> = ({ resume }) => {
                                     placeholder="粘贴目标岗位 JD，可选（让改写更贴合岗位）"
                                     className="min-h-24 w-full resize-none no-scrollbar rounded-xl border border-gray-200 px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary"
                                 />
-                                {error && <p className="text-xs text-red-600">{error}</p>}
+                                {error && <InlineError message={error} />}
                                 <button
                                     type="button"
                                     disabled={loading || !selectedModule}
