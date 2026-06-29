@@ -50,7 +50,7 @@ ENV PORT=8787 \
     PDF_PAPER_WIDTH_INCH=8.27 \
     PDF_PAPER_HEIGHT_INCH=11.69 \
     PDF_SCALE=1 \
-    CHROME_BIN=/usr/bin/chromium
+    CHROME_PATH=/usr/bin/chromium
 
 EXPOSE 8787
 

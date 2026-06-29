@@ -41,10 +41,11 @@ export default defineConfig({
           })
           proxy.on('error', (err, _req, res) => {
             // 代理层错误时返回明确的 5xx，避免 socket hang up 让浏览器误判
-            console.error('[vite-proxy] error:', err.message)
+            const message = err.message || '后端服务未启动或无法连接，请确认后端已在 localhost:8787 运行'
+            console.error('[vite-proxy] error:', message)
             if (res && 'writeHead' in res && !res.headersSent) {
               res.writeHead(502, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ error: { code: 'PROXY_ERROR', message: err.message } }))
+              res.end(JSON.stringify({ error: { code: 'PROXY_ERROR', message } }))
             }
           })
         },

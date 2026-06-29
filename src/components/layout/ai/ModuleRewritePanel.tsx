@@ -4,6 +4,7 @@ import type { Resume, ModuleType } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
 import { useModuleRewrite } from '@/hooks/useModuleRewrite'
 import RichTextPreview from '@/components/common/RichTextPreview'
+import InlineError from '@/components/common/InlineError'
 
 interface ModuleRewritePanelProps {
     resume: Resume
@@ -140,9 +141,9 @@ const ModuleRewritePanel: React.FC<ModuleRewritePanelProps> = ({ resume }) => {
                 <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                         <div>
-                            <h3 className="text-sm font-semibold text-gray-900">AI 内容改写</h3>
+                            <h3 className="text-sm font-semibold text-gray-900">批量改写（整模块逐条）</h3>
                             <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                                选择模块与条目，AI 用 STAR 思路优化内容，逐条预览后采纳，可撤回。
+                                已写好但想更出彩时用：选择模块与条目，AI 一次优化多条要点、补强成果与量化，逐条预览后采纳，可撤回。
                             </p>
                         </div>
                         {result && (
@@ -205,7 +206,7 @@ const ModuleRewritePanel: React.FC<ModuleRewritePanelProps> = ({ resume }) => {
                                     placeholder="粘贴目标岗位 JD，可选（让改写更贴合岗位）"
                                     className="min-h-24 w-full resize-none no-scrollbar rounded-xl border border-gray-200 px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary"
                                 />
-                                {error && <p className="text-xs text-red-600">{error}</p>}
+                                {error && <InlineError message={error} />}
                                 <button
                                     type="button"
                                     disabled={loading || !selectedModule}

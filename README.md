@@ -16,11 +16,12 @@
 10. **版本快照**：手动创建命名快照记录简历状态，快照时间轴可视化，每个快照支持独立本地草稿（切快照自动保存/恢复）。
 11. **快照对比**：选择两个快照逐模块逐字段比较，Git 风格统一 diff（+ 新增 / − 删除），支持递归比较 items 数组内的字段差异。
 12. **A4 分页预览**：按页切片展示，自适应缩放，减少内容截断。
-13. **AI 辅助**：简历评估、内容润色建议、JD 匹配分析、求职信生成、要点改写、简历翻译。
-14. **PDF 导出**：后端 chromedp 异步任务（创建 → 轮询 → 下载）。
+13. **AI 辅助**：简历评估（含报告 PDF 导出）、内容润色建议、JD 匹配分析与 JD 定向优化、整模块/要点改写、模拟面试（出题 + 答题 + 多轮追问 + 逐题评估）、简历翻译。
+14. **PDF 导出**：简历导出走后端 chromedp 异步任务（创建 → 轮询 → 下载）；AI 评估报告走前端 html2canvas + jsPDF 直接生成。
 15. **中英文国际化**：一键切换中英文简历，AI 翻译模块自动生成英文副本。
 16. **简历解析导入**：上传 PDF/Word 文件，AI 自动识别填充。
 17. **认证与安全**：JWT + Redis token 即时撤销 + 令牌桶限流 + bcrypt 密码哈希。
+18. **简历分享与评论**：生成分享链接，访客可逐模块评论；评论跨快照保留、访客仅能删除自己的评论。
 
 ## 技术栈
 
@@ -50,7 +51,7 @@ introduce/
 │   │   ├── auth.ts               # 认证接口
 │   │   ├── resume.ts             # 简历 CRUD + 快照 + 分支 + Diff
 │   │   ├── export.ts             # PDF 导出任务
-│   │   ├── ai.ts                 # AI 接口（评估/润色/翻译/求职信等）
+│   │   ├── ai.ts                 # AI 接口（评估/匹配/改写/翻译/面试等）
 │   │   ├── upload.ts             # 文件上传
 │   │   └── index.ts
 │   ├── components/
@@ -61,7 +62,7 @@ introduce/
 │   │   │   ├── RightPanel.tsx    # 右栏（编辑/设置/AI评估/PDF导出）
 │   │   │   ├── LoginPage.tsx     # 登录注册页
 │   │   │   ├── ResumeListPage.tsx # 简历列表页
-│   │   │   └── ai/               # AI 面板组件（评估/匹配/改写/求职信/评分）
+│   │   │   └── ai/               # AI 面板组件（评估/匹配/改写/面试/评分）
 │   │   ├── resume/               # 简历模块编辑表单（11个模块）
 │   │   ├── resume/blocks/        # 模块表单子组件
 │   │   └── common/               # 通用组件（SnapshotTimeline、主题色、模板切换等）
@@ -70,7 +71,7 @@ introduce/
 │   │   ├── useExportPDF.ts       # PDF 导出（异步任务轮询）
 │   │   ├── useI18n.ts            # 国际化翻译
 │   │   ├── useTranslate.ts       # AI 翻译流程
-│   │   └── ...                   # AI 功能 Hooks（评估/润色/匹配/求职信等）
+│   │   └── ...                   # AI 功能 Hooks（评估/匹配/改写/面试等）
 │   ├── store/
 │   │   ├── authStore.ts          # 认证状态
 │   │   └── resumeStore.ts        # 简历状态（含快照草稿管理 + 脏标记）
@@ -233,6 +234,18 @@ FRONTEND_DIST_DIR=../dist
 | GET | /api/exports/:taskId | 查询导出任务状态 |
 | GET | /api/exports/:taskId/download | 下载导出文件 |
 
+### 分享与评论
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/resumes/:id/share | 创建分享链接 |
+| GET | /api/resumes/:id/shares | 分享链接列表 |
+| DELETE | /api/resumes/:id/shares/:shareId | 关闭分享链接 |
+| GET | /api/share/:token | 访客查看分享简历 |
+| GET/POST | /api/share/:token/comments | 访客评论列表/新增 |
+| DELETE | /api/share/:token/comments/:commentId | 删除自己的评论（校验访客归属） |
+| GET | /api/resumes/:id/comments | 简历所有者查看全部评论 |
+
 ### AI 功能
 
 | 方法 | 路径 | 说明 |
@@ -242,10 +255,17 @@ FRONTEND_DIST_DIR=../dist
 | POST | /api/ai/evaluate/stream | 简历评估（SSE 流式） |
 | POST | /api/ai/jd-match/stream | JD 匹配分析（SSE 流式） |
 | POST | /api/ai/score | JD 评分 |
+| POST | /api/ai/jd-optimize | JD 定向优化（生成优化版简历快照） |
 | POST | /api/ai/rewrite/bullet | 要点改写 |
-| POST | /api/ai/cover-letter | 求职信生成 |
+| POST | /api/ai/rewrite/module | 整模块内容改写 |
 | POST | /api/ai/suggest | 内容润色建议 |
 | POST | /api/ai/translate | 简历翻译 |
+| POST | /api/ai/interview/generate | 生成面试题（SSE 流式） |
+| POST | /api/ai/interview/evaluate | 答题评估（SSE 流式） |
+| POST | /api/ai/interview/followup | 面试追问 |
+| POST | /api/ai/interview/analyze-transcript | 面试录音转写分析（SSE 流式） |
+| GET | /api/ai/interview/sessions | 面试历史列表（按简历隔离） |
+| GET/DELETE | /api/ai/interview/sessions/:id | 面试会话详情/删除 |
 | GET | /api/ai/conversations | AI 对话列表 |
 | GET | /api/ai/conversations/:id | 获取对话详情 |
 | DELETE | /api/ai/conversations/:id | 删除对话 |
@@ -298,6 +318,8 @@ docker run --rm -p 8787:8787 \
 | `docs/snapshot-diff-optimization.md` | 快照对比算法优化 |
 | `docs/version-snapshot-timeline.md` | 版本快照时间轴设计 |
 | `docs/ai-capability-expansion.md` | AI 能力扩展方案 |
+| `docs/ai-extension-plan.md` | AI 能力延伸实现方案（报告导出/整模块改写/面试追问/JD优化） |
+| `docs/jd-optimize-plan.md` | JD 定向优化生成优化快照方案 |
 | `docs/简历解析与导入方案.md` | 简历解析导入方案 |
 
 ## 已知限制

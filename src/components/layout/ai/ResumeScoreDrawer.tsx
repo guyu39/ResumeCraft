@@ -5,6 +5,7 @@ import { aiApi, type ConversationItem } from '@/api/ai'
 import { useResumeStore } from '@/store/resumeStore'
 import { severityClassMap as sharedSeverityClassMap, severityTextMap as sharedSeverityTextMap } from './shared'
 import { buildEvaluationReportHTML } from './evaluationReport'
+import InlineError from '@/components/common/InlineError'
 
 interface ResumeScoreDrawerProps {
     open: boolean
@@ -695,8 +696,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                         )}
 
                         {!loading && error && error !== '请登录使用' && (
-                            <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3">
-                                <p className="text-sm text-red-700">{error}</p>
+                            <InlineError message={error}>
                                 {!isAuthenticated ? (
                                     <button
                                         type="button"
@@ -705,7 +705,7 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                             window.history.pushState({}, '', `/?login=1&return=${encodeURIComponent(currentPath)}`)
                                             window.location.reload()
                                         }}
-                                        className="mt-2 rounded-md bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
+                                        className="mt-2 block rounded-md bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
                                     >
                                         登录
                                     </button>
@@ -713,12 +713,12 @@ const ResumeScoreDrawer: React.FC<ResumeScoreDrawerProps> = ({
                                     <button
                                         type="button"
                                         onClick={onRetry}
-                                        className="mt-2 rounded-md bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-500"
+                                        className="mt-2 block rounded-md bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-500"
                                     >
                                         重试
                                     </button>
                                 )}
-                            </div>
+                            </InlineError>
                         )}
 
                         {!loading && !displayResult && !streamPreview.hasStructuredContent && (

@@ -4,17 +4,22 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Pencil } from 'lucide-react'
+import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Wand2, Lightbulb } from 'lucide-react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import type { ModuleType } from '@/types/resume'
-import AISuggestionPanel from '@/components/common/ai/AISuggestionPanel'
+import AIRewritePanel from '@/components/common/ai/AIRewritePanel'
+import StarGuidePanel from '@/components/common/ai/StarGuidePanel'
+import InlineDiagnosisBar from '@/components/common/ai/InlineDiagnosisBar'
 import { getProviderPresetById, readAIUserConfig } from '@/ai'
 import { useAISuggest } from '@/hooks/useAISuggest'
 import { useBulletRewrite } from '@/hooks/useBulletRewrite'
+import { useStarRewrite } from '@/hooks/useStarRewrite'
+import { useWritingAssistant } from '@/hooks/useWritingAssistant'
 import { getAutoFixEnabled, inspectClipboardText } from '@/utils/textGuard'
+import type { WritingDiagnosis } from '@/api/ai'
 
 interface RichTextEditorProps {
     value: string
@@ -64,11 +69,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const [工具栏版本, set工具栏版本] = useState(0)
     const [链接弹窗显示, set链接弹窗显示] = useState(false)
     const [链接输入值, set链接输入值] = useState('https://')
-    const [AI建议面板显示, setAI建议面板显示] = useState(false)
-    const [Bullet重写面板显示, setBullet重写面板显示] = useState(false)
+    const [AI改写面板显示, setAI改写面板显示] = useState(false)
     const [Bullet重写JD, setBullet重写JD] = useState('')
     const [Bullet重写目标岗位, setBullet重写目标岗位] = useState('')
     const [Bullet重写公司, setBullet重写公司] = useState('')
+    const [STAR面板显示, setSTAR面板显示] = useState(false)
+    const [STAR场景, setSTAR场景] = useState('')
     const [剪贴板提示, set剪贴板提示] = useState<string | null>(null)
     const 提示定时器引用 = useRef<number | null>(null)
     const Bullet重写选区引用 = useRef<{ from: number; to: number } | null>(null)
@@ -82,7 +88,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         moduleType?: ModuleType
         targetPosition?: string
     } | null>(null)
-    const { loading: AI建议加载中, error: AI建议错误, data: AI建议结果, fromCache, runSuggest, mode } = useAISuggest()
+    const { loading: AI建议加载中, error: AI建议错误, data: AI建议结果, fromCache, runSuggest, resetSuggest, mode } = useAISuggest()
     const {
         loading: Bullet重写加载中,
         error: Bullet重写错误,
@@ -90,6 +96,26 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         runRewrite,
         resetRewrite,
     } = useBulletRewrite()
+    const {
+        analyzing: STAR分析中,
+        generating: STAR生成中,
+        error: STAR错误,
+        dimensions: STAR维度,
+        generatedHtml: STAR生成结果,
+        model: STAR模型,
+        analyze: 运行STAR分析,
+        generate: 运行STAR生成,
+        reset: 重置STAR,
+    } = useStarRewrite()
+    const {
+        enabled: 写作助手开启,
+        setEnabled: set写作助手开启,
+        loading: 写作诊断中,
+        diagnoses: 写作诊断结果,
+        trigger: 触发写作诊断,
+        dismiss: 忽略写作诊断,
+        clear: 清空写作诊断,
+    } = useWritingAssistant()
     const { isAuthenticated } = useAuthStore()
     const 编辑器高度 = Math.max(8, minRows) * 28
     const AI模式文案 = (() => {
@@ -132,6 +158,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             lastEditorHtml.current = html
             上次合法HTML引用.current = html
             onChange(html)
+
+            // 实时写作助手：仅在启用且已登录时触发（hook 内部已做防抖 + 去重）
+            if (enableAISuggest && isAuthenticated && 写作助手开启) {
+                // 折叠连续空行，避免空白段落干扰诊断与触发判断
+                触发写作诊断(plainText.replace(/\n[ \t]*\n+/g, '\n').trim(), {
+                    resumeId,
+                    moduleType: aiContext?.moduleType,
+                    moduleInstanceId: aiContext?.moduleInstanceId,
+                    fieldKey: aiContext?.targetPosition ?? 'content',
+                })
+            }
         },
         editorProps: {
             attributes: {
@@ -189,6 +226,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         if (value === lastEditorHtml.current) return
         editor.commands.setContent(next, { emitUpdate: false })
         上次合法HTML引用.current = next
+        // 外部注入（切快照/换字段/AI 生成）时清空旧诊断，避免误标到新内容
+        清空写作诊断()
     }, [editor, value])
 
     useEffect(() => {
@@ -241,36 +280,47 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         set链接弹窗显示(false)
     }
 
+    // 将 tiptap getText 产出的连续空行折叠为单个换行，避免多空段落累积成大段空白
+    const 规整文本 = (text: string) => text.replace(/\n[ \t]*\n+/g, '\n').trim()
+
     const 获取编辑器文本 = () => {
         if (!editor) {
             return { fullText: '', selectedText: '' }
         }
 
-        const fullText = editor.getText().trim()
+        const fullText = 规整文本(editor.getText({ blockSeparator: '\n' }))
         const { from, to } = editor.state.selection
-        const selectedText = from === to ? '' : editor.state.doc.textBetween(from, to, '\n').trim()
+        const selectedText = from === to ? '' : 规整文本(editor.state.doc.textBetween(from, to, '\n'))
         return { fullText, selectedText }
     }
 
     const 触发AI建议 = async () => {
         if (!editor) return
 
+        // 记录选区，供两种模式（点评建议/多版本重写）共用写回
+        const { from, to } = editor.state.selection
+        Bullet重写选区引用.current = { from, to }
+
+        const { fullText, selectedText } = 获取编辑器文本()
+
         // 未登录：只显示面板提示，不调用后端
         if (!isAuthenticated) {
-            setAI建议面板显示(true)
+            setAI改写面板显示(true)
             return
         }
 
         // 如果正在加载中，直接显示面板，不打断生成过程
         if (AI建议加载中) {
-            setAI建议面板显示(true)
+            setAI改写面板显示(true)
             return
         }
 
-        const { fullText, selectedText } = 获取编辑器文本()
         if (!fullText) {
             return
         }
+
+        // 同步多版本重写所需的原文输入（用户切到 rewrite tab 即可直接生成）
+        set上次Bullet重写输入({ fullText, selectedText })
 
         const suggestInput = {
             locale,
@@ -281,37 +331,23 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             moduleInstanceId: aiContext?.moduleInstanceId,
         }
         set上次建议输入(suggestInput)
-        setAI建议面板显示(true)
+        setAI改写面板显示(true)
 
         await runSuggest(suggestInput, resumeId)
     }
 
     const 应用AI建议 = (rewrite: string) => {
         if (!editor) return
-        const { from, to } = editor.state.selection
+        const selection = Bullet重写选区引用.current
         const chain = editor.chain().focus()
 
-        if (from !== to) {
-            chain.insertContent(rewrite).run()
+        if (selection && selection.from !== selection.to) {
+            chain.setTextSelection(selection).insertContent(rewrite).run()
         } else {
             chain.setContent(转为编辑器HTML(rewrite)).run()
         }
 
-        setAI建议面板显示(false)
-    }
-
-    const 打开Bullet重写 = () => {
-        if (!editor) return
-
-        const { fullText, selectedText } = 获取编辑器文本()
-        if (!fullText) {
-            return
-        }
-
-        const { from, to } = editor.state.selection
-        Bullet重写选区引用.current = { from, to }
-        set上次Bullet重写输入({ fullText, selectedText })
-        setBullet重写面板显示(true)
+        setAI改写面板显示(false)
     }
 
     const 生成Bullet重写 = async () => {
@@ -341,12 +377,63 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             chain.setContent(转为编辑器HTML(rewrite)).run()
         }
 
-        setBullet重写面板显示(false)
+        setAI改写面板显示(false)
     }
 
-    const 关闭Bullet重写 = () => {
-        setBullet重写面板显示(false)
+    const 关闭AI改写 = () => {
+        setAI改写面板显示(false)
+        resetSuggest()
         resetRewrite()
+    }
+
+    const 打开STAR改写 = () => {
+        if (!editor) return
+        const { fullText, selectedText } = 获取编辑器文本()
+        const scenario = selectedText || fullText
+        if (!scenario) return
+        Bullet重写选区引用.current = editor.state.selection
+            ? { from: editor.state.selection.from, to: editor.state.selection.to }
+            : null
+        setSTAR场景(scenario)
+        重置STAR()
+        setSTAR面板显示(true)
+    }
+
+    const 关闭STAR改写 = () => {
+        setSTAR面板显示(false)
+        重置STAR()
+    }
+
+    const 应用STAR改写 = (html: string) => {
+        if (!editor) return
+        const selection = Bullet重写选区引用.current
+        const chain = editor.chain().focus()
+        if (selection && selection.from !== selection.to) {
+            chain.setTextSelection(selection).insertContent(html).run()
+        } else {
+            chain.setContent(转为编辑器HTML(html)).run()
+        }
+        setSTAR面板显示(false)
+        重置STAR()
+    }
+
+    // 写作助手 quickFix：将命中的弱词替换为建议词（无 span 时不替换，仅作提示）
+    const 应用写作快修 = (diagnosis: WritingDiagnosis) => {
+        if (!editor || !diagnosis.quickFix || !diagnosis.span) {
+            忽略写作诊断(diagnosis.code)
+            return
+        }
+        const fullText = editor.getText()
+        const idx = fullText.indexOf(diagnosis.span)
+        if (idx === -1) {
+            忽略写作诊断(diagnosis.code)
+            return
+        }
+        // tiptap doc 的位置从 1 开始（doc 起始有一个虚拟位置），纯文本 idx 需 +1
+        const from = idx + 1
+        const to = from + diagnosis.span.length
+        editor.chain().focus().setTextSelection({ from, to }).insertContent(diagnosis.quickFix).run()
+        忽略写作诊断(diagnosis.code)
     }
 
     const 重试AI建议 = async () => {
@@ -370,22 +457,30 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             ...(enableAISuggest
                 ? [
                     {
-                        key: 'ai-suggest',
-                        title: 'AI 润色',
-                        label: AI建议加载中 ? '生成中...' : '润色',
+                        key: 'ai-rewrite',
+                        title: 'AI 改写（点评建议 / 多版本重写）',
+                        label: AI建议加载中 || Bullet重写加载中 ? '生成中...' : 'AI 改写',
                         icon: Sparkles,
-                        active: AI建议面板显示,
+                        active: AI改写面板显示,
                         onClick: 触发AI建议,
-                        disabled: AI建议加载中,
+                        disabled: AI建议加载中 || Bullet重写加载中,
                     },
                     {
-                        key: 'bullet-rewrite',
-                        title: 'Bullet 重写',
-                        label: Bullet重写加载中 ? '重写中...' : '重写',
-                        icon: Pencil,
-                        active: Bullet重写面板显示,
-                        onClick: 打开Bullet重写,
-                        disabled: Bullet重写加载中,
+                        key: 'star-rewrite',
+                        title: 'STAR 引导改写',
+                        label: STAR分析中 || STAR生成中 ? '处理中...' : 'STAR',
+                        icon: Wand2,
+                        active: STAR面板显示,
+                        onClick: 打开STAR改写,
+                        disabled: STAR分析中 || STAR生成中,
+                    },
+                    {
+                        key: 'writing-assistant',
+                        title: 写作助手开启 ? '实时建议：开（点击关闭）' : '实时建议：关（点击开启）',
+                        label: 写作助手开启 ? '实时建议' : '实时建议',
+                        icon: Lightbulb,
+                        active: 写作助手开启,
+                        onClick: () => set写作助手开启(!写作助手开启),
                     },
                 ]
                 : []),
@@ -432,7 +527,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 onClick: () => editor?.chain().focus().toggleOrderedList().run(),
             },
         ],
-        [editor, 工具栏版本, enableAISuggest, AI建议加载中, AI建议面板显示, Bullet重写加载中, Bullet重写面板显示]
+        [editor, 工具栏版本, enableAISuggest, AI建议加载中, AI改写面板显示, Bullet重写加载中, STAR分析中, STAR生成中, STAR面板显示, 写作助手开启]
     )
 
     return (
@@ -465,6 +560,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                     </p>
                 )}
             </div>
+            {enableAISuggest && isAuthenticated && 写作助手开启 && (
+                <InlineDiagnosisBar
+                    diagnoses={写作诊断结果}
+                    loading={写作诊断中}
+                    onDismiss={忽略写作诊断}
+                    onApplyQuickFix={应用写作快修}
+                />
+            )}
             {剪贴板提示 && (
                 <p className="px-3 pb-2 text-[12px] text-amber-600">
                     {剪贴板提示}
@@ -516,115 +619,13 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 </div>
             )}
 
-            {Bullet重写面板显示 && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 px-4">
-                    <div className="max-h-[86vh] w-full max-w-2xl overflow-y-auto no-scrollbar rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
-                        <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <h4 className="text-sm font-semibold text-gray-800">Bullet 重写</h4>
-                                <p className="mt-1 text-xs text-gray-500">
-                                    {上次Bullet重写输入?.selectedText ? '将重写当前选中文本' : '未选择文本，将重写整个字段'}
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={关闭Bullet重写}
-                                className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50"
-                            >
-                                关闭
-                            </button>
-                        </div>
-
-                        <div className="mt-3 rounded-lg bg-gray-50 p-3">
-                            <p className="text-xs font-medium text-gray-500">待重写内容</p>
-                            <p className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-700 no-scrollbar">
-                                {上次Bullet重写输入?.selectedText || 上次Bullet重写输入?.fullText}
-                            </p>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                            <input
-                                value={Bullet重写目标岗位}
-                                onChange={(event) => setBullet重写目标岗位(event.target.value)}
-                                placeholder="目标岗位，可选"
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-primary/30"
-                            />
-                            <input
-                                value={Bullet重写公司}
-                                onChange={(event) => setBullet重写公司(event.target.value)}
-                                placeholder="公司名称，可选"
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-primary/30"
-                            />
-                        </div>
-                        <textarea
-                            value={Bullet重写JD}
-                            onChange={(event) => setBullet重写JD(event.target.value)}
-                            placeholder="粘贴岗位 JD，可选；填写后会优先贴合岗位关键词"
-                            className="mt-2 min-h-24 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-800 outline-none focus:ring-2 focus:ring-primary/30 no-scrollbar"
-                        />
-                        <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
-                            <span>{Bullet重写JD.length}/30000</span>
-                            {Bullet重写结果?.model && <span>模型：{Bullet重写结果.model}</span>}
-                        </div>
-
-                        {Bullet重写错误 && <p className="mt-2 text-xs text-red-600">{Bullet重写错误}</p>}
-                        {!isAuthenticated && <p className="mt-2 text-xs text-amber-600">请先登录并配置 AI 服务后再使用 Bullet 重写。</p>}
-
-                        <button
-                            type="button"
-                            disabled={!isAuthenticated || Bullet重写加载中 || Bullet重写JD.length > 30000}
-                            onClick={生成Bullet重写}
-                            className="mt-3 w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {Bullet重写加载中 ? '生成中...' : '生成 3 个版本'}
-                        </button>
-
-                        {Bullet重写结果 && (
-                            <div className="mt-4 space-y-3">
-                                {Bullet重写结果.versions.map((version, index) => (
-                                    <div key={`${version.type}-${index}`} className="rounded-xl border border-gray-100 p-3">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="text-sm font-semibold text-gray-800">
-                                                    {version.type === 'impact' ? '成果导向' : version.type === 'technical' ? '技术深度' : version.type === 'business' ? '业务价值' : version.type}
-                                                </p>
-                                                <p className="mt-1 text-sm leading-relaxed text-gray-700">{version.text}</p>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => 应用Bullet重写(version.text)}
-                                                className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
-                                            >
-                                                采用
-                                            </button>
-                                        </div>
-                                        {version.highlights.length > 0 && (
-                                            <div className="mt-2 flex flex-wrap gap-1.5">
-                                                {version.highlights.map((highlight) => (
-                                                    <span key={highlight} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                                                        {highlight}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                                {Bullet重写结果.missingData.length > 0 && (
-                                    <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-700">
-                                        建议补充：{Bullet重写结果.missingData.join('、')}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            <AISuggestionPanel
-                open={AI建议面板显示}
+            <AIRewritePanel
+                open={AI改写面板显示}
+                isAuthenticated={isAuthenticated}
+                onClose={关闭AI改写}
                 suggestions={AI建议结果?.suggestions ?? []}
-                loading={AI建议加载中}
-                error={AI建议错误}
+                suggestLoading={AI建议加载中}
+                suggestError={AI建议错误}
                 modeLabel={AI模式文案}
                 fromCache={fromCache}
                 originalContent={上次建议输入?.fullText}
@@ -633,11 +634,38 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 fieldKey={aiContext?.targetPosition}
                 moduleInstanceId={aiContext?.moduleInstanceId}
                 conversationId={AI建议结果?.conversationId}
-                isAuthenticated={isAuthenticated}
                 onApplySuggestion={应用AI建议}
-                onRetry={重试AI建议}
-                onRefresh={重新优化AI建议}
-                onClose={() => setAI建议面板显示(false)}
+                onRetrySuggest={重试AI建议}
+                onRefreshSuggest={重新优化AI建议}
+                bulletData={Bullet重写结果}
+                bulletLoading={Bullet重写加载中}
+                bulletError={Bullet重写错误}
+                rewriteContentPreview={上次Bullet重写输入?.selectedText || 上次Bullet重写输入?.fullText || ''}
+                rewriteHasSelection={Boolean(上次Bullet重写输入?.selectedText)}
+                jdText={Bullet重写JD}
+                targetTitle={Bullet重写目标岗位}
+                companyName={Bullet重写公司}
+                onJdTextChange={setBullet重写JD}
+                onTargetTitleChange={setBullet重写目标岗位}
+                onCompanyNameChange={setBullet重写公司}
+                onGenerateBullet={生成Bullet重写}
+                onApplyBullet={应用Bullet重写}
+            />
+
+            <StarGuidePanel
+                open={STAR面板显示}
+                scenario={STAR场景}
+                analyzing={STAR分析中}
+                generating={STAR生成中}
+                error={STAR错误}
+                dimensions={STAR维度}
+                generatedHtml={STAR生成结果}
+                model={STAR模型}
+                isAuthenticated={isAuthenticated}
+                onClose={关闭STAR改写}
+                onAnalyze={() => 运行STAR分析(STAR场景)}
+                onGenerate={(supplements) => 运行STAR生成(STAR场景, supplements)}
+                onApply={应用STAR改写}
             />
         </div>
     )

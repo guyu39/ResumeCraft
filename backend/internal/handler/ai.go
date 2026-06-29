@@ -722,3 +722,141 @@ func (h *Handler) EnhanceContent(c *gin.Context) {
 
 	response.JSONSuccess(c, result)
 }
+
+// AnalyzeStar STAR 维度分析（阶段一）
+// POST /api/ai/star/analyze
+func (h *Handler) AnalyzeStar(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.StarAnalyzeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	result, err := h.aiService.AnalyzeStar(c.Request.Context(), userID.(string), req)
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[ai] AnalyzeStar error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "STAR 分析失败")
+		return
+	}
+
+	response.JSONSuccess(c, result)
+}
+
+// GenerateStar STAR 生成（阶段二）
+// POST /api/ai/star/generate
+func (h *Handler) GenerateStar(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.StarGenerateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	result, err := h.aiService.GenerateStar(c.Request.Context(), userID.(string), req)
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[ai] GenerateStar error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "STAR 生成失败")
+		return
+	}
+
+	response.JSONSuccess(c, result)
+}
+
+// WritingDiagnose 实时写作助手诊断
+// POST /api/ai/writing/diagnose
+func (h *Handler) WritingDiagnose(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.WritingDiagnoseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	result, err := h.aiService.DiagnoseWriting(c.Request.Context(), userID.(string), req)
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[ai] WritingDiagnose error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "写作诊断失败")
+		return
+	}
+
+	response.JSONSuccess(c, result)
+}
+
+// ResumeCheckupStream 简历一致性体检（SSE 流式）
+// POST /api/ai/checkup/stream
+func (h *Handler) ResumeCheckupStream(c *gin.Context) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return
+	}
+
+	var req model.ResumeCheckupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数错误")
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("X-Accel-Buffering", "no")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
+		return
+	}
+
+	result, err := h.aiService.StreamCheckup(c.Request.Context(), userID.(string), req, func(evt ai.StreamEvent) {
+		if evt.Type == "" {
+			return
+		}
+		data, _ := json.Marshal(evt)
+		c.Writer.Write([]byte("data: " + string(data) + "\n\n"))
+		flusher.Flush()
+	})
+	if err != nil {
+		if err == ai.ErrAIConfigNotFound {
+			c.Writer.Write([]byte("event: error\ndata: 请先配置 AI 服务\n\n"))
+		} else {
+			log.Printf("[ai] ResumeCheckupStream error: %v", err)
+			c.Writer.Write([]byte("event: error\ndata: 体检失败\n\n"))
+		}
+		flusher.Flush()
+		return
+	}
+
+	resultJSON, _ := json.Marshal(result)
+	c.Writer.Write([]byte("event: done\ndata: " + string(resultJSON) + "\n\n"))
+	flusher.Flush()
+}

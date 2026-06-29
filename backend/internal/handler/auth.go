@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -12,8 +13,40 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// SendCode 发送邮箱验证码（注册/登录）
+func (h *Handler) SendCode(c *gin.Context) {
+	if h.authService == nil {
+		response.JSONError(c, http.StatusServiceUnavailable, "AUTH_DISABLED", "登录功能未启用")
+		return
+	}
+	var req model.SendCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "INVALID_PARAMS", "参数格式错误")
+		return
+	}
+	err := h.authService.SendEmailCode(c.Request.Context(), req.Email, req.Purpose)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrEmailExists):
+			response.JSONError(c, http.StatusConflict, "EMAIL_EXISTS", "该邮箱已注册，请直接登录")
+		case errors.Is(err, auth.ErrEmailNotRegistered):
+			response.JSONError(c, http.StatusNotFound, "EMAIL_NOT_REGISTERED", "该邮箱未注册，请先注册")
+		case errors.Is(err, auth.ErrCodeTooFrequent):
+			response.JSONError(c, http.StatusTooManyRequests, "CODE_TOO_FREQUENT", "验证码发送过于频繁，请稍后再试")
+		case errors.Is(err, auth.ErrSMTPNotConfigured):
+			response.JSONError(c, http.StatusServiceUnavailable, "SMTP_NOT_CONFIGURED", "邮件服务未配置，无法发送验证码")
+		case errors.Is(err, auth.ErrCodeUnavailable):
+			response.JSONError(c, http.StatusServiceUnavailable, "CODE_UNAVAILABLE", "验证码服务暂不可用")
+		default:
+			log.Printf("[auth] SendCode failed: %v", err)
+			response.JSONError(c, http.StatusInternalServerError, "SEND_CODE_FAILED", "发送验证码失败")
+		}
+		return
+	}
+	response.JSONSuccess(c, gin.H{"sent": true})
+}
+
 func (h *Handler) Register(c *gin.Context) {
-	log.Printf("[auth] Register called, authService is nil: %v", h.authService == nil)
 	if h.authService == nil {
 		response.JSONError(c, http.StatusServiceUnavailable, "AUTH_DISABLED", "登录功能未启用")
 		return
@@ -26,25 +59,26 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[auth] Register email: %s", req.Email)
 	payload, err := h.authService.Register(c.Request.Context(), req, clientIP(c), c.GetHeader("User-Agent"))
 	if err != nil {
 		log.Printf("[auth] Register failed: %v", err)
-		switch err {
-		case auth.ErrEmailExists:
+		switch {
+		case errors.Is(err, auth.ErrEmailExists):
 			response.JSONError(c, http.StatusConflict, "EMAIL_EXISTS", "该邮箱已注册")
+		case errors.Is(err, auth.ErrCodeInvalid):
+			response.JSONError(c, http.StatusBadRequest, "CODE_INVALID", "验证码错误或已过期")
+		case errors.Is(err, auth.ErrCodeUnavailable):
+			response.JSONError(c, http.StatusServiceUnavailable, "CODE_UNAVAILABLE", "验证码服务暂不可用")
 		default:
 			response.JSONError(c, http.StatusInternalServerError, "REGISTER_FAILED", "注册失败")
 		}
 		return
 	}
 
-	log.Printf("[auth] Register success: %s", payload.User.ID)
 	response.JSONSuccess(c, payload)
 }
 
 func (h *Handler) Login(c *gin.Context) {
-	log.Printf("[auth] Login called, authService is nil: %v", h.authService == nil)
 	if h.authService == nil {
 		response.JSONError(c, http.StatusServiceUnavailable, "AUTH_DISABLED", "登录功能未启用")
 		return
@@ -57,20 +91,24 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[auth] Login email: %s", req.Email)
 	payload, err := h.authService.Login(c.Request.Context(), req, clientIP(c), c.GetHeader("User-Agent"))
 	if err != nil {
 		log.Printf("[auth] Login failed: %v", err)
-		switch err {
-		case auth.ErrInvalidCredentials:
+		switch {
+		case errors.Is(err, auth.ErrInvalidCredentials):
 			response.JSONError(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "账号或密码错误")
+		case errors.Is(err, auth.ErrCodeInvalid):
+			response.JSONError(c, http.StatusUnauthorized, "CODE_INVALID", "验证码错误或已过期")
+		case errors.Is(err, auth.ErrEmailNotRegistered):
+			response.JSONError(c, http.StatusNotFound, "EMAIL_NOT_REGISTERED", "该邮箱未注册，请先注册")
+		case errors.Is(err, auth.ErrCodeUnavailable):
+			response.JSONError(c, http.StatusServiceUnavailable, "CODE_UNAVAILABLE", "验证码服务暂不可用")
 		default:
 			response.JSONError(c, http.StatusInternalServerError, "LOGIN_FAILED", "登录失败")
 		}
 		return
 	}
 
-	log.Printf("[auth] Login success: %s", payload.User.ID)
 	response.JSONSuccess(c, payload)
 }
 

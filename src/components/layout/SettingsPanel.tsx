@@ -4,10 +4,9 @@
 // ============================================================
 
 import React, { useEffect, useState } from 'react'
-import { Globe, X } from 'lucide-react'
+import { Globe, X, ChevronDown } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
-import { type ModuleTitleMarkerStyle } from '@/types/resume'
 import { getAutoFixEnabled, setAutoFixEnabled } from '@/utils/textGuard'
 import {
     AIProviderPreset,
@@ -23,6 +22,7 @@ import {
 import { aiApi, resumeApi } from '@/api'
 import ThemeColorPicker from '@/components/common/ThemeColorPicker'
 import TemplateSwitcher from '@/components/common/TemplateSwitcher'
+import ModuleTitleStylePicker from '@/components/common/ModuleTitleStylePicker'
 import TranslateDialog from '@/components/resume/TranslateDialog'
 
 const FONT_OPTIONS = [
@@ -34,14 +34,6 @@ const FONT_OPTIONS = [
     // { label: 'Times New Roman', value: 'Times New Roman' },
     // { label: '苹方', value: 'PingFang SC' },
     { label: '黑体', value: 'SimHei' },
-]
-
-const MODULE_TITLE_MARKER_STYLE_OPTIONS: Array<{ label: string; value: ModuleTitleMarkerStyle }> = [
-    { label: '竖线', value: 'bar' },
-    { label: '圆角块', value: 'pill' },
-    { label: '圆点', value: 'dot' },
-    { label: '方块', value: 'square' },
-    { label: '不显示', value: 'none' },
 ]
 
 interface RangeFieldProps {
@@ -97,6 +89,28 @@ const RangeField: React.FC<RangeFieldProps> = ({
         />
     </div>
 )
+
+// 可折叠分组
+const CollapsibleSection: React.FC<{
+    title: string
+    defaultOpen?: boolean
+    children: React.ReactNode
+}> = ({ title, defaultOpen = false, children }) => {
+    const [open, setOpen] = useState(defaultOpen)
+    return (
+        <section className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="flex w-full items-center justify-between py-1 text-left"
+            >
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{title}</span>
+                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+            {open && <div className="mt-3 space-y-4">{children}</div>}
+        </section>
+    )
+}
 
 interface SettingsPanelProps {
     onClose: () => void
@@ -279,95 +293,33 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 </button>
             </div>
 
-            <TemplateSwitcher
-                value={resume.template}
-                locale={resume.locale}
-                onChange={setTemplate}
-            />
+            {/* ========== 主题设置 ========== */}
+            <CollapsibleSection title="主题设置" defaultOpen>
+                {/* 模板 */}
+                <TemplateSwitcher
+                    value={resume.template}
+                    locale={resume.locale}
+                    onChange={setTemplate}
+                />
 
-            {/* 模块标题语言 */}
-            <div className="border-t border-gray-100 pt-4">
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">模块标题语言</label>
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setLocale('zh-CN')}
-                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${resume.locale === 'zh-CN'
-                                ? 'border-primary bg-primary/5 text-primary font-medium'
-                                : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                                }`}
-                        >
-                            中文
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setLocale('en-US')}
-                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${resume.locale === 'en-US'
-                                ? 'border-primary bg-primary/5 text-primary font-medium'
-                                : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                                }`}
-                        >
-                            English
-                        </button>
-                    </div>
-                    <p className="text-[12px] text-gray-400">
-                        切换模块标题的语言显示，如「教育经历」↔「Education」
-                    </p>
-                </div>
-            </div>
-
-            <div className="border-t border-gray-100 pt-4">
+                {/* 主题色 */}
                 <ThemeColorPicker
                     value={resume.themeColor}
                     onChange={setThemeColor}
                 />
-            </div>
 
-            {/* 翻译简历 */}
-            {isAuthenticated && (
-                <div className="border-t border-gray-100 pt-4">
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-700">多语言翻译</label>
-                        <button
-                            type="button"
-                            onClick={() => setShowTranslateDialog(true)}
-                            className="flex items-center gap-2 w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-colors"
-                        >
-                            <Globe className="w-4 h-4" />
-                            <span>{resume.locale === 'en-US' ? '翻译为中文' : '翻译为英文'}</span>
-                        </button>
-                        <p className="text-[12px] text-gray-400">
-                            AI 驱动翻译，生成一份新的简历副本，保留原排版。
-                        </p>
-                    </div>
-                </div>
-            )}
+                {/* 模块标题分隔线 + 左侧标记（可视化分段按钮） */}
+                <ModuleTitleStylePicker
+                    linePosition={styleSettings.moduleTitleLinePosition ?? 'left'}
+                    markerStyle={styleSettings.moduleTitleMarkerStyle ?? 'bar'}
+                    markerVisible={styleSettings.moduleTitleMarkerVisible !== false}
+                    themeColor={resume.themeColor}
+                    onChange={(next) => setStyleSettings(next)}
+                />
+            </CollapsibleSection>
 
-            <div className="border-t border-gray-100 pt-4 space-y-4">
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">剪贴板异常字符</label>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            const next = !autoFixEnabled
-                            setAutoFixEnabledState(next)
-                            setAutoFixEnabled(next)
-                        }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs border rounded-lg transition ${autoFixEnabled
-                            ? 'border-primary/40 bg-primary/5 text-primary'
-                            : 'border-gray-200 bg-white text-gray-600'
-                            }`}
-                    >
-                        <span>{autoFixEnabled ? '自动修复已开启' : '仅提示（不自动修复）'}</span>
-                        <span className={`inline-flex h-4 w-8 items-center rounded-full p-0.5 ${autoFixEnabled ? 'bg-primary' : 'bg-gray-300'}`}>
-                            <span className={`h-3 w-3 rounded-full bg-white transition ${autoFixEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                        </span>
-                    </button>
-                    <p className="text-[12px] text-gray-400">
-                        粘贴时检测康熙部首等异常字符，开启后会尝试标准化替换。
-                    </p>
-                </div>
+            {/* ========== 排版设置 ========== */}
+            <CollapsibleSection title="排版设置">
 
                 {resume.template !== 'modern' && (
                     <div className="space-y-1.5">
@@ -506,42 +458,86 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     unit="px"
                     onChange={(value) => setStyleSettings({ paragraphSpacing: value })}
                 />
+            </CollapsibleSection>
+
+            {/* ========== 语言与翻译 ========== */}
+            <CollapsibleSection title="语言与翻译">
 
                 <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">模块标题下划线</label>
-                    <select
-                        value={styleSettings.moduleTitleLinePosition ?? 'left'}
-                        onChange={(e) => setStyleSettings({ moduleTitleLinePosition: e.target.value as 'left' | 'bottom' | 'none' })}
-                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                        <option value="left">标题右侧</option>
-                        <option value="bottom">标题下方</option>
-                        <option value="none">不显示</option>
-                    </select>
+                    <label className="text-xs font-medium text-gray-700">模块标题语言</label>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setLocale('zh-CN')}
+                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${resume.locale === 'zh-CN'
+                                ? 'border-primary bg-primary/5 text-primary font-medium'
+                                : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                                }`}
+                        >
+                            中文
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setLocale('en-US')}
+                            className={`flex-1 px-3 py-2 text-xs border rounded-lg transition-colors ${resume.locale === 'en-US'
+                                ? 'border-primary bg-primary/5 text-primary font-medium'
+                                : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                                }`}
+                        >
+                            English
+                        </button>
+                    </div>
+                    <p className="text-[12px] text-gray-400">
+                        切换模块标题的语言显示，如「教育经历」↔「Education」
+                    </p>
                 </div>
 
+                {isAuthenticated && (
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">多语言翻译</label>
+                        <button
+                            type="button"
+                            onClick={() => setShowTranslateDialog(true)}
+                            className="flex items-center gap-2 w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-colors"
+                        >
+                            <Globe className="w-4 h-4" />
+                            <span>{resume.locale === 'en-US' ? '翻译为中文' : '翻译为英文'}</span>
+                        </button>
+                        <p className="text-[12px] text-gray-400">
+                            AI 驱动翻译，生成一份新的简历副本，保留原排版。
+                        </p>
+                    </div>
+                )}
+            </CollapsibleSection>
+
+            {/* ========== 输入辅助 ========== */}
+            <CollapsibleSection title="输入辅助">
                 <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">标题左侧样式</label>
-                    <select
-                        value={styleSettings.moduleTitleMarkerVisible === false ? 'none' : (styleSettings.moduleTitleMarkerStyle ?? 'bar')}
-                        onChange={(e) => {
-                            const value = e.target.value as ModuleTitleMarkerStyle
-                            setStyleSettings({
-                                moduleTitleMarkerStyle: value,
-                                moduleTitleMarkerVisible: value !== 'none',
-                            })
+                    <label className="text-xs font-medium text-gray-700">剪贴板异常字符</label>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const next = !autoFixEnabled
+                            setAutoFixEnabledState(next)
+                            setAutoFixEnabled(next)
                         }}
-                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs border rounded-lg transition ${autoFixEnabled
+                            ? 'border-primary/40 bg-primary/5 text-primary'
+                            : 'border-gray-200 bg-white text-gray-600'
+                            }`}
                     >
-                        {MODULE_TITLE_MARKER_STYLE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                    </select>
+                        <span>{autoFixEnabled ? '自动修复已开启' : '仅提示（不自动修复）'}</span>
+                        <span className={`inline-flex h-4 w-8 items-center rounded-full p-0.5 ${autoFixEnabled ? 'bg-primary' : 'bg-gray-300'}`}>
+                            <span className={`h-3 w-3 rounded-full bg-white transition ${autoFixEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </span>
+                    </button>
+                    <p className="text-[12px] text-gray-400">
+                        粘贴时检测康熙部首等异常字符，开启后会尝试标准化替换。
+                    </p>
                 </div>
-            </div>
+            </CollapsibleSection>
 
-            <div className="border-t border-gray-100 pt-4 space-y-3">
-                <h5 className="text-sm font-semibold text-gray-800">AI 配置</h5>
+            <CollapsibleSection title="AI 配置">
                 <p className="text-xs text-gray-400">用于「ai评估润色、JD 匹配分析、求职信」功能</p>
 
                 {!isAuthenticated ? (
@@ -634,9 +630,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                         )}
                     </>
                 )}
-            </div>
+            </CollapsibleSection>
 
-            <div className="border-t border-gray-100 pt-4 space-y-3">
+            <CollapsibleSection title="简历解析配置">
                 <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 p-3 space-y-3">
                     <div>
                         <h6 className="text-xs font-semibold text-gray-600">简历解析专用</h6>
@@ -719,7 +715,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                         </>
                     )}
                 </div>
-            </div>
+            </CollapsibleSection>
 
             {/* 翻译弹窗 */}
             <TranslateDialog

@@ -16,6 +16,7 @@ import (
 
 	"resumecraft-pdf-backend/internal/config"
 	"resumecraft-pdf-backend/internal/model"
+	"resumecraft-pdf-backend/internal/service/mail"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
@@ -30,9 +31,15 @@ var (
 	ErrInvalidToken       = errors.New("invalid token")
 	ErrEmailExists        = errors.New("email already exists")
 	ErrTokenRevoked       = errors.New("token revoked")
+	ErrCodeInvalid        = errors.New("verification code invalid or expired")
+	ErrCodeTooFrequent    = errors.New("verification code requested too frequently")
+	ErrEmailNotRegistered = errors.New("email not registered")
+	ErrSMTPNotConfigured  = errors.New("email service not configured")
+	ErrCodeUnavailable    = errors.New("verification code service unavailable")
 )
 
 type Service interface {
+	SendEmailCode(ctx context.Context, email, purpose string) error
 	Register(ctx context.Context, req model.RegisterRequest, ip, ua string) (*model.AuthPayload, error)
 	Login(ctx context.Context, req model.LoginRequest, ip, ua string) (*model.AuthPayload, error)
 	Refresh(ctx context.Context, refreshToken, ip, ua string) (*model.AuthPayload, error)
@@ -54,6 +61,7 @@ type sessionData struct {
 type service struct {
 	pool            *pgxpool.Pool
 	rdb             *redis.Client
+	mailer          *mail.Sender
 	jwtSecret       []byte
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
@@ -79,18 +87,124 @@ const (
 	keyUserSessions = "auth:us:%s"      // auth:us:{userID} → Set{sessionID, ...}
 )
 
-func NewService(pool *pgxpool.Pool, rdb *redis.Client, cfg config.AuthConfig) Service {
+func NewService(pool *pgxpool.Pool, rdb *redis.Client, cfg config.AuthConfig, mailer *mail.Sender) Service {
 	return &service{
 		pool:            pool,
 		rdb:             rdb,
+		mailer:          mailer,
 		jwtSecret:       []byte(cfg.JWTSecret),
 		accessTokenTTL:  cfg.AccessTokenTTL,
 		refreshTokenTTL: cfg.RefreshTokenTTL,
 	}
 }
 
+// ---------- 邮箱验证码 ----------
+
+func emailCodeKey(purpose, email string) string  { return "email_code:" + purpose + ":" + email }
+func emailCodeCDKey(purpose, email string) string { return "email_code_cd:" + purpose + ":" + email }
+
+// SendEmailCode 生成并发送邮箱验证码。purpose: register | login。
+func (s *service) SendEmailCode(ctx context.Context, email, purpose string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" {
+		return ErrCodeInvalid
+	}
+	if s.rdb == nil {
+		return ErrCodeUnavailable
+	}
+	if s.mailer == nil || !s.mailer.Configured() {
+		return ErrSMTPNotConfigured
+	}
+
+	// 注册：邮箱已存在则拒绝；登录：邮箱不存在则拒绝
+	exists, err := s.emailExists(ctx, email)
+	if err != nil {
+		return err
+	}
+	if purpose == "register" && exists {
+		return ErrEmailExists
+	}
+	if purpose == "login" && !exists {
+		return ErrEmailNotRegistered
+	}
+
+	// 60s 发送频率限制
+	cd, err := s.rdb.Exists(ctx, emailCodeCDKey(purpose, email)).Result()
+	if err != nil {
+		return ErrCodeUnavailable
+	}
+	if cd > 0 {
+		return ErrCodeTooFrequent
+	}
+
+	code := genNumericCode(6)
+	if err := s.rdb.Set(ctx, emailCodeKey(purpose, email), code, 5*time.Minute).Err(); err != nil {
+		return ErrCodeUnavailable
+	}
+	s.rdb.Set(ctx, emailCodeCDKey(purpose, email), "1", 60*time.Second)
+
+	if err := s.mailer.SendCode(email, code, purpose); err != nil {
+		// 发送失败时清掉已存的码，避免占用
+		s.rdb.Del(ctx, emailCodeKey(purpose, email))
+		log.Printf("[auth] send email code failed: %v", err)
+		if errors.Is(err, mail.ErrNotConfigured) {
+			return ErrSMTPNotConfigured
+		}
+		return fmt.Errorf("send email: %w", err)
+	}
+	return nil
+}
+
+// verifyEmailCode 校验验证码，成功后立即删除（一次性）
+func (s *service) verifyEmailCode(ctx context.Context, email, purpose, code string) error {
+	if s.rdb == nil {
+		return ErrCodeUnavailable
+	}
+	if strings.TrimSpace(code) == "" {
+		return ErrCodeInvalid
+	}
+	stored, err := s.rdb.Get(ctx, emailCodeKey(purpose, email)).Result()
+	if err != nil {
+		return ErrCodeInvalid
+	}
+	if stored != strings.TrimSpace(code) {
+		return ErrCodeInvalid
+	}
+	s.rdb.Del(ctx, emailCodeKey(purpose, email))
+	return nil
+}
+
+func (s *service) emailExists(ctx context.Context, email string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE lower(email) = lower($1) AND deleted_at IS NULL)`,
+		email,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check email exists: %w", err)
+	}
+	return exists, nil
+}
+
+// genNumericCode 生成 n 位数字验证码（crypto/rand）
+func genNumericCode(n int) string {
+	const digits = "0123456789"
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	for i := range b {
+		b[i] = digits[int(b[i])%10]
+	}
+	return string(b)
+}
+
 func (s *service) Register(ctx context.Context, req model.RegisterRequest, ip, ua string) (*model.AuthPayload, error) {
 	email := strings.TrimSpace(strings.ToLower(req.Email))
+
+	// 校验注册验证码（确保邮箱真实）
+	if err := s.verifyEmailCode(ctx, email, "register", req.Code); err != nil {
+		return nil, err
+	}
+
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
@@ -139,15 +253,28 @@ func (s *service) Login(ctx context.Context, req model.LoginRequest, ip, ua stri
 	).Scan(&u.ID, &u.Email, &u.DisplayName, &passwordHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			s.recordLoginAttempt(ctx, email, false, "user_not_found", ip, ua)
+			reason := "user_not_found"
+			if req.LoginType == "code" {
+				s.recordLoginAttempt(ctx, email, false, reason, ip, ua)
+				return nil, ErrEmailNotRegistered
+			}
+			s.recordLoginAttempt(ctx, email, false, reason, ip, ua)
 			return nil, ErrInvalidCredentials
 		}
 		return nil, fmt.Errorf("query user: %w", err)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		s.recordLoginAttempt(ctx, email, false, "wrong_password", ip, ua)
-		return nil, ErrInvalidCredentials
+	// 双模式：验证码登录 / 密码登录（LoginType 为空默认密码，向后兼容）
+	if req.LoginType == "code" {
+		if err := s.verifyEmailCode(ctx, email, "login", req.Code); err != nil {
+			s.recordLoginAttempt(ctx, email, false, "wrong_code", ip, ua)
+			return nil, err
+		}
+	} else {
+		if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
+			s.recordLoginAttempt(ctx, email, false, "wrong_password", ip, ua)
+			return nil, ErrInvalidCredentials
+		}
 	}
 
 	s.recordLoginAttempt(ctx, email, true, "", ip, ua)

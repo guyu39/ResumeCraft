@@ -103,6 +103,15 @@ func (s *service) RewriteBullet(ctx context.Context, userID string, req model.Bu
 }
 
 func buildBulletRewritePrompt(req model.BulletRewriteRequest) string {
+	fixSection := ""
+	if strings.TrimSpace(req.FixInstruction) != "" {
+		fixSection = fmt.Sprintf(`
+
+【针对性修复 — 优先满足】
+本次改写需解决以下一致性问题：%s
+在不编造事实的前提下，重写时必须消除该问题；若问题源于缺少信息，请在 missingData 中提示用户补充，禁止虚构。`, strings.TrimSpace(req.FixInstruction))
+	}
+
 	return fmt.Sprintf(`你是资深简历 Bullet Point 重写专家。请基于目标岗位 JD 的关键要求，重写以下简历条目。
 
 【强制规则】
@@ -111,7 +120,7 @@ func buildBulletRewritePrompt(req model.BulletRewriteRequest) string {
 3. 如果需要推断数字，必须在文本中标注 [estimated]。
 4. 使用 STAR 思路强化 Action/Result，避免流水账和弱动词。
 5. 每个版本适合直接放入简历，中文不超过 120 字，英文不超过 200 字符。
-6. 必须返回 impact、technical、business 三个版本。
+6. 必须返回 impact、technical、business 三个版本。%s
 
 【返回格式】
 {
@@ -134,7 +143,7 @@ func buildBulletRewritePrompt(req model.BulletRewriteRequest) string {
 %s
 
 【待重写内容】
-%s`, strings.TrimSpace(req.ModuleType), strings.TrimSpace(req.FieldKey), strings.TrimSpace(req.TargetTitle), strings.TrimSpace(req.CompanyName), strings.TrimSpace(req.JDText), strings.TrimSpace(req.Content))
+%s`, fixSection, strings.TrimSpace(req.ModuleType), strings.TrimSpace(req.FieldKey), strings.TrimSpace(req.TargetTitle), strings.TrimSpace(req.CompanyName), strings.TrimSpace(req.JDText), strings.TrimSpace(req.Content))
 }
 
 func parseBulletRewriteResponse(text string) (*model.BulletRewriteResponse, error) {

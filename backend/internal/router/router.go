@@ -17,12 +17,14 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 	{
 		authGroup := api.Group("/auth")
 		{
-			// 认证路由挂载限流（注册/登录/刷新为高风险接口）
+			// 认证路由挂载限流（注册/登录/刷新/发码为高风险接口）
 			if authLimiter != nil {
+				authGroup.POST("/send-code", authLimiter, h.SendCode)
 				authGroup.POST("/register", authLimiter, h.Register)
 				authGroup.POST("/login", authLimiter, h.Login)
 				authGroup.POST("/refresh", authLimiter, h.Refresh)
 			} else {
+				authGroup.POST("/send-code", h.SendCode)
 				authGroup.POST("/register", h.Register)
 				authGroup.POST("/login", h.Login)
 				authGroup.POST("/refresh", h.Refresh)
@@ -109,6 +111,10 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 					aiGroup.POST("/suggest", aiLimiter, h.SuggestContent)
 					aiGroup.POST("/translate", aiLimiter, h.TranslateResume)
 					aiGroup.POST("/enhance", aiLimiter, h.EnhanceContent)
+					aiGroup.POST("/star/analyze", aiLimiter, h.AnalyzeStar)
+					aiGroup.POST("/star/generate", aiLimiter, h.GenerateStar)
+					aiGroup.POST("/writing/diagnose", aiLimiter, h.WritingDiagnose)
+					aiGroup.POST("/checkup/stream", aiLimiter, h.ResumeCheckupStream)
 				} else {
 					aiGroup.POST("/evaluate/stream", h.EvaluateResumeStream)
 					aiGroup.POST("/jd-match/stream", h.JDMatchStream)
@@ -119,6 +125,10 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 					aiGroup.POST("/suggest", h.SuggestContent)
 					aiGroup.POST("/translate", h.TranslateResume)
 					aiGroup.POST("/enhance", h.EnhanceContent)
+					aiGroup.POST("/star/analyze", h.AnalyzeStar)
+					aiGroup.POST("/star/generate", h.GenerateStar)
+					aiGroup.POST("/writing/diagnose", h.WritingDiagnose)
+					aiGroup.POST("/checkup/stream", h.ResumeCheckupStream)
 				}
 
 				aiGroup.GET("/suggest-records", h.ListSuggestRecords)

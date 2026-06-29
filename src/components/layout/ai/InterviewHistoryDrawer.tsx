@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { X, Clock, Trash2, FileText, Mic, Loader2, AlertTriangle, AlertCircle, ChevronRight, Building2 } from 'lucide-react'
+import { X, Clock, Trash2, FileText, Mic, Loader2, AlertCircle, ChevronRight, Building2 } from 'lucide-react'
 import { aiApi, type InterviewSessionListItem, type InterviewSessionDetail } from '@/api/ai'
+import InlineError from '@/components/common/InlineError'
 
 interface InterviewHistoryDrawerProps {
     open: boolean
@@ -133,12 +134,7 @@ export function InterviewHistoryDrawer({ open, onClose, resumeId, onLoadSession 
 
                 {/* Body */}
                 <div className="thin-scrollbar flex-1 overflow-y-auto">
-                    {error && (
-                        <div className="mx-4 mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
-                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                            <span>{error}</span>
-                        </div>
-                    )}
+                    {error && <InlineError message={error} className="mx-4 mt-3" />}
 
                     {loading && items.length === 0 ? (
                         <div className="flex h-32 items-center justify-center text-sm text-gray-400">

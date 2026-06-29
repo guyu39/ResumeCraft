@@ -20,6 +20,22 @@ type Config struct {
 	Parser    ParserConfig
 	Redis     RedisConfig
 	RateLimit RateLimitConfig
+	SMTP      SMTPConfig
+}
+
+// SMTPConfig 邮件发送配置（用于注册/登录验证码）
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	FromName string
+}
+
+// Configured 返回 SMTP 是否已配置（host/port/from 齐全）
+func (c SMTPConfig) Configured() bool {
+	return c.Host != "" && c.Port > 0 && c.From != ""
 }
 
 type DBConfig struct {
@@ -47,6 +63,7 @@ type PDFConfig struct {
 	ChromiumDisableGPU    bool
 	ChromiumNoSandbox     bool
 	ChromiumDisableSetUID bool
+	ChromiumExecPath      string // 浏览器可执行路径（CHROME_PATH 显式指定，空则自动探测）
 	ViewportWidth         int
 	ViewportHeight        int
 	DeviceScaleFactor     float64
@@ -148,6 +165,7 @@ func Load() Config {
 			ChromiumDisableGPU:    getEnvBool("CHROMIUM_DISABLE_GPU", true),
 			ChromiumNoSandbox:     getEnvBool("CHROMIUM_NO_SANDBOX", true),
 			ChromiumDisableSetUID: getEnvBool("CHROMIUM_DISABLE_SETUID_SANDBOX", true),
+			ChromiumExecPath:      getEnv("CHROME_PATH", ""),
 			ViewportWidth:         getEnvInt("PDF_VIEWPORT_WIDTH", 794),
 			ViewportHeight:        getEnvInt("PDF_VIEWPORT_HEIGHT", 1123),
 			DeviceScaleFactor:     getEnvFloat64("PDF_DEVICE_SCALE_FACTOR", 1),
@@ -187,6 +205,14 @@ func Load() Config {
 			AIRefill:       getEnvFloat64("RATE_LIMIT_AI_REFILL_PER_SEC", 0.05),
 			GlobalCapacity: getEnvInt("RATE_LIMIT_GLOBAL_CAPACITY", 120),
 			GlobalRefill:   getEnvFloat64("RATE_LIMIT_GLOBAL_REFILL_PER_SEC", 2),
+		},
+		SMTP: SMTPConfig{
+			Host:     getEnv("SMTP_HOST", ""),
+			Port:     getEnvInt("SMTP_PORT", 465),
+			Username: getEnv("SMTP_USERNAME", ""),
+			Password: getEnv("SMTP_PASSWORD", ""),
+			From:     getEnv("SMTP_FROM", ""),
+			FromName: getEnv("SMTP_FROM_NAME", "ResumeCraft"),
 		},
 	}
 }
