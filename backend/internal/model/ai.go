@@ -70,6 +70,7 @@ const (
 	ConversationTypeCoverLetter ConversationType = "cover_letter"
 	ConversationTypeTranslate   ConversationType = "translate"
 	ConversationTypeInterview   ConversationType = "interview_prep"
+	ConversationTypeCheckup     ConversationType = "checkup"
 )
 
 // AIConversation AI 对话会话
@@ -481,6 +482,90 @@ type EnhanceRequest struct {
 // EnhanceResponse AI 增强响应
 type EnhanceResponse struct {
 	Result string `json:"result"`
+}
+
+// --- STAR 引导改写 ---
+
+// StarAnalyzeRequest STAR 维度分析请求（阶段一）
+type StarAnalyzeRequest struct {
+	Scenario string `json:"scenario" binding:"required"`
+}
+
+// StarDimension STAR 单个维度的分析结果
+type StarDimension struct {
+	Key       string `json:"key"`       // S / T / A / R
+	Label     string `json:"label"`     // Situation / Task / Action / Result
+	Present   bool   `json:"present"`   // 原文是否已包含该维度
+	Extracted string `json:"extracted"` // 从原文抽取到的内容（present 时）
+	Hint      string `json:"hint"`      // 缺失时的补全引导问题
+}
+
+// StarAnalyzeResponse STAR 维度分析响应
+type StarAnalyzeResponse struct {
+	Dimensions []StarDimension `json:"dimensions"`
+	Model      string          `json:"model"`
+}
+
+// StarGenerateRequest STAR 生成请求（阶段二，携带用户补充内容）
+type StarGenerateRequest struct {
+	Scenario    string            `json:"scenario" binding:"required"`
+	Supplements map[string]string `json:"supplements"` // key=S/T/A/R, value=用户补充内容
+}
+
+// --- 实时写作助手 ---
+
+// WritingDiagnoseRequest 写作诊断请求
+type WritingDiagnoseRequest struct {
+	ResumeID         string `json:"resumeId"`
+	ModuleType       string `json:"moduleType"`
+	ModuleInstanceID string `json:"moduleInstanceId"`
+	FieldKey         string `json:"fieldKey"`
+	Content          string `json:"content" binding:"required"`
+}
+
+// WritingDiagnosis 单条写作诊断
+type WritingDiagnosis struct {
+	Code     string `json:"code"`     // duty_not_result / missing_metrics / weak_verb / too_long / vague / passive
+	Severity string `json:"severity"` // high / medium / low
+	Label    string `json:"label"`    // 一句话诊断
+	Span     string `json:"span"`     // 命中的原文片段（可空）
+	QuickFix string `json:"quickFix"` // 一键替换文本（可空）
+}
+
+// WritingDiagnoseResponse 写作诊断响应
+type WritingDiagnoseResponse struct {
+	Diagnoses []WritingDiagnosis `json:"diagnoses"`
+	Model     string             `json:"model"`
+}
+
+// --- 简历一致性体检 ---
+
+// ResumeCheckupRequest 一致性体检请求
+type ResumeCheckupRequest struct {
+	ResumeID          string                 `json:"resumeId" binding:"required"`
+	SnapshotVersionID *string                `json:"snapshotVersionId,omitempty"`
+	Content           map[string]interface{} `json:"content" binding:"required"`
+	ContentAlt        map[string]interface{} `json:"contentAlt,omitempty"` // 另一 locale 副本，用于中英一致性检查
+}
+
+// CheckupFinding 单条体检发现
+type CheckupFinding struct {
+	Code       string   `json:"code"`     // timeline_gap / skill_evidence_missing / metric_conflict ...
+	Severity   string   `json:"severity"` // high / medium / low
+	Title      string   `json:"title"`
+	Detail     string   `json:"detail"`     // 具体矛盾说明
+	Modules    []string `json:"modules"`    // 涉及的 moduleType，用于前端跳转定位
+	Suggestion string   `json:"suggestion"` // 修复建议
+}
+
+// ResumeCheckupResponse 一致性体检响应
+type ResumeCheckupResponse struct {
+	HealthScore    int              `json:"healthScore"` // 0-100 一致性健康分
+	Summary        string           `json:"summary"`
+	Findings       []CheckupFinding `json:"findings"`
+	RawText        string           `json:"rawText,omitempty"`
+	Model          string           `json:"model"`
+	ConversationID string           `json:"conversationId"`
 }
 
 // --- Interview 面试准备 ---

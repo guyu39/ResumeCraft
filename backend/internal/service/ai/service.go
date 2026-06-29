@@ -74,6 +74,16 @@ type Service interface {
 	// AI 增强（e.g. 抽取指标、补全风控、转STAR）
 	Enhance(ctx context.Context, userID string, req model.EnhanceRequest) (*model.EnhanceResponse, error)
 
+	// STAR 引导改写（两阶段：分析 → 生成）
+	AnalyzeStar(ctx context.Context, userID string, req model.StarAnalyzeRequest) (*model.StarAnalyzeResponse, error)
+	GenerateStar(ctx context.Context, userID string, req model.StarGenerateRequest) (*model.EnhanceResponse, error)
+
+	// 实时写作助手诊断
+	DiagnoseWriting(ctx context.Context, userID string, req model.WritingDiagnoseRequest) (*model.WritingDiagnoseResponse, error)
+
+	// 简历一致性体检（流式）
+	StreamCheckup(ctx context.Context, userID string, req model.ResumeCheckupRequest, onEvent func(StreamEvent)) (*model.ResumeCheckupResponse, error)
+
 	// 简历分析与需求文档（分享页公开接口，无 userID）
 	AnalyzeResume(ctx context.Context, resumeSummary string) (*model.AIAnalysisResponse, error)
 	GenerateRequirementDoc(ctx context.Context, resumeSummary string) (string, error)
@@ -1036,6 +1046,10 @@ type StreamEvent struct {
 	TargetRound   string         `json:"targetRound,omitempty"`
 	SessionID     string         `json:"sessionId,omitempty"`
 	Timestamp     int64          `json:"timestamp,omitempty"`
+
+	// 一致性体检字段
+	HealthScore *int                   `json:"healthScore,omitempty"`
+	Findings    []model.CheckupFinding `json:"findings,omitempty"`
 }
 
 // tryParsePartial 从累积文本中解析部分结果，支持 NDJSON 格式

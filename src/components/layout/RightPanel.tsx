@@ -13,12 +13,14 @@ import { readAIUserConfig, type ResumeEvaluateOutput } from '@/ai'
 import { useExport } from '@/hooks/useExport'
 import { toast } from '@/components/common/Toast'
 import { useResumeEvaluation } from '@/hooks/useResumeEvaluation'
+import { useResumeCheckup } from '@/hooks/useResumeCheckup'
 import { useJDMatch } from '@/hooks/useJDMatch'
 import { useJDScore } from '@/hooks/useJDScore'
 import ResumeScoreDrawer from '@/components/layout/ai/ResumeScoreDrawer'
 import JDMatchPanel from '@/components/layout/ai/JDMatchPanel'
 import InterviewPrepPanel from '@/components/layout/ai/InterviewPrepPanel'
 import ModuleRewritePanel from '@/components/layout/ai/ModuleRewritePanel'
+import ResumeCheckupPanel from '@/components/layout/ai/ResumeCheckupPanel'
 import SettingsPanel from '@/components/layout/SettingsPanel'
 import { aiApi, resumeApi, ApiError, type JDMatchResponse, type JDScoreResponse, type ConversationItem } from '@/api'
 import type { ExportFormat } from '@/api/types'
@@ -152,7 +154,7 @@ const RightPanel: React.FC = () => {
     }, [resume.modules])
 
     const hasDateErrors = dateErrors.length > 0
-    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'module_rewrite' | 'interview_prep'>('evaluate')
+    const [activeAITool, setActiveAITool] = useState<'evaluate' | 'jd_match' | 'module_rewrite' | 'interview_prep' | 'checkup'>('evaluate')
     const [aiConfigFromServer, setAiConfigFromServer] = useState<{
         provider: string
         baseUrl: string
@@ -177,6 +179,16 @@ const RightPanel: React.FC = () => {
         runEvaluate,
         mode: evaluateMode,
     } = useResumeEvaluation()
+    const {
+        loading: checkupLoading,
+        streamDone: checkupStreamDone,
+        error: checkupError,
+        healthScore: checkupHealthScore,
+        summary: checkupSummary,
+        findings: checkupFindings,
+        modelName: checkupModelName,
+        runCheckup,
+    } = useResumeCheckup()
     const {
         loading: jdMatching,
         error: jdMatchError,
@@ -382,8 +394,12 @@ const RightPanel: React.FC = () => {
         setShowAIEvaluation(false)
     }
 
-    const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
-        setRestoredJDMatch(null)
+    const handleRunCheckup = async () => {
+        await flushToCloud()
+        await runCheckup(resume, activeSnapshotId)
+    }
+
+    const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {        setRestoredJDMatch(null)
         setRestoredJDScore(null)
         await flushToCloud()
         await runMatch(resume, form, activeSnapshotId)
@@ -561,13 +577,20 @@ const RightPanel: React.FC = () => {
                 <div className="flex-1 overflow-hidden bg-white">
                     <div className="flex h-full flex-col">
                         <div className="flex-shrink-0 border-b border-gray-100 bg-white px-4 py-3">
-                            <div className="grid grid-cols-4 gap-1 rounded-xl bg-gray-100 p-1 text-xs">
+                            <div className="grid grid-cols-5 gap-1 rounded-xl bg-gray-100 p-1 text-xs">
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('evaluate')}
                                     className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'evaluate' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
                                     简历评估
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveAITool('checkup')}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'checkup' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    体检
                                 </button>
                                 <button
                                     type="button"
@@ -639,6 +662,21 @@ const RightPanel: React.FC = () => {
                             )}
                             {activeAITool === 'module_rewrite' && (
                                 <ModuleRewritePanel resume={resume} />
+                            )}
+                            {activeAITool === 'checkup' && (
+                                <ResumeCheckupPanel
+                                    resume={resume}
+                                    loading={checkupLoading}
+                                    streamDone={checkupStreamDone}
+                                    error={checkupError}
+                                    healthScore={checkupHealthScore}
+                                    summary={checkupSummary}
+                                    findings={checkupFindings}
+                                    modelName={checkupModelName}
+                                    isAuthenticated={isAuthenticated}
+                                    onRunCheckup={handleRunCheckup}
+                                    onJumpToModule={handleJumpToIssueModule}
+                                />
                             )}
                             {activeAITool === 'interview_prep' && (
                                 <InterviewPrepPanel

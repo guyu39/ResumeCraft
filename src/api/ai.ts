@@ -518,6 +518,60 @@ export const aiApi = {
     enhance: (data: EnhanceRequest) =>
         apiClient.post<EnhanceResponse>('/ai/enhance', data, { auth: true }),
 
+    // STAR 引导改写（两阶段：分析 → 生成）
+    starAnalyze: (data: { scenario: string }) =>
+        apiClient.post<StarAnalyzeResponse>('/ai/star/analyze', data, { auth: true }),
+
+    starGenerate: (data: { scenario: string; supplements?: Record<string, string> }) =>
+        apiClient.post<EnhanceResponse>('/ai/star/generate', data, { auth: true }),
+
+    // 实时写作助手诊断
+    writingDiagnose: (data: {
+        resumeId?: string
+        moduleType?: string
+        moduleInstanceId?: string
+        fieldKey?: string
+        content: string
+    }) => apiClient.post<WritingDiagnoseResponse>('/ai/writing/diagnose', data, { auth: true }),
+
+    // 简历一致性体检（SSE 流式）
+    checkupStream: (
+        data: {
+            resumeId: string
+            snapshotVersionId?: string
+            content: Record<string, unknown>
+            contentAlt?: Record<string, unknown>
+        },
+        onUpdate: (partial: CheckupStreamPartialResult) => void,
+        signal?: AbortSignal
+    ): Promise<ResumeCheckupResponse> =>
+        streamSSE<CheckupStreamPartialResult & { type?: string }, ResumeCheckupResponse>({
+            url: '/api/ai/checkup/stream',
+            body: data,
+            signal,
+            errorLabel: '体检失败',
+            parseDone: (raw) => JSON.parse(raw) as ResumeCheckupResponse,
+            onEvent: (evt) => {
+                switch (evt.type) {
+                    case 'model':
+                        if (evt.model) onUpdate({ model: evt.model })
+                        break
+                    case 'summary':
+                        if (evt.summary !== undefined) onUpdate({ summary: evt.summary })
+                        break
+                    case 'health_score':
+                        onUpdate({ healthScore: evt.healthScore })
+                        break
+                    case 'finding_item':
+                        if (evt.findings?.length) onUpdate({ findings: evt.findings })
+                        break
+                    case 'finish':
+                        onUpdate({ finish: true })
+                        break
+                }
+            },
+        }),
+
     interviewGenerate: (
         data: InterviewGenerateRequest,
         onUpdate: (partial: InterviewGenerateEvent) => void,
@@ -670,6 +724,70 @@ export interface EnhanceRequest {
 
 export interface EnhanceResponse {
     result: string
+}
+
+// ============================================================
+// STAR 引导改写
+// ============================================================
+
+export interface StarDimension {
+    key: 'S' | 'T' | 'A' | 'R'
+    label: string
+    present: boolean
+    extracted: string
+    hint: string
+}
+
+export interface StarAnalyzeResponse {
+    dimensions: StarDimension[]
+    model: string
+}
+
+// ============================================================
+// 实时写作助手
+// ============================================================
+
+export interface WritingDiagnosis {
+    code: string
+    severity: 'high' | 'medium' | 'low'
+    label: string
+    span: string
+    quickFix: string
+}
+
+export interface WritingDiagnoseResponse {
+    diagnoses: WritingDiagnosis[]
+    model: string
+}
+
+// ============================================================
+// 简历一致性体检
+// ============================================================
+
+export interface CheckupFinding {
+    code: string
+    severity: 'high' | 'medium' | 'low'
+    title: string
+    detail: string
+    modules: string[]
+    suggestion: string
+}
+
+export interface ResumeCheckupResponse {
+    healthScore: number
+    summary: string
+    findings: CheckupFinding[]
+    rawText?: string
+    model: string
+    conversationId: string
+}
+
+export interface CheckupStreamPartialResult {
+    model?: string
+    summary?: string
+    healthScore?: number
+    findings?: CheckupFinding[]
+    finish?: boolean
 }
 
 // ============================================================
