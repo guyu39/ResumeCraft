@@ -17,6 +17,24 @@ class ApiError extends Error {
   }
 }
 
+// 状态码兜底文案（后端/代理未给出可读 message 时使用）
+function fallbackByStatus(status: number): string {
+  if (status === 0 || status === 502 || status === 503 || status === 504) return '服务暂时不可用，请确认后端已启动后重试'
+  if (status === 401) return '登录状态已失效，请重新登录'
+  if (status === 403) return '没有权限执行此操作'
+  if (status === 404) return '请求的资源不存在'
+  if (status >= 500) return '服务异常，请稍后重试'
+  return '请求失败，请稍后重试'
+}
+
+// 解析错误信息：兼容后端标准结构 { message } 与 vite 代理错误结构 { error: { message } }，
+// 二者皆空时回退到状态码文案，避免提示出现空白。
+function resolveErrorMessage(json: unknown, status: number): string {
+  const obj = (json ?? {}) as { message?: string; error?: { message?: string } }
+  const msg = obj.message?.trim() || obj.error?.message?.trim()
+  return msg || fallbackByStatus(status)
+}
+
 function getToken(): string | null {
   return localStorage.getItem('accessToken')
 }
@@ -95,7 +113,7 @@ async function request<T>(
     }
 
     if (json.code !== 'OK') {
-      throw new ApiError(json.code, json.message, res.status)
+      throw new ApiError(json.code, resolveErrorMessage(json, res.status), res.status)
     }
 
     return json.data as T
@@ -117,7 +135,7 @@ async function request<T>(
         })
         const json: ApiResponse<T> = await res.json()
         if (json.code !== 'OK') {
-          throw new ApiError(json.code, json.message, res.status)
+          throw new ApiError(json.code, resolveErrorMessage(json, res.status), res.status)
         }
         return json.data as T
       }
