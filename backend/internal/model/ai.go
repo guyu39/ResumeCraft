@@ -307,6 +307,7 @@ type BulletRewriteRequest struct {
 	JDText           string `json:"jdText"`
 	TargetTitle      string `json:"targetTitle"`
 	CompanyName      string `json:"companyName"`
+	FixInstruction   string `json:"fixInstruction"` // 修复闭环：针对性修复约束，可空
 }
 
 // BulletRewriteResponse Bullet Point 重写响应
@@ -556,6 +557,10 @@ type CheckupFinding struct {
 	Detail     string   `json:"detail"`     // 具体矛盾说明
 	Modules    []string `json:"modules"`    // 涉及的 moduleType，用于前端跳转定位
 	Suggestion string   `json:"suggestion"` // 修复建议
+	// 修复闭环定位字段（模型尽力回填，可空）
+	TargetModule string `json:"targetModule"` // 主修复目标 moduleType
+	AnchorText   string `json:"anchorText"`   // 命中的原文片段（逐字摘自原文），供前端反查具体条目
+	FixHint      string `json:"fixHint"`      // 给改写 LLM 的修复方向（比 suggestion 更聚焦）
 }
 
 // ResumeCheckupResponse 一致性体检响应

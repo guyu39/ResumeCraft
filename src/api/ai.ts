@@ -233,6 +233,7 @@ export interface BulletRewriteRequest {
     jdText?: string
     targetTitle?: string
     companyName?: string
+    fixInstruction?: string // 修复闭环：针对性修复约束，可空
 }
 
 export interface BulletRewriteVersion {
@@ -771,6 +772,10 @@ export interface CheckupFinding {
     detail: string
     modules: string[]
     suggestion: string
+    // 修复闭环定位字段（模型尽力回填，可空）
+    targetModule?: string
+    anchorText?: string
+    fixHint?: string
 }
 
 export interface ResumeCheckupResponse {

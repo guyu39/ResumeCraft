@@ -349,12 +349,15 @@ func (s *service) StreamCheckup(ctx context.Context, userID string, req model.Re
 		case "finding_item":
 			if code := getString(obj["code"]); code != "" {
 				pendingFindings = append(pendingFindings, model.CheckupFinding{
-					Code:       code,
-					Severity:   getString(obj["severity"]),
-					Title:      getString(obj["title"]),
-					Detail:     getString(obj["detail"]),
-					Modules:    toStringSlice(obj["modules"]),
-					Suggestion: getString(obj["suggestion"]),
+					Code:         code,
+					Severity:     getString(obj["severity"]),
+					Title:        getString(obj["title"]),
+					Detail:       getString(obj["detail"]),
+					Modules:      toStringSlice(obj["modules"]),
+					Suggestion:   getString(obj["suggestion"]),
+					TargetModule: getString(obj["targetModule"]),
+					AnchorText:   getString(obj["anchorText"]),
+					FixHint:      getString(obj["fixHint"]),
 				})
 			}
 		case "finish":
@@ -466,6 +469,8 @@ func buildCheckupPrompt(content, contentAlt map[string]interface{}) string {
 - i18n_mismatch：中英文版本模块数或关键字段缺漏不一致
 - title_mismatch：求职意向与实际经历方向明显偏离
 - date_format_inconsistent：模块间日期格式写法不统一
+- placeholder_content：字段填写了占位/无效/乱填内容（如「11111」「测试测试测试」「下侧」「11：111111」、未替换的「请填写自我评价」等模板占位语，或字段值与字段名严重不符）
+- content_authenticity：某段内容（多为项目/工作经历）详实华丽且强量化，却与简历整体画像（占位的个人信息、空洞的其他模块、未列相关技能）明显割裂，真实性/一致性存疑
 
 【输出格式强制规则】
 1. 必须使用 JSON Lines 格式输出，每行一个完整 JSON 对象，每行以换行符结尾。
@@ -477,14 +482,18 @@ func buildCheckupPrompt(content, contentAlt map[string]interface{}) string {
 【每个 type 的 JSON 结构】
 - {"type":"summary","content":"150字以内的整体一致性概述"}
 - {"type":"health_score","score":0-100整数}
-- {"type":"finding_item","code":"上述枚举","severity":"high/medium/low","title":"问题标题","detail":"具体矛盾说明，时间断档需给出起止区间，指标矛盾需引用两处原文数字","modules":["涉及的moduleType"],"suggestion":"修复建议"}
+- {"type":"finding_item","code":"上述枚举","severity":"high/medium/low","title":"问题标题","detail":"具体矛盾说明，时间断档需给出起止区间，指标矛盾需引用两处原文数字","modules":["涉及的moduleType"],"suggestion":"修复建议","targetModule":"主修复目标的moduleType","anchorText":"命中问题的原文片段","fixHint":"给改写的修复方向"}
 - {"type":"finish","timestamp":"毫秒级时间戳"}
 
 【分析规则】
 1. 只基于给定简历内容分析，禁止编造。
 2. 无对应问题的维度不输出 finding_item。
-3. health_score 体现整体一致性：问题越多越严重，分数越低；无明显问题应接近满分。
+3. health_score 体现整体一致性：问题越多越严重，分数越低；无明显问题应接近满分。占位/无效内容、真实性存疑属于严重问题，应大幅拉低 health_score。
 4. modules 字段必须填实际涉及的模块类型（personal/education/work/project/skills/awards/summary/certificates/portfolio/languages/custom）。
+5. 修复定位字段（用于「一键修复」，尽力回填）：
+   - targetModule：最该被修改以解决该问题的单个 moduleType（取 modules 中的主目标）。
+   - anchorText：从原文中**逐字摘取**一段能定位到具体条目的片段（如某条工作经历 description 里的原句），禁止改写或编造；无法定位到具体文本时留空字符串。
+   - fixHint：一句话给出针对性的修复方向（比 suggestion 更聚焦、可直接指导改写），如「补充与该技能相关的项目产出」。timeline_gap/timeline_overlap/i18n_mismatch/content_authenticity 这类需用户补充事实或核实的问题，fixHint 留空。
 `)
 
 	mainJSON, _ := json.Marshal(sanitizeAIResumeContent(content))
@@ -526,12 +535,15 @@ func parseCheckupResponse(text string) (*model.ResumeCheckupResponse, error) {
 		case "finding_item":
 			if code := getString(obj["code"]); code != "" {
 				resp.Findings = append(resp.Findings, model.CheckupFinding{
-					Code:       code,
-					Severity:   getString(obj["severity"]),
-					Title:      getString(obj["title"]),
-					Detail:     getString(obj["detail"]),
-					Modules:    toStringSlice(obj["modules"]),
-					Suggestion: getString(obj["suggestion"]),
+					Code:         code,
+					Severity:     getString(obj["severity"]),
+					Title:        getString(obj["title"]),
+					Detail:       getString(obj["detail"]),
+					Modules:      toStringSlice(obj["modules"]),
+					Suggestion:   getString(obj["suggestion"]),
+					TargetModule: getString(obj["targetModule"]),
+					AnchorText:   getString(obj["anchorText"]),
+					FixHint:      getString(obj["fixHint"]),
 				})
 			}
 		}
