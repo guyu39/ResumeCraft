@@ -20,6 +20,7 @@ type Options struct {
 	ChromiumDisableGPU    bool
 	ChromiumNoSandbox     bool
 	ChromiumDisableSetUID bool
+	ChromiumExecPath      string // 浏览器可执行文件路径（空则用 chromedp 默认查找逻辑）
 	ViewportWidth         int
 	ViewportHeight        int
 	DeviceScaleFactor     float64
@@ -74,6 +75,10 @@ func NewChromedpRenderer(options Options) Renderer {
 		chromedp.Flag("disable-component-extensions-with-background-pages", true),
 		// Docker 容器默认 /dev/shm 仅 64MB，Chromium 渲染大页面时会 OOM 导致布局异常
 		chromedp.Flag("disable-dev-shm-usage", true),
+	}
+	// 指定浏览器路径（支持 Chrome/Edge/Chromium 等任一 Chromium 内核）；空则用 chromedp 默认查找
+	if options.ChromiumExecPath != "" {
+		allocOpts = append(allocOpts, chromedp.ExecPath(options.ChromiumExecPath))
 	}
 	if options.ChromiumHeadless {
 		allocOpts = append(allocOpts, chromedp.Headless)

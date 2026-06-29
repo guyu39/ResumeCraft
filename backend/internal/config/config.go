@@ -63,6 +63,7 @@ type PDFConfig struct {
 	ChromiumDisableGPU    bool
 	ChromiumNoSandbox     bool
 	ChromiumDisableSetUID bool
+	ChromiumExecPath      string // 浏览器可执行路径（CHROME_PATH 显式指定，空则自动探测）
 	ViewportWidth         int
 	ViewportHeight        int
 	DeviceScaleFactor     float64
@@ -164,6 +165,7 @@ func Load() Config {
 			ChromiumDisableGPU:    getEnvBool("CHROMIUM_DISABLE_GPU", true),
 			ChromiumNoSandbox:     getEnvBool("CHROMIUM_NO_SANDBOX", true),
 			ChromiumDisableSetUID: getEnvBool("CHROMIUM_DISABLE_SETUID_SANDBOX", true),
+			ChromiumExecPath:      getEnv("CHROME_PATH", ""),
 			ViewportWidth:         getEnvInt("PDF_VIEWPORT_WIDTH", 794),
 			ViewportHeight:        getEnvInt("PDF_VIEWPORT_HEIGHT", 1123),
 			DeviceScaleFactor:     getEnvFloat64("PDF_DEVICE_SCALE_FACTOR", 1),
