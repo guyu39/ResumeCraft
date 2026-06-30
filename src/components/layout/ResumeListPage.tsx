@@ -496,13 +496,6 @@ setPendingCreateName(defaultTitle)
                         </div>
                     </div>
 
-                    {isAuthenticated && cloudResumes.length > 0 && (
-                        <div className="rounded-xl bg-blue-50 p-4 text-sm text-blue-700">
-                            <Cloud className="mr-2 inline h-4 w-4" />
-                            已同步 {cloudResumes.length} 份简历到云端
-                        </div>
-                    )}
-
                     {displayResumes.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
                             <p className="text-base text-slate-600">还没有简历，先创建第一份吧。</p>
