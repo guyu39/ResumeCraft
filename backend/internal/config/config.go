@@ -52,6 +52,8 @@ type AuthConfig struct {
 type ServerConfig struct {
 	Port              string
 	FrontendDistDir   string
+	AllowedOrigins    []string // CORS 白名单；为空表示开发模式回退 *
+	TrustedProxies    []string // 反向代理 IP，用于 ClientIP 还原；为空则不信任任何代理
 	ReadHeaderTimeout time.Duration
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
@@ -131,8 +133,17 @@ func Load() Config {
 	log.Printf("[config] PG_DSN: %s", maskPassword(dsn))
 
 	jwtSecret := getEnv("AUTH_JWT_SECRET", "change-this-in-production")
-	if jwtSecret == "change-this-in-production" || jwtSecret == "change-this-in-production-32ch" {
-		log.Println("[security] AUTH_JWT_SECRET is using a default value; set a strong secret before production deployment")
+	authEnabled := getEnvBool("AUTH_ENABLED", true)
+	isWeakSecret := jwtSecret == "change-this-in-production" ||
+		jwtSecret == "change-this-in-production-32ch" ||
+		len(jwtSecret) < 32
+	if authEnabled && dsn != "" && isWeakSecret {
+		// 启用鉴权且已接数据库（即生产可用）时，弱/默认 JWT 密钥拒绝启动，
+		// 避免以公开默认密钥签发可被伪造的 token。
+		log.Fatal("[security] AUTH_JWT_SECRET 缺失或过弱（需 >=32 字符且非默认值），拒绝启动")
+	}
+	if isWeakSecret {
+		log.Println("[security] AUTH_JWT_SECRET is using a default/weak value; set a strong secret (>=32 chars) before production")
 	}
 
 	log.Println("[security] Production deployment MUST use HTTPS to protect credentials in transit")
@@ -146,6 +157,8 @@ func Load() Config {
 		Server: ServerConfig{
 			Port:              getEnv("PORT", "8787"),
 			FrontendDistDir:   getEnv("FRONTEND_DIST_DIR", ""),
+			AllowedOrigins:    splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "")),
+			TrustedProxies:    splitCSV(getEnv("TRUSTED_PROXIES", "")),
 			ReadHeaderTimeout: getEnvDurationSeconds("SERVER_READ_HEADER_TIMEOUT_SEC", 10),
 			ReadTimeout:       getEnvDurationSeconds("SERVER_READ_TIMEOUT_SEC", 30),
 			WriteTimeout:      getEnvDurationSeconds("SERVER_WRITE_TIMEOUT_SEC", 300),
@@ -154,9 +167,9 @@ func Load() Config {
 			DSN: dsn,
 		},
 		Auth: AuthConfig{
-			Enabled:         getEnvBool("AUTH_ENABLED", true),
+			Enabled:         authEnabled,
 			JWTSecret:       jwtSecret,
-			AccessTokenTTL:  getEnvDurationMinutes("AUTH_ACCESS_TTL_MIN", 120),
+			AccessTokenTTL:  getEnvDurationMinutes("AUTH_ACCESS_TTL_MIN", 30),
 			RefreshTokenTTL: getEnvDurationMinutes("AUTH_REFRESH_TTL_MIN", 43200),
 		},
 		PDF: PDFConfig{
@@ -283,6 +296,22 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// splitCSV 将逗号分隔字符串拆为去空的切片；空串返回 nil
+func splitCSV(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func getEnvBool(key string, fallback bool) bool {
