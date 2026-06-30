@@ -19,7 +19,7 @@ class ApiError extends Error {
 
 // 状态码兜底文案（后端/代理未给出可读 message 时使用）
 function fallbackByStatus(status: number): string {
-  if (status === 0 || status === 502 || status === 503 || status === 504) return '服务暂时不可用，请确认后端已启动后重试'
+  if (status === 0 || status === 502 || status === 503 || status === 504) return '服务暂时不可用，请稍后重试'
   if (status === 401) return '登录状态已失效，请重新登录'
   if (status === 403) return '没有权限执行此操作'
   if (status === 404) return '请求的资源不存在'
