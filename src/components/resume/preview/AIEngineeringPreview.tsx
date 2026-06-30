@@ -6,7 +6,7 @@ import React from 'react'
 import ModuleSection from './ModuleSection'
 import { useI18n } from '@/hooks/useI18n'
 import type { AIEngineeringData } from '@/types/resume'
-import { AI_STANDARD_LABELS } from '@/types/resume'
+import { AI_STANDARD_LABELS, AI_STANDARD_LABELS_EN } from '@/types/resume'
 
 interface Props {
   data: AIEngineeringData
@@ -18,7 +18,9 @@ interface Props {
 }
 
 const AIEngineeringPreview: React.FC<Props> = ({ data, themeColor, title = 'AI 工程', moduleId, renderItemCommentIcon, renderItemCommentPanel }) => {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
+  const sep = locale === 'en-US' ? ': ' : '：'
+  const standardLabels = locale === 'en-US' ? AI_STANDARD_LABELS_EN : AI_STANDARD_LABELS
   const items = data?.items?.length ? data.items : []
   if (!items.length) {
     return <ModuleSection title={title} themeColor={themeColor} moduleId={moduleId}><p className="text-[9pt] text-gray-300 italic">{t('ai-engineering.empty')}</p></ModuleSection>
@@ -44,19 +46,19 @@ const AIEngineeringPreview: React.FC<Props> = ({ data, themeColor, title = 'AI �
                 {/* 第二行：项目地址（完整 URL） */}
                 {it.projectUrl && (
                   <div className="text-[8pt] text-gray-500 mb-0.5 break-all">
-                    项目地址：<a href={it.projectUrl} target="_blank" rel="noreferrer" className="text-blue-500 !no-underline">{it.projectUrl}</a>
+                    {t('ai-engineering.projectUrl')}{sep}<a href={it.projectUrl} target="_blank" rel="noreferrer" className="text-blue-500 !no-underline">{it.projectUrl}</a>
                   </div>
                 )}
 
                 {/* 工具链 */}
                 {it.toolchain && it.toolchain.length > 0 && (
-                  <div className="text-[8pt] font-semibold text-gray-700 mb-0.5">工具链：{it.toolchain.join('、')}</div>
+                  <div className="text-[8pt] font-semibold text-gray-700 mb-0.5">{t('ai-engineering.toolchain')}{sep}{it.toolchain.join(locale === 'en-US' ? ', ' : '、')}</div>
                 )}
 
                 {/* 规范标签 */}
                 {it.standards && it.standards.length > 0 && (
                   <div className="flex flex-wrap gap-1 text-[8pt] mb-0.5">
-                    {it.standards.map(s => <span key={s} className="px-1 py-0 bg-gray-100 text-gray-700 font-semibold rounded">{AI_STANDARD_LABELS[s] || s}</span>)}
+                    {it.standards.map(s => <span key={s} className="px-1 py-0 bg-gray-100 text-gray-700 font-semibold rounded">{standardLabels[s] || s}</span>)}
                   </div>
                 )}
 

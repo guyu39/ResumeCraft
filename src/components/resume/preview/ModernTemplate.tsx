@@ -17,6 +17,7 @@ import SummaryPreview from './SummaryPreview'
 import LanguagesPreview from './LanguagesPreview'
 import PersonalAvatar from '@/components/resume/PersonalAvatar'
 import { useResumeStore } from '@/store/resumeStore'
+import { useI18n } from '@/hooks/useI18n'
 import { renderResumeModule } from './moduleRegistry'
 import { useResumeStyleVars } from './useResumeStyleVars'
 import { buildPersonalLines } from './personalLines'
@@ -30,6 +31,7 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
   const { modules, themeColor } = resume
   const styleSettings = resume.styleSettings ?? DEFAULT_RESUME_STYLE_SETTINGS
   const isEn = resume.locale === 'en-US'
+  const i18n = useI18n()
   const personalModule = modules.find((m) => m.type === 'personal')
   const skillsModule = modules.find((m) => m.type === 'skills')
   const summaryModule = modules.find((m) => m.type === 'summary')
@@ -43,7 +45,7 @@ const LeftCol: React.FC<{ resume: Resume }> = ({ resume }) => {
   const avatar = (storePersonal?.avatar as string) || personalData?.avatar || ''
   const avatarShape = (storePersonal?.avatarShape as 'circle' | 'square') || personalData?.avatarShape || 'circle'
 
-  const personalLines = buildPersonalLines(personalData, resume.locale)
+  const personalLines = buildPersonalLines(personalData, i18n)
 
   return (
     <div className="h-full" style={{ background: `${themeColor}08`, borderRight: `2px solid ${themeColor}30` }}>

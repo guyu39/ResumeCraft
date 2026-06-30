@@ -593,11 +593,17 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         'zh-CN': { 'Work Experience': '工作经历', 'Internship': '实习经历' },
         'en-US': { '工作经历': 'Work Experience', '实习经历': 'Internship' },
       }
-      // 更新所有模块标题：仅替换与旧 locale 默认标题一致的标题（用户自定义过的标题保留）
+      // 更新所有模块标题：仅替换"仍是某 locale 默认标题"的（用户自定义过的标题保留）。
+      // 放宽闸门：命中任一 locale 的默认标题集合即视为未自定义，避免反复切换/已是英文时漏翻导致编辑区与预览区标题分叉。
+      const zhTitles = MODULE_TITLES_BY_LOCALE['zh-CN']
+      const enTitles = MODULE_TITLES_BY_LOCALE['en-US']
       const modules = state.resume.modules.map((m) => {
-        const oldDefault = oldTitles[m.type]
-        // 如果标题是旧 locale 的默认标题（或 custom 的"自定义模块"），则替换为新 locale 的默认标题
-        if (m.title === oldDefault || (m.type === 'custom' && m.title === '自定义模块')) {
+        const isDefaultTitle =
+          m.title === oldTitles[m.type] ||
+          m.title === zhTitles[m.type] ||
+          m.title === enTitles[m.type] ||
+          (m.type === 'custom' && (m.title === '自定义模块' || m.title === 'Custom Module'))
+        if (isDefaultTitle) {
           return { ...m, title: newTitles[m.type] }
         }
         // 处理 work 模块的特殊标题（实习经历 ↔ Internship）
