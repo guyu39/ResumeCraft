@@ -148,19 +148,8 @@ body {
   background-color: rgba(37, 99, 235, 0.04);
 }
 
-/* 打印样式优化 */
-@media print {
-  body {
-    background: white !important;
-  }
-
-  aside,
-  header,
-  footer,
-  nav {
-    display: none !important;
-  }
-}
+/* 注意：不要用 @media print 隐藏 body —— 后端导出 PDF（chromedp）会切到 print 媒体渲染，
+   隐藏规则会被打进导出 HTML 导致导出空白。禁用原生打印改用 JS 拦截快捷键（见 main.tsx）。 */
 
 /* 自动保存提示动画 */
 @keyframes fadeInUp {

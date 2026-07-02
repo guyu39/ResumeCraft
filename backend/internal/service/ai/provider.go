@@ -237,6 +237,8 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 	if req.MaxTokens > 0 {
 		body["max_tokens"] = req.MaxTokens
 	}
+	// 请求流式 usage：OpenAI 兼容接口在流末尾追加一个含 usage 的 chunk
+	body["stream_options"] = map[string]interface{}{"include_usage": true}
 
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
@@ -266,9 +268,12 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 	// 流式读取响应
 	var fullText strings.Builder
 	var reasoningText strings.Builder
+	var inputTokens, outputTokens int
 
 	// 使用 bufio.Scanner 逐行读取 SSE
 	scanner := bufio.NewScanner(resp.Body)
+	// 提升单行上限：含 usage 的尾 chunk 或长 delta 行可能超过默认 64KB
+	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
@@ -282,13 +287,13 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 			continue
 		}
 
-		// SSE 格式: data: {"choices":[{"delta":{"content":"..."}}]}
+		// SSE 格式: data: {"choices":[{"delta":{"content":"..."}}], "usage":{...}}
 		if strings.HasPrefix(line, "data: ") {
 			text := strings.TrimPrefix(line, "data: ")
 			if text == "[DONE]" {
 				break
 			}
-			// 解析 SSE JSON
+			// 解析 SSE JSON（含末尾 usage chunk）
 			var chunk struct {
 				Choices []struct {
 					Delta struct {
@@ -296,16 +301,27 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 						ReasoningContent string `json:"reasoning_content"`
 					} `json:"delta"`
 				} `json:"choices"`
+				Usage *struct {
+					PromptTokens     int `json:"prompt_tokens"`
+					CompletionTokens int `json:"completion_tokens"`
+				} `json:"usage"`
 			}
-			if err := json.Unmarshal([]byte(text), &chunk); err == nil && len(chunk.Choices) > 0 {
-				if chunk.Choices[0].Delta.Content != "" {
-					fullText.WriteString(chunk.Choices[0].Delta.Content)
-					if req.OnProgress != nil {
-						req.OnProgress(chunk.Choices[0].Delta.Content)
+			if err := json.Unmarshal([]byte(text), &chunk); err == nil {
+				if len(chunk.Choices) > 0 {
+					if chunk.Choices[0].Delta.Content != "" {
+						fullText.WriteString(chunk.Choices[0].Delta.Content)
+						if req.OnProgress != nil {
+							req.OnProgress(chunk.Choices[0].Delta.Content)
+						}
+					}
+					if chunk.Choices[0].Delta.ReasoningContent != "" {
+						reasoningText.WriteString(chunk.Choices[0].Delta.ReasoningContent)
 					}
 				}
-				if chunk.Choices[0].Delta.ReasoningContent != "" {
-					reasoningText.WriteString(chunk.Choices[0].Delta.ReasoningContent)
+				// usage 通常在 choices 为空的最后一个 chunk
+				if chunk.Usage != nil {
+					inputTokens = chunk.Usage.PromptTokens
+					outputTokens = chunk.Usage.CompletionTokens
 				}
 			}
 			continue
@@ -325,6 +341,8 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 	return &CompleteResponse{
 		Text:          fullText.String(),
 		ReasoningText: reasoningText.String(),
+		InputTokens:   inputTokens,
+		OutputTokens:  outputTokens,
 	}, nil
 }
 

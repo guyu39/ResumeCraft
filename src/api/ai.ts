@@ -78,6 +78,10 @@ export interface StreamPartialResult {
     done?: boolean
     finish?: boolean
     model?: string
+    // 本次 AI 调用 token 用量（finish 时随附）
+    inputTokens?: number
+    outputTokens?: number
+    totalTokens?: number
 }
 
 export interface JDKeywordMatch {
@@ -137,6 +141,9 @@ export interface JDMatchStreamPartialResult {
     actionItems?: string[]
     finish?: boolean
     model?: string
+    inputTokens?: number
+    outputTokens?: number
+    totalTokens?: number
 }
 
 export type JDScoreRequest = JDMatchRequest
@@ -366,6 +373,9 @@ export const aiApi = {
             dimensions?: StreamPartialResult['dimensions']
             issues?: StreamPartialResult['issues']
             actionItems?: string[]
+            inputTokens?: number
+            outputTokens?: number
+            totalTokens?: number
         }, EvaluateResponse>({
             url: '/api/ai/evaluate/stream',
             body: data,
@@ -393,7 +403,7 @@ export const aiApi = {
                         if (evt.actionItems?.length) onUpdate({ actionItems: evt.actionItems } as StreamPartialResult)
                         break
                     case 'finish':
-                        onUpdate({ finish: true } as StreamPartialResult)
+                        onUpdate({ finish: true, inputTokens: evt.inputTokens, outputTokens: evt.outputTokens, totalTokens: evt.totalTokens } as StreamPartialResult)
                         break
                 }
             },
@@ -437,7 +447,7 @@ export const aiApi = {
                         if (evt.actionItems?.length) onUpdate({ actionItems: evt.actionItems })
                         break
                     case 'finish':
-                        onUpdate({ finish: true })
+                        onUpdate({ finish: true, inputTokens: evt.inputTokens, outputTokens: evt.outputTokens, totalTokens: evt.totalTokens })
                         break
                 }
             },

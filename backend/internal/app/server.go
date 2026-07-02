@@ -32,9 +32,15 @@ func NewServer() *http.Server {
 
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
+	// 反向代理信任名单：为空时不信任任何代理（ClientIP 取直连地址），防 X-Forwarded-For 伪造绕过限流
+	if len(cfg.Server.TrustedProxies) > 0 {
+		_ = engine.SetTrustedProxies(cfg.Server.TrustedProxies)
+	} else {
+		_ = engine.SetTrustedProxies(nil)
+	}
 	engine.Use(gin.Recovery())
 	engine.Use(middleware.RequestLogger())
-	engine.Use(middleware.CORS())
+	engine.Use(middleware.CORS(cfg.Server.AllowedOrigins))
 
 	pdfService := pdf.NewService(cfg.PDF)
 

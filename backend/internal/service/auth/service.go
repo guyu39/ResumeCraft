@@ -100,8 +100,12 @@ func NewService(pool *pgxpool.Pool, rdb *redis.Client, cfg config.AuthConfig, ma
 
 // ---------- 邮箱验证码 ----------
 
-func emailCodeKey(purpose, email string) string  { return "email_code:" + purpose + ":" + email }
-func emailCodeCDKey(purpose, email string) string { return "email_code_cd:" + purpose + ":" + email }
+func emailCodeKey(purpose, email string) string   { return "email_code:" + purpose + ":" + email }
+func emailCodeCDKey(purpose, email string) string  { return "email_code_cd:" + purpose + ":" + email }
+func emailCodeTryKey(purpose, email string) string { return "email_code_try:" + purpose + ":" + email }
+
+// 验证码最多允许校验失败次数，达上限作废该码强制重发，防止 6 位码被暴力枚举
+const maxCodeAttempts = 5
 
 // SendEmailCode 生成并发送邮箱验证码。purpose: register | login。
 func (s *service) SendEmailCode(ctx context.Context, email, purpose string) error {
@@ -141,6 +145,8 @@ func (s *service) SendEmailCode(ctx context.Context, email, purpose string) erro
 	if err := s.rdb.Set(ctx, emailCodeKey(purpose, email), code, 5*time.Minute).Err(); err != nil {
 		return ErrCodeUnavailable
 	}
+	// 重置该码的失败计数
+	s.rdb.Del(ctx, emailCodeTryKey(purpose, email))
 	s.rdb.Set(ctx, emailCodeCDKey(purpose, email), "1", 60*time.Second)
 
 	if err := s.mailer.SendCode(email, code, purpose); err != nil {
@@ -155,7 +161,8 @@ func (s *service) SendEmailCode(ctx context.Context, email, purpose string) erro
 	return nil
 }
 
-// verifyEmailCode 校验验证码，成功后立即删除（一次性）
+// verifyEmailCode 校验验证码，成功后立即删除（一次性）；
+// 失败累计，达 maxCodeAttempts 次即作废该码，防止暴力枚举。
 func (s *service) verifyEmailCode(ctx context.Context, email, purpose, code string) error {
 	if s.rdb == nil {
 		return ErrCodeUnavailable
@@ -168,9 +175,20 @@ func (s *service) verifyEmailCode(ctx context.Context, email, purpose, code stri
 		return ErrCodeInvalid
 	}
 	if stored != strings.TrimSpace(code) {
+		// 失败计数 +1，首次设置 5min 过期（与码同寿命）；超限作废码
+		tryKey := emailCodeTryKey(purpose, email)
+		n, _ := s.rdb.Incr(ctx, tryKey).Result()
+		if n == 1 {
+			s.rdb.Expire(ctx, tryKey, 5*time.Minute)
+		}
+		if n >= maxCodeAttempts {
+			s.rdb.Del(ctx, emailCodeKey(purpose, email))
+			s.rdb.Del(ctx, tryKey)
+		}
 		return ErrCodeInvalid
 	}
 	s.rdb.Del(ctx, emailCodeKey(purpose, email))
+	s.rdb.Del(ctx, emailCodeTryKey(purpose, email))
 	return nil
 }
 

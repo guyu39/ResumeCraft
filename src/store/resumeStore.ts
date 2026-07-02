@@ -370,6 +370,46 @@ function loadDraftFromStorage(): Resume | null {
   }
 }
 
+// 只读地探查本地草稿（含 savedAt），不触发任何副作用（不恢复 basedOnSnapshotId、不写回）。
+// 供加载/刷新时做「本地草稿 vs 云端」新旧仲裁，避免无脑用云端覆盖未提交的本地改动。
+export function peekLocalDraft(): { data: Resume; savedAt: number } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const payload: StoragePayload = JSON.parse(raw)
+    if (payload.version !== STORAGE_VERSION) return null
+    if (!payload.data) return null
+    return { data: payload.data, savedAt: payload.savedAt ?? 0 }
+  } catch {
+    return null
+  }
+}
+
+// 内容指纹：与 useCloudSync 保持一致（title/themeColor/styleSettings/modules），用于判断本地与云端内容是否实质不同。
+// 关键：styleSettings 两边都过 DEFAULT 补全 + 稳定键序，避免「本地已 merge 完整字段 vs 云端缺字段」造成永远判不同。
+function normalizeStyleSettings(s: Partial<ResumeStyleSettings> | undefined): Record<string, unknown> {
+  const merged = { ...DEFAULT_RESUME_STYLE_SETTINGS, ...(s ?? {}) } as Record<string, unknown>
+  // 稳定键序：按 key 排序后重建，消除字段顺序差异
+  return Object.keys(merged).sort().reduce<Record<string, unknown>>((acc, k) => {
+    acc[k] = merged[k]
+    return acc
+  }, {})
+}
+
+// 单个模块归一：仅取参与内容比对的字段（id/type/title/visible/data），消除无关字段干扰
+function normalizeModule(m: { id: string; type: string; title?: string; visible?: boolean; data: unknown }) {
+  return { id: m.id, type: m.type, title: m.title ?? '', visible: m.visible !== false, data: m.data }
+}
+
+export function serializeResumeContent(r: Resume): string {
+  return JSON.stringify({
+    title: r.title ?? '',
+    themeColor: r.themeColor ?? '',
+    styleSettings: normalizeStyleSettings(r.styleSettings),
+    modules: (r.modules ?? []).map(normalizeModule),
+  })
+}
+
 // ---------- 全局落库回调（由 useCloudSync 注册） ----------
 let _flushToCloudFn: (() => Promise<boolean>) | null = null
 
@@ -553,11 +593,17 @@ export const useResumeStore = create<ResumeStore>((set) => ({
         'zh-CN': { 'Work Experience': '工作经历', 'Internship': '实习经历' },
         'en-US': { '工作经历': 'Work Experience', '实习经历': 'Internship' },
       }
-      // 更新所有模块标题：仅替换与旧 locale 默认标题一致的标题（用户自定义过的标题保留）
+      // 更新所有模块标题：仅替换"仍是某 locale 默认标题"的（用户自定义过的标题保留）。
+      // 放宽闸门：命中任一 locale 的默认标题集合即视为未自定义，避免反复切换/已是英文时漏翻导致编辑区与预览区标题分叉。
+      const zhTitles = MODULE_TITLES_BY_LOCALE['zh-CN']
+      const enTitles = MODULE_TITLES_BY_LOCALE['en-US']
       const modules = state.resume.modules.map((m) => {
-        const oldDefault = oldTitles[m.type]
-        // 如果标题是旧 locale 的默认标题（或 custom 的"自定义模块"），则替换为新 locale 的默认标题
-        if (m.title === oldDefault || (m.type === 'custom' && m.title === '自定义模块')) {
+        const isDefaultTitle =
+          m.title === oldTitles[m.type] ||
+          m.title === zhTitles[m.type] ||
+          m.title === enTitles[m.type] ||
+          (m.type === 'custom' && (m.title === '自定义模块' || m.title === 'Custom Module'))
+        if (isDefaultTitle) {
           return { ...m, title: newTitles[m.type] }
         }
         // 处理 work 模块的特殊标题（实习经历 ↔ Internship）

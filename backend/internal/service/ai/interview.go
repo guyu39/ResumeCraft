@@ -220,11 +220,8 @@ func (s *service) GenerateInterviewQuestions(ctx context.Context, userID string,
 		return fmt.Errorf("update session questions: %w", err)
 	}
 
-	onEvent(StreamEvent{
-		Type:      "finish",
-		SessionID: sessionID,
-		Timestamp: time.Now().UnixMilli(),
-	})
+	finishEvt := makeFinishWithUsage(sessionID, time.Now().UnixMilli(), resp)
+	onEvent(finishEvt)
 
 	return nil
 }
@@ -382,7 +379,7 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 		},
 	}
 
-	_, err = s.aiProvider.StreamComplete(ctx, completeReq)
+	evalStreamResp, err := s.aiProvider.StreamComplete(ctx, completeReq)
 	if err != nil {
 		// 用户主动取消（关闭页面）不算错误
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -435,8 +432,8 @@ func (s *service) EvaluateInterviewAnswers(ctx context.Context, userID string, r
 		log.Printf("[interview] persist evaluation failed: %v", err)
 	}
 
-	// 推送 finish 事件
-	onEvent(StreamEvent{Type: "finish", SessionID: req.SessionID})
+	// 推送 finish 事件，附带本次 token 用量
+	onEvent(makeFinishWithUsage(req.SessionID, 0, evalStreamResp))
 
 	return nil
 }

@@ -12,6 +12,7 @@ interface ResumeEvaluationState {
     modelName: string | null
     lastEvaluatedAt: number | null
     evaluatedResumeUpdatedAt: number | null
+    totalTokens: number | null
 }
 
 const createDefaultState = (): ResumeEvaluationState => ({
@@ -23,6 +24,7 @@ const createDefaultState = (): ResumeEvaluationState => ({
     modelName: null,
     lastEvaluatedAt: null,
     evaluatedResumeUpdatedAt: null,
+    totalTokens: null,
 })
 
 export const useResumeEvaluation = () => {
@@ -58,9 +60,9 @@ export const useResumeEvaluation = () => {
                     if (partial.model) {
                         setState((prev) => ({ ...prev, modelName: partial.model ?? null }))
                     }
-                    // AI 输出结束，停止计时器显示
+                    // AI 输出结束，停止计时器显示；记录 token 用量
                     if (partial.finish) {
-                        setState((prev) => ({ ...prev, streamDone: true }))
+                        setState((prev) => ({ ...prev, streamDone: true, totalTokens: partial.totalTokens ?? prev.totalTokens }))
                     }
                 }
             )
@@ -89,7 +91,7 @@ export const useResumeEvaluation = () => {
                 conversationId: output.conversationId,
             }
 
-            setState({
+            setState((prev) => ({
                 loading: false,
                 streamDone: false,
                 error: null,
@@ -98,7 +100,8 @@ export const useResumeEvaluation = () => {
                 modelName: output.model,
                 lastEvaluatedAt,
                 evaluatedResumeUpdatedAt,
-            })
+                totalTokens: prev.totalTokens,
+            }))
             return result
         } catch (error) {
             if (requestIdRef.current !== nextRequestId) {

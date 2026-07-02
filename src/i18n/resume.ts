@@ -290,6 +290,8 @@ const dict: I18nDict = {
 
   // AI 工程
   'ai-engineering.empty': { 'zh-CN': '添加 AI 辅助研发实践经历', 'en-US': 'Add AI-assisted development practices' },
+  'ai-engineering.projectUrl': { 'zh-CN': '项目地址', 'en-US': 'Project URL' },
+  'ai-engineering.toolchain': { 'zh-CN': '工具链', 'en-US': 'Toolchain' },
 }
 
 export default dict

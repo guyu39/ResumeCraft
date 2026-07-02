@@ -549,9 +549,8 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 		case "action_item":
 			pendingActionItems = append(pendingActionItems, getString(obj["content"]))
 		case "finish":
-			// finish 到达时，flush 最后剩余的模块，然后发 finish
+			// finish 到达时 flush 最后剩余的模块；finish 事件（含 usage）在 StreamComplete 返回后统一发
 			flushModule()
-			onEvent(StreamEvent{Type: "finish"})
 		}
 	}
 
@@ -573,7 +572,7 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 		}
 	}()
 
-	_, err = s.aiProvider.StreamComplete(ctx, CompleteRequest{
+	resp, err := s.aiProvider.StreamComplete(ctx, CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     evaluateModel,
@@ -590,6 +589,9 @@ func (s *service) StreamEvaluate(ctx context.Context, userID string, req model.E
 		log.Printf("[ai] StreamEvaluate failed: %v", err)
 		return nil, ErrAIRequestFailed
 	}
+
+	// 流结束后发 finish，附带本次 token 用量
+	onEvent(makeFinishWithUsage("", 0, resp))
 
 	fullText := s.unmaskResponse(san, accumulated.String())
 
@@ -772,7 +774,6 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 			pendingActions = append(pendingActions, getString(obj["content"]))
 		case "finish":
 			flushModule()
-			onEvent(StreamEvent{Type: "finish"})
 		}
 	}
 
@@ -792,7 +793,7 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		}
 	}()
 
-	_, err = s.aiProvider.StreamComplete(ctx, CompleteRequest{
+	streamResp, err := s.aiProvider.StreamComplete(ctx, CompleteRequest{
 		APIKey:    apiKey,
 		BaseURL:   cfg.BaseURL,
 		Model:     jdMatchModel,
@@ -808,6 +809,9 @@ func (s *service) StreamJDMatch(ctx context.Context, userID string, req model.JD
 		log.Printf("[ai] StreamJDMatch failed: %v", err)
 		return nil, ErrAIRequestFailed
 	}
+
+	// 流结束后发 finish，附带本次 token 用量
+	onEvent(makeFinishWithUsage("", 0, streamResp))
 
 	fullText := s.unmaskResponse(san, accumulated.String())
 	jdResp, err := parseJDMatchResponse(fullText)
@@ -1047,9 +1051,26 @@ type StreamEvent struct {
 	SessionID     string         `json:"sessionId,omitempty"`
 	Timestamp     int64          `json:"timestamp,omitempty"`
 
+	// token 用量（在 finish 事件随附，供前端展示本次消耗）
+	InputTokens  *int `json:"inputTokens,omitempty"`
+	OutputTokens *int `json:"outputTokens,omitempty"`
+	TotalTokens  *int `json:"totalTokens,omitempty"`
+
 	// 一致性体检字段
 	HealthScore *int                   `json:"healthScore,omitempty"`
 	Findings    []model.CheckupFinding `json:"findings,omitempty"`
+}
+
+// makeFinishWithUsage 构造带 token 用量的 finish 事件。resp 为 nil 或无 usage 时不带 token 字段。
+func makeFinishWithUsage(sessionID string, timestamp int64, resp *CompleteResponse) StreamEvent {
+	evt := StreamEvent{Type: "finish", SessionID: sessionID, Timestamp: timestamp}
+	if resp != nil && (resp.InputTokens > 0 || resp.OutputTokens > 0) {
+		in, out, total := resp.InputTokens, resp.OutputTokens, resp.InputTokens+resp.OutputTokens
+		evt.InputTokens = &in
+		evt.OutputTokens = &out
+		evt.TotalTokens = &total
+	}
+	return evt
 }
 
 // tryParsePartial 从累积文本中解析部分结果，支持 NDJSON 格式

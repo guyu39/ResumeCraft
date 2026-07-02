@@ -236,11 +236,26 @@ export function useExport(): UseExportResult {
       try {
         if (format === 'pdf') {
           const html = await buildExportHTML('resume-paper-export')
-          const response = await fetch('/api/pdf/export', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ html, filename: options.filename || 'resume' }),
-          })
+          // 前端超时控制：后端 chromedp 默认 90s，这里 100s 兜底，
+          // 超时给出明确文案，避免长时间无反馈或与真错误混淆
+          const controller = new AbortController()
+          const timer = window.setTimeout(() => controller.abort(), 100_000)
+          let response: Response
+          try {
+            response = await fetch('/api/pdf/export', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ html, filename: options.filename || 'resume' }),
+              signal: controller.signal,
+            })
+          } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') {
+              throw new Error('PDF 导出耗时过长，请稍后重试（简历内容较多时渲染较慢）')
+            }
+            throw new Error('PDF 导出请求失败，请检查网络或后端服务')
+          } finally {
+            window.clearTimeout(timer)
+          }
           if (!response.ok) throw new Error('PDF 导出失败，请检查后端服务')
           const blob = await response.blob()
           if (blob.size === 0) throw new Error('PDF 导出失败，请检查后端服务')

@@ -7,7 +7,10 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
-import { LogIn, UserPlus } from 'lucide-react'
+import {
+  LogIn, UserPlus, FileText, Sparkles, LayoutTemplate, GitCompare,
+  MessagesSquare, ShieldCheck, Languages, Share2, ChevronDown,
+} from 'lucide-react'
 import ToastContainer, { toast } from '@/components/common/Toast'
 import { ApiError } from '@/api'
 
@@ -15,6 +18,18 @@ type Mode = 'login' | 'register'
 type LoginTab = 'password' | 'code'
 
 const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+
+// 产品特性（用于登录页背景介绍，纯图标 + 文案，不依赖截图资源）
+const FEATURES: Array<{ icon: React.ComponentType<{ className?: string }>; title: string; desc: string }> = [
+  { icon: LayoutTemplate, title: '多模板 · 实时预览', desc: '经典/现代/简约多套模板，主题色、排版、模块标题样式自由定制，A4 实时预览所见即所得。' },
+  { icon: Sparkles, title: 'AI 写作助手', desc: '内容评估、JD 匹配优化、要点改写、STAR 引导、实时写作诊断，让每一句都更有说服力。' },
+  { icon: ShieldCheck, title: '一致性体检', desc: '一键扫描时间线断档、技能与经历矛盾、占位内容等问题，并支持 AI 一键修复。' },
+  { icon: GitCompare, title: '版本快照 · 差异对比', desc: '随时固化命名版本，Git 风格逐字段对比，多端编辑冲突自动仲裁，改动有迹可循。' },
+  { icon: MessagesSquare, title: '模拟面试', desc: 'AI 按简历与 JD 出题、答题评估、多轮追问、录音转写分析，面试前充分演练。' },
+  { icon: Languages, title: '中英双语 · 一键翻译', desc: 'AI 翻译生成英文副本并保留排版，中英简历一键切换，从容应对外企与海外岗位。' },
+  { icon: Share2, title: '分享与评论', desc: '生成分享链接，导师/HR 可逐模块批注建议，反馈直接落到对应内容。' },
+  { icon: FileText, title: '高保真 PDF 导出', desc: '后端 Chromium 渲染，导出效果与预览一致，分页友好，投递无忧。' },
+]
 
 const LoginPage: React.FC = () => {
   const { loginWithPassword, loginWithCode, register, sendCode, isLoading, clearError } = useAuthStore()
@@ -140,145 +155,201 @@ const LoginPage: React.FC = () => {
     touched[field] && err ? <p className="mt-1 text-xs text-red-500">{err}</p> : null
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="no-scrollbar relative h-screen overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.16),transparent_28%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_45%,#eaf0f8_100%)]">
       <ToastContainer />
-      <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-slate-900">
-              {mode === 'register' ? '注册账号' : '登录账号'}
-            </h1>
-            <p className="mt-2 text-sm text-slate-600">
-              {mode === 'register' ? '创建新账号，开始云端管理简历' : '登录以同步您的简历数据'}
-            </p>
+
+      {/* 全屏可滚动产品介绍背景。lg 及以上为登录卡片让出右侧空间，避免被固定卡片永久遮挡 */}
+      <div className="mx-auto max-w-5xl px-6 pb-24 lg:mr-[460px] lg:max-w-3xl">
+        {/* 顶部品牌 + 标语 */}
+        <header className="flex min-h-screen flex-col items-center justify-center text-center lg:items-start lg:text-left">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/60 px-4 py-1.5 text-xs font-medium text-primary backdrop-blur">
+            <Sparkles className="h-3.5 w-3.5" />
+            AI 驱动的在线简历工作台
           </div>
+          <h1 className="mt-6 bg-gradient-to-r from-slate-900 via-primary to-sky-500 bg-clip-text text-4xl font-extrabold leading-tight text-transparent sm:text-5xl">
+            ResumeCraft · 简历大师
+          </h1>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-500">
+            三栏工作台、实时 A4 预览、AI 写作与体检、版本快照与多端同步——
+            从撰写到投递，一站式打造更有竞争力的简历。
+          </p>
+          <button
+            type="button"
+            onClick={() => document.getElementById('login-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+            className="mt-8 inline-flex items-center gap-1.5 rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-primary/25 transition hover:bg-primary/90 lg:hidden"
+          >
+            去登录 / 注册
+          </button>
+          <div className="mt-14 flex flex-col items-center gap-1 text-xs text-slate-400 lg:items-start">
+            <span>向下滚动了解更多</span>
+            <ChevronDown className="h-4 w-4 animate-bounce" />
+          </div>
+        </header>
 
-          {/* 登录方式 Tab（仅登录态显示） */}
-          {mode === 'login' && (
-            <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 text-sm">
-              <button
-                type="button"
-                onClick={() => switchLoginTab('password')}
-                className={`rounded-lg py-2 transition-colors ${loginTab === 'password' ? 'bg-white font-medium text-blue-600 shadow-sm' : 'text-slate-500'}`}
-              >
-                密码登录
-              </button>
-              <button
-                type="button"
-                onClick={() => switchLoginTab('code')}
-                className={`rounded-lg py-2 transition-colors ${loginTab === 'code' ? 'bg-white font-medium text-blue-600 shadow-sm' : 'text-slate-500'}`}
-              >
-                验证码登录
-              </button>
+        {/* 特性介绍（毛玻璃卡片网格） */}
+        <section className="grid gap-4 sm:grid-cols-2">
+          {FEATURES.map((f) => (
+            <div
+              key={f.title}
+              className="rounded-2xl border border-white/60 bg-white/55 p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] backdrop-blur-xl transition hover:bg-white/75"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <f.icon className="h-5 w-5" />
+              </div>
+              <h3 className="mt-3 text-sm font-semibold text-slate-800">{f.title}</h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{f.desc}</p>
             </div>
-          )}
+          ))}
+        </section>
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
-            {mode === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700">姓名</label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className={inputClass('')}
-                  placeholder="显示名称（选填）"
-                />
-              </div>
-            )}
+        <p className="mt-12 text-center text-xs text-slate-400">
+          ResumeCraft · 用心打磨每一份简历
+        </p>
+      </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700">邮箱</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => markTouched('email')}
-                className={inputClass(touched.email ? emailError : '')}
-                placeholder="your@email.com"
-              />
-              {fieldError('email', emailError)}
+      {/* 登录卡片：大屏固定在右侧、介绍内容已让出右边距；小屏走文档流在介绍下方 */}
+      <div
+        id="login-card"
+        className="px-4 pb-16 lg:pointer-events-none lg:fixed lg:inset-y-0 lg:right-0 lg:flex lg:w-[460px] lg:items-center lg:justify-center lg:px-8 lg:pb-0"
+      >
+        <div className="pointer-events-auto mx-auto w-full max-w-md">
+          <div className="rounded-3xl border border-white/70 bg-white/80 p-8 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-2xl">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {mode === 'register' ? '注册账号' : '登录账号'}
+              </h2>
+              <p className="mt-2 text-sm text-slate-500">
+                {mode === 'register' ? '创建新账号，开始云端管理简历' : '登录以同步您的简历数据'}
+              </p>
             </div>
 
-            {needPassword && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700">密码</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => markTouched('password')}
-                  className={inputClass(touched.password ? passwordError : '')}
-                  placeholder="至少 8 个字符"
-                />
-                {fieldError('password', passwordError)}
+            {/* 登录方式 Tab（仅登录态显示） */}
+            {mode === 'login' && (
+              <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-slate-100/80 p-1 text-sm">
+                <button
+                  type="button"
+                  onClick={() => switchLoginTab('password')}
+                  className={`rounded-lg py-2 transition-colors ${loginTab === 'password' ? 'bg-white font-medium text-primary shadow-sm' : 'text-slate-500'}`}
+                >
+                  密码登录
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchLoginTab('code')}
+                  className={`rounded-lg py-2 transition-colors ${loginTab === 'code' ? 'bg-white font-medium text-primary shadow-sm' : 'text-slate-500'}`}
+                >
+                  验证码登录
+                </button>
               </div>
             )}
 
-            {mode === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700">确认密码</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  onBlur={() => markTouched('confirmPassword')}
-                  className={inputClass(touched.confirmPassword ? confirmError : '')}
-                  placeholder="再次输入密码"
-                />
-                {fieldError('confirmPassword', confirmError)}
-              </div>
-            )}
-
-            {needCode && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700">邮箱验证码</label>
-                <div className="mt-1 flex gap-2">
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">姓名</label>
                   <input
                     type="text"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    onBlur={() => markTouched('code')}
-                    inputMode="numeric"
-                    className={`w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 ${
-                      touched.code && codeError ? 'border-red-300 focus:border-red-500 focus:ring-red-100' : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
-                    }`}
-                    placeholder="6 位数字验证码"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className={inputClass('')}
+                    placeholder="显示名称（选填）"
                   />
-                  <button
-                    type="button"
-                    onClick={handleSendCode}
-                    disabled={countdown > 0 || sending || !isValidEmail(email)}
-                    className="shrink-0 whitespace-nowrap rounded-lg border border-slate-200 px-3 py-2 text-sm text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
-                  >
-                    {sending ? '发送中' : countdown > 0 ? `${countdown}s` : '获取验证码'}
-                  </button>
                 </div>
-                {fieldError('code', codeError)}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isLoading ? '处理中...' : mode === 'register' ? '注册' : '登录'}
-            </button>
-          </form>
-
-          <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={() => switchMode(mode === 'register' ? 'login' : 'register')}
-              className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-            >
-              {mode === 'register' ? (
-                <><LogIn className="h-4 w-4" />已有账号？登录</>
-              ) : (
-                <><UserPlus className="h-4 w-4" />没有账号？注册</>
               )}
-            </button>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700">邮箱</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => markTouched('email')}
+                  className={inputClass(touched.email ? emailError : '')}
+                  placeholder="your@email.com"
+                />
+                {fieldError('email', emailError)}
+              </div>
+
+              {needPassword && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">密码</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onBlur={() => markTouched('password')}
+                    className={inputClass(touched.password ? passwordError : '')}
+                    placeholder="至少 8 个字符"
+                  />
+                  {fieldError('password', passwordError)}
+                </div>
+              )}
+
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">确认密码</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onBlur={() => markTouched('confirmPassword')}
+                    className={inputClass(touched.confirmPassword ? confirmError : '')}
+                    placeholder="再次输入密码"
+                  />
+                  {fieldError('confirmPassword', confirmError)}
+                </div>
+              )}
+
+              {needCode && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">邮箱验证码</label>
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      type="text"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onBlur={() => markTouched('code')}
+                      inputMode="numeric"
+                      className={`w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 ${
+                        touched.code && codeError ? 'border-red-300 focus:border-red-500 focus:ring-red-100' : 'border-slate-200 focus:border-primary focus:ring-primary/10'
+                      }`}
+                      placeholder="6 位数字验证码"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSendCode}
+                      disabled={countdown > 0 || sending || !isValidEmail(email)}
+                      className="shrink-0 whitespace-nowrap rounded-lg border border-slate-200 px-3 py-2 text-sm text-primary transition hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
+                    >
+                      {sending ? '发送中' : countdown > 0 ? `${countdown}s` : '获取验证码'}
+                    </button>
+                  </div>
+                  {fieldError('code', codeError)}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoading ? '处理中...' : mode === 'register' ? '注册' : '登录'}
+              </button>
+            </form>
+
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => switchMode(mode === 'register' ? 'login' : 'register')}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80"
+              >
+                {mode === 'register' ? (
+                  <><LogIn className="h-4 w-4" />已有账号？登录</>
+                ) : (
+                  <><UserPlus className="h-4 w-4" />没有账号？注册</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

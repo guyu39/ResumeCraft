@@ -7,6 +7,7 @@ import React from 'react'
 import { Resume, DEFAULT_RESUME_STYLE_SETTINGS, PersonalData } from '@/types/resume'
 import PersonalAvatar from '@/components/resume/PersonalAvatar'
 import { useResumeStore } from '@/store/resumeStore'
+import { useI18n } from '@/hooks/useI18n'
 import { renderResumeModule } from './moduleRegistry'
 import { useResumeStyleVars } from './useResumeStyleVars'
 import { buildPersonalLines } from './personalLines'
@@ -21,7 +22,8 @@ const MinimalTemplate: React.FC<MinimalTemplateProps> = ({ resume }) => {
   const visibleModules = modules.filter((m) => m.visible)
   const personalData = modules.find((m) => m.type === 'personal')?.data as PersonalData | undefined
   const isEn = resume.locale === 'en-US'
-  const personalLines = buildPersonalLines(personalData, resume.locale)
+  const i18n = useI18n()
+  const personalLines = buildPersonalLines(personalData, i18n)
   const { style, dataAttrs } = useResumeStyleVars(resume)
   // 头像优先取 store 独立 personalData（多快照共享），回退模块 data，与 PersonalPreview 一致
   const storePersonal = useResumeStore((s) => s.personalData)

@@ -11,6 +11,7 @@ import SnapshotTimeline from '@/components/common/SnapshotTimeline'
 import type { NoticeItem } from '@/components/common/NoticeCenter'
 import { resumeApi, type SnapshotListItem, type DiffResult, type AdminCommentItem } from '@/api/resume'
 import { AdminCommentProvider } from '@/contexts/AdminCommentContext'
+import DiffView from '@/components/common/DiffView'
 import type { Resume } from '@/types/resume'
 
 const FIT_PADDING_PX = 24
@@ -20,100 +21,6 @@ const MIN_READABLE_SCALE = 0.6 // 低于此阈值提示用户折叠侧栏
 
 interface CenterPanelProps {
   workspaceNotices?: NoticeItem[]
-}
-
-/** 提取文本行（处理 HTML）：优先按 <li> 拆分，否则按换行 */
-function extractLines(html: string): { lines: string[]; isList: boolean; wrapper: string[] } {
-  const str = html || ''
-  const ulMatch = str.match(/<ul[^>]*>([\s\S]*)<\/ul>/i) || str.match(/<ol[^>]*>([\s\S]*)<\/ol>/i)
-  if (ulMatch) {
-    const prefix = str.slice(0, str.indexOf(ulMatch[0]))
-    const suffix = str.slice(str.indexOf(ulMatch[0]) + ulMatch[0].length)
-    const items: string[] = []
-    const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi
-    let m: RegExpExecArray | null
-    while ((m = liRegex.exec(ulMatch[1])) !== null) {
-      items.push(m[0])
-    }
-    return { lines: items, isList: true, wrapper: [prefix, `<ul>`, `</ul>`, suffix] }
-  }
-  // 纯文本：按行拆分
-  const textLines = str.split(/\n/).filter((l) => l.trim() !== '')
-  return { lines: textLines.length > 0 ? textLines : [str], isList: false, wrapper: [str] }
-}
-
-/** 简单的文本标准化（用于比较去重） */
-function norm(s: string): string {
-  return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
-}
-
-/** 生成 git 风格统一 diff HTML（+ 新增绿色，- 删除红色） */
-function renderUnifiedDiffHtml(before: string, after: string): string {
-  const a = extractLines(before)
-  const b = extractLines(after)
-
-  // 比较行并生成 diff
-  const aNorm = a.lines.map(norm)
-  const bNorm = b.lines.map(norm)
-  const usedB = new Set<number>()
-  const pairs: Array<{ type: '-' | '+' | '='; line: string }> = []
-
-  // 匹配共同行
-  const matchedA = new Set<number>()
-  for (let i = 0; i < aNorm.length; i++) {
-    for (let j = 0; j < bNorm.length; j++) {
-      if (!usedB.has(j) && aNorm[i] === bNorm[j]) {
-        matchedA.add(i)
-        usedB.add(j)
-        break
-      }
-    }
-  }
-
-  // 生成 diff：当前快照的行
-  for (let i = 0; i < a.lines.length; i++) {
-    if (matchedA.has(i)) {
-      // 找到匹配的 B 行
-      for (let j = 0; j < b.lines.length; j++) {
-        if (aNorm[i] === bNorm[j]) {
-          pairs.push({ type: '=', line: a.lines[i] })
-          break
-        }
-      }
-    } else {
-      pairs.push({ type: '-', line: a.lines[i] })
-    }
-  }
-  // 新增的行
-  for (let j = 0; j < b.lines.length; j++) {
-    if (!usedB.has(j)) {
-      pairs.push({ type: '+', line: b.lines[j] })
-    }
-  }
-
-  // 渲染为 HTML（使用 class 替代 inline style）
-  if (a.isList) {
-    const diffParts = pairs.map((p) => {
-      const bgClass = p.type === '-' ? 'bg-red-100' : p.type === '+' ? 'bg-green-100' : ''
-      const prefix = p.type === '-' ? '<span class="text-red-600 font-bold mr-1">−</span>' :
-        p.type === '+' ? '<span class="text-green-600 font-bold mr-1">+</span>' : ''
-      return `<li class="${bgClass} px-1 py-0.5 rounded-sm my-px">${prefix}${p.line.replace(/<\/?li[^>]*>/gi, '')}</li>`
-    })
-    return a.wrapper[0] + a.wrapper[1] + diffParts.join('') + a.wrapper[2] + (a.wrapper[3] || '')
-  }
-
-  // 纯文本 diff
-  return pairs
-    .map((p) => {
-      const bgClass = p.type === '-' ? 'bg-red-100' : p.type === '+' ? 'bg-green-100' : ''
-      const prefix = p.type === '-' ? '<b class="text-red-600">− </b>' : p.type === '+' ? '<b class="text-green-600">+ </b>' : '  '
-      return `<div class="${bgClass} px-1 py-0.5 rounded-sm my-px font-mono whitespace-pre-wrap">${prefix}${escapeHtml(p.line)}</div>`
-    })
-    .join('')
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
@@ -439,26 +346,18 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
                   <span className="text-gray-400">字段 {diffResult.stats.fieldsChanged}</span>
                 </div>
 
-                {diffResult.diffs.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-12">两个版本内容相同</p>
-                ) : (
-                  <div className="space-y-2">
-                    {diffResult.diffs.map((d, i) => {
-                      const before = activeSnapshotId === diffResult.snapshotA.id ? String(d.after ?? '') : String(d.before ?? '')
-                      const after = activeSnapshotId === diffResult.snapshotA.id ? String(d.before ?? '') : String(d.after ?? '')
-                      return (
-                        <div key={i} className="border border-gray-100 rounded-lg p-3">
-                          <div className="flex items-center gap-1.5 text-xs mb-2">
-                            <span className="font-medium text-gray-700">{d.moduleType}</span>
-                            <span className="text-gray-300">·</span>
-                            <span className="text-gray-500">{d.field}</span>
-                          </div>
-                          <div className="diff-content text-xs" dangerouslySetInnerHTML={{ __html: renderUnifiedDiffHtml(before, after) }} />
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+                {(() => {
+                  // 按当前激活快照决定 before/after 方向，预定向后交给 DiffView 渲染
+                  const directed = diffResult.diffs.map((d) => {
+                    const flip = activeSnapshotId === diffResult.snapshotA.id
+                    return {
+                      ...d,
+                      before: flip ? String(d.after ?? '') : String(d.before ?? ''),
+                      after: flip ? String(d.before ?? '') : String(d.after ?? ''),
+                    }
+                  })
+                  return <DiffView diffs={directed} emptyHint="两个版本内容相同" />
+                })()}
               </div>
             </div>
           </div>,
