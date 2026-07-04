@@ -644,3 +644,179 @@ create index idx_interview_sessions_jd_hash
 create index idx_interview_sessions_round
     on interview_sessions (user_id, interview_round);
 
+create table if not exists job_applications
+(
+    id                  uuid                     default gen_random_uuid()                 not null
+        primary key,
+    user_id             uuid                                                               not null
+        references users
+            on delete cascade,
+    resume_id           uuid                                                               not null
+        references resumes
+            on delete cascade,
+    snapshot_version_id uuid                                                               not null
+        references resume_versions
+            on delete restrict,
+    company_name        varchar(200)             default ''::character varying             not null,
+    department          varchar(200)             default ''::character varying,
+    target_title        varchar(200)                                                       not null,
+    jd_text             text                                                               not null,
+    jd_hash             varchar(64)                                                        not null,
+    source              varchar(100)             default ''::character varying             not null,
+    application_url     text,
+    status              varchar(32)              default 'pending_adaptation'::character varying not null
+        constraint chk_job_application_status
+            check ((status)::text = any
+                   ((array ['pending_adaptation'::character varying, 'adapted'::character varying, 'submitted'::character varying, 'written_test'::character varying, 'interview'::character varying, 'offer'::character varying, 'rejected'::character varying, 'withdrawn'::character varying])::text[])),
+    match_score         integer,
+    jd_score            integer,
+    next_action         text,
+    submitted_at        timestamp with time zone,
+    written_test_at     timestamp with time zone,
+    created_at          timestamp with time zone default now()                             not null,
+    updated_at          timestamp with time zone default now()                             not null,
+    deleted_at          timestamp with time zone
+);
+
+create index if not exists idx_job_applications_user_updated
+    on job_applications (user_id asc, updated_at desc)
+    where deleted_at is null;
+
+create index if not exists idx_job_applications_user_status
+    on job_applications (user_id asc, status asc, updated_at desc)
+    where deleted_at is null;
+
+create index if not exists idx_job_applications_resume
+    on job_applications (resume_id);
+
+create index if not exists idx_job_applications_snapshot
+    on job_applications (snapshot_version_id);
+
+create index if not exists idx_job_applications_jd_hash
+    on job_applications (user_id, jd_hash)
+    where deleted_at is null;
+
+create table if not exists job_application_status_events
+(
+    id             uuid                     default gen_random_uuid() not null
+        primary key,
+    application_id uuid                                               not null
+        references job_applications
+            on delete cascade,
+    user_id        uuid                                               not null
+        references users
+            on delete cascade,
+    from_status    varchar(32),
+    to_status      varchar(32)                                        not null,
+    note           text,
+    created_at     timestamp with time zone default now()             not null
+);
+
+create index if not exists idx_job_application_status_events_application
+    on job_application_status_events (application_id asc, created_at desc);
+
+create table if not exists job_application_checklist_items
+(
+    id                         uuid                     default gen_random_uuid()     not null
+        primary key,
+    application_id             uuid                                                   not null
+        references job_applications
+            on delete cascade,
+    user_id                    uuid                                                   not null
+        references users
+            on delete cascade,
+    source                     varchar(32)              default 'manual'::character varying not null,
+    source_snapshot_version_id uuid
+        references resume_versions
+            on delete set null,
+    category                   varchar(64)              default 'general'::character varying not null,
+    title                      varchar(300)                                           not null,
+    detail                     text,
+    checked                    boolean                  default false                 not null,
+    sort_order                 integer                  default 0                     not null,
+    created_at                 timestamp with time zone default now()                 not null,
+    updated_at                 timestamp with time zone default now()                 not null
+);
+
+create index if not exists idx_job_application_checklist_application
+    on job_application_checklist_items (application_id asc, sort_order asc, created_at asc);
+
+create table if not exists job_application_ai_runs
+(
+    id                         uuid                     default gen_random_uuid() not null
+        primary key,
+    application_id             uuid                                               not null
+        references job_applications
+            on delete cascade,
+    user_id                    uuid                                               not null
+        references users
+            on delete cascade,
+    resume_id                  uuid
+        references resumes
+            on delete set null,
+    source_snapshot_version_id uuid
+        references resume_versions
+            on delete set null,
+    result_type                varchar(32)                                        not null,
+    summary                    jsonb                    default '{}'::jsonb       not null,
+    model                      varchar(128),
+    conversation_id            uuid
+        references ai_conversations
+            on delete set null,
+    optimized_snapshot_id      uuid
+        references resume_versions
+            on delete set null,
+    created_at                 timestamp with time zone default now()             not null
+);
+
+create index if not exists idx_job_application_ai_runs_application
+    on job_application_ai_runs (application_id asc, created_at desc);
+
+create table if not exists job_application_interviews
+(
+    id             uuid                     default gen_random_uuid() not null
+        primary key,
+    application_id uuid                                               not null
+        references job_applications
+            on delete cascade,
+    user_id        uuid                                               not null
+        references users
+            on delete cascade,
+    round          varchar(100)             default ''::character varying not null,
+    scheduled_at   timestamp with time zone,
+    format         varchar(100)             default ''::character varying not null,
+    interviewer    varchar(200)             default ''::character varying not null,
+    questions      text,
+    notes          text,
+    result         varchar(100)             default ''::character varying not null,
+    next_action    text,
+    created_at     timestamp with time zone default now()             not null,
+    updated_at     timestamp with time zone default now()             not null
+);
+
+create index if not exists idx_job_application_interviews_application
+    on job_application_interviews (application_id asc, scheduled_at desc nulls last, created_at desc);
+
+create table if not exists job_application_attachments
+(
+    id             uuid                     default gen_random_uuid() not null
+        primary key,
+    application_id uuid                                               not null
+        references job_applications
+            on delete cascade,
+    interview_id   uuid
+        references job_application_interviews
+            on delete cascade,
+    user_id        uuid                                               not null
+        references users
+            on delete cascade,
+    file_name      varchar(255)                                       not null,
+    file_type      varchar(100)             default ''::character varying not null,
+    file_size      bigint                   default 0                 not null,
+    storage_key    text                                               not null,
+    metadata       jsonb                    default '{}'::jsonb       not null,
+    created_at     timestamp with time zone default now()             not null
+);
+
+create index if not exists idx_job_application_attachments_application
+    on job_application_attachments (application_id asc, created_at desc);

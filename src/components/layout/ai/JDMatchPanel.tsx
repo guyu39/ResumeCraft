@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { aiApi } from '@/api'
+import { aiApi, applicationsApi } from '@/api'
 import type { ConversationItem, JDMatchResponse, JDScoreResponse } from '@/api/ai'
 import type { Resume } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
@@ -59,9 +59,12 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     const [historyLoading, setHistoryLoading] = useState(false)
     const [historyItems, setHistoryItems] = useState<ConversationItem[]>([])
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
+    const [savingApplication, setSavingApplication] = useState(false)
 
     // 从 store 获取快照列表，用于在对话历史中显示快照标签
     const snapshots = useResumeStore((s) => s.snapshots)
+    const activeSnapshotId = useResumeStore((s) => s.activeSnapshotId)
+    const basedOnSnapshotId = useResumeStore((s) => s.basedOnSnapshotId)
     const triggerSnapshotRefresh = useResumeStore((s) => s.triggerSnapshotRefresh)
     const getSnapshotLabel = (snapshotVersionId?: string | null): string | null => {
         if (!snapshotVersionId) return null
@@ -98,6 +101,50 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     }
 
     const canSubmit = jdText.trim().length > 0 && jdText.length <= 20000 && !loading && !scoreLoading
+    const currentSnapshotId = activeSnapshotId || basedOnSnapshotId
+    const canSaveApplication = Boolean(resume.id && currentSnapshotId && jdText.trim() && targetTitle.trim() && !savingApplication)
+
+    const handleSaveApplication = async () => {
+        if (!currentSnapshotId) {
+            toast('当前简历没有可关联的快照')
+            return
+        }
+        if (!targetTitle.trim() || !jdText.trim()) {
+            toast('请先填写目标岗位和 JD')
+            return
+        }
+        setSavingApplication(true)
+        try {
+            const duplicates = await applicationsApi.checkDuplicates({
+                companyName: companyName.trim(),
+                targetTitle: targetTitle.trim(),
+                jdText: jdText.trim(),
+            })
+            if (duplicates.items.length > 0) {
+                const confirmed = window.confirm('发现相似的投递记录，仍然保存为新的职位吗？')
+                if (!confirmed) return
+            }
+            const created = await applicationsApi.create({
+                resumeId: resume.id,
+                snapshotVersionId: currentSnapshotId,
+                companyName: companyName.trim(),
+                targetTitle: targetTitle.trim(),
+                jdText: jdText.trim(),
+                source: 'JD 面板',
+                matchResult: displayResult || undefined,
+                scoreResult: displayScoreResult || undefined,
+            })
+            toast('已保存为职位', 'success')
+            const openDetail = window.confirm('已保存为职位，是否进入投递详情？')
+            if (openDetail) {
+                window.location.href = `/applications?id=${created.id}`
+            }
+        } catch (err) {
+            toast(err instanceof Error ? err.message : '保存职位失败')
+        } finally {
+            setSavingApplication(false)
+        }
+    }
 
     const loadHistory = async () => {
         // 优先使用父组件预取的数据
@@ -215,6 +262,14 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                                 {scoreLoading ? '评分中...' : '深度评分'}
                             </button>
                         </div>
+                        <button
+                            type="button"
+                            disabled={!canSaveApplication}
+                            onClick={handleSaveApplication}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {savingApplication ? '保存中...' : '一键保存为职位'}
+                        </button>
                         {/* JD 定向优化：基于 JD 生成优化版简历快照 */}
                         <button
                             type="button"

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -64,21 +63,17 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 	// err != nil 是正常情况（新用户首次上传，尚无头像记录），继续执行上传逻辑
 	// 如果是真正的数据库错误，后续 Upload/UpdateAvatar 也会报错
 
-	contentType := strings.ToLower(header.Header.Get("Content-Type"))
-	ext := filepath.Ext(strings.ToLower(header.Filename))
-	if contentType != "image/jpeg" && contentType != "image/png" {
-		switch ext {
-		case ".jpg", ".jpeg":
-			contentType = "image/jpeg"
-		case ".png":
-			contentType = "image/png"
-		default:
-			c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_FILE_TYPE", "message": "仅支持 JPG 和 PNG 格式"})
-			return
-		}
-	}
-	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
-		ext = ".jpg"
+	// Content-Type 和扩展名均由客户端声明、可伪造，用文件真实二进制内容校验类型
+	sniffed := http.DetectContentType(data)
+	var contentType, ext string
+	switch sniffed {
+	case "image/jpeg":
+		contentType, ext = "image/jpeg", ".jpg"
+	case "image/png":
+		contentType, ext = "image/png", ".png"
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_FILE_TYPE", "message": "仅支持 JPG 和 PNG 格式"})
+		return
 	}
 
 	key := "avatars/" + userID + "/" + uuid.New().String() + ext
@@ -96,6 +91,27 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 		return
 	}
 
+	// 同步更新该用户名下所有简历的 personal_data.avatar，不依赖前端异步 flushToCloud 落库，
+	// 避免切快照/刷新页面时旧的云端 personal_data 覆盖掉刚上传的新头像
+	if h.resumeService != nil {
+		if err := h.resumeService.SyncAvatarToPersonalData(c.Request.Context(), userID, avatarURL); err != nil {
+			log.Printf("[avatar] sync avatar to personal_data failed for user %s: %v", userID, err)
+		}
+	}
+
+	// 写库成功后清理旧头像文件，避免每次换头像都在对象存储中留下孤儿文件；
+	// 删除前重新核对 DB 当前值仍指向旧文件，防止与并发上传竞态误删刚写入的新文件
+	if existingURL != "" && existingURL != avatarURL {
+		if oldKey := avatarKeyFromURL(existingURL); oldKey != "" {
+			latestURL, _, metaErr := h.authService.GetAvatarMeta(c.Request.Context(), userID)
+			if metaErr == nil && latestURL == avatarURL {
+				if err := h.objectStorage.Delete(c.Request.Context(), oldKey); err != nil {
+					log.Printf("[avatar] delete old avatar failed for user %s: %v", userID, err)
+				}
+			}
+		}
+	}
+
 	// 返回 API 代理路径而非原始 MinIO URL，确保前端渲染时头像 URL 始终可达
 	// （MinIO 容器内地址 minio:9000 在浏览器端不可解析）
 	proxyURL := "/api/avatars/" + userID + "/" + filename
@@ -104,6 +120,15 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 		"code": "OK",
 		"data": model.UploadAvatarResponse{AvatarURL: proxyURL},
 	})
+}
+
+// avatarKeyFromURL 从存储的头像 URL（代理路径或原始 MinIO URL）还原对象存储 key
+func avatarKeyFromURL(avatarURL string) string {
+	idx := strings.Index(avatarURL, "avatars/")
+	if idx == -1 {
+		return ""
+	}
+	return avatarURL[idx:]
 }
 
 // ServeAvatar 流式代理头像，避免 302 重定向导致的跨域问题

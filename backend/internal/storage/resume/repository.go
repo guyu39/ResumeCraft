@@ -40,6 +40,7 @@ type Repository interface {
 	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
 	GetSnapshotDetail(ctx context.Context, snapshotID string) (*model.VersionSnapshot, []byte, error)
 	DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string, currentModules, comparisonModules []map[string]interface{}) (*model.DiffResult, error)
+	SyncAvatarToPersonalData(ctx context.Context, userID, avatarURL string) error
 
 	// 分享链接
 	CreateShareLink(ctx context.Context, resumeID, userID, token string, expiresInDays int, snapshotID *string) (*model.ShareLink, error)
@@ -818,6 +819,25 @@ func (r *repository) GetSnapshotDetail(ctx context.Context, snapshotID string) (
 	snapshot.CreatedAt = createdAtMS
 
 	return &snapshot, contentJSON, nil
+}
+
+// SyncAvatarToPersonalData 头像上传成功后，同步更新该用户名下所有简历的 personal_data.avatar，
+// 避免仅依赖前端异步 flushToCloud 落库，出现"切快照/刷新后新头像被旧值覆盖"的时序问题。
+// 用 jsonb_set 只改 avatar 键，不整段覆盖 personal_data，避免与前端并发保存的其他字段冲突。
+func (r *repository) SyncAvatarToPersonalData(ctx context.Context, userID, avatarURL string) error {
+	avatarJSON, err := json.Marshal(avatarURL)
+	if err != nil {
+		return fmt.Errorf("marshal avatar url: %w", err)
+	}
+	_, err = r.pool.Exec(ctx, `
+		UPDATE resumes
+		SET personal_data = jsonb_set(COALESCE(personal_data, '{}'::jsonb), '{avatar}', $1::jsonb, true)
+		WHERE user_id = $2 AND deleted_at IS NULL
+	`, avatarJSON, userID)
+	if err != nil {
+		return fmt.Errorf("sync avatar to personal_data: %w", err)
+	}
+	return nil
 }
 
 // DiffSnapshots 对比两个快照（逐字段比较）

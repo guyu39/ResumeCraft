@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch } from 'lucide-react'
+import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch, BriefcaseBusiness } from 'lucide-react'
 import {
     createDefaultResume,
     getAllResumesFromStorage,
@@ -476,6 +476,14 @@ setPendingCreateName(defaultTitle)
                                         {syncing && <Cloud className="h-4 w-4 animate-pulse" />}
                                     </button>
                                 )}
+                                <button
+                                    type="button"
+                                    onClick={() => { window.location.href = '/applications' }}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                >
+                                    <BriefcaseBusiness className="h-4 w-4" />
+                                    投递管理
+                                </button>
                                 <button
                                     type="button"
                                     onClick={onLogout}

@@ -7,6 +7,7 @@ import { useResumeStore, peekLocalDraft, serializeResumeContent, flushToCloud } 
 import { useAuthStore } from '@/store/authStore'
 import AppShell from '@/components/layout/AppShell'
 import ShareViewPage from '@/pages/ShareViewPage'
+import ApplicationsPage from '@/pages/ApplicationsPage'
 import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
 import { resumeApi } from '@/api'
@@ -65,7 +66,12 @@ const App: React.FC = () => {
     })
     setResumeVersion((cloud as any).version ?? 0)
     setDraftsVersion((cloud as any).snapshotDraftsVersion ?? 0)
-    setPersonalData((cloud as any).personalData ?? {})
+    // 头像上传是后端同步写 personal_data 的，但本地若刚上传了新头像、云端这次拉取的响应
+    // 恰好是发起于上传之前的旧请求（网络时序），会用旧值覆盖本地刚显示的新头像。
+    // 这里保留本地已有的新头像，不被本次云端数据的 avatar 字段覆盖。
+    const localAvatar = (useResumeStore.getState().personalData as any)?.avatar
+    const cloudPersonalData = (cloud as any).personalData ?? {}
+    setPersonalData(localAvatar ? { ...cloudPersonalData, avatar: localAvatar } : cloudPersonalData)
     ;(window as any).__cloudSyncSetCloudId?.(cloud.id)
     // initResume 已把云端数据写入 store + localStorage（覆盖本地缓存）；
     // 再对齐 useCloudSync 同步指纹，认账「已是云端版」，避免随后又判 dirty 触发多余回写。
@@ -134,6 +140,7 @@ const App: React.FC = () => {
   }, [])
 
   const isSharePage = pathname.startsWith('/share/')
+  const isApplicationsPage = pathname.startsWith('/applications')
   const isEditorPage = pathname === '/editor'
 
   // 检查是否需要显示登录页
@@ -231,6 +238,8 @@ const App: React.FC = () => {
   if (!isAuthenticated || showLogin) {
     return <LoginPage />
   }
+
+  if (isApplicationsPage) return <ApplicationsPage />
 
   if (isEditorPage) return <AppShell />
 

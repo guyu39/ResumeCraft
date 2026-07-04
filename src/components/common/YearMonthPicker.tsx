@@ -17,6 +17,7 @@ interface YearMonthPickerProps {
   pastYears?: number
   futureYears?: number
   enableDay?: boolean
+  defaultStep?: Step
 }
 
 const MONTHS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
@@ -26,7 +27,7 @@ type Step = "year" | "month" | "day"
 
 const YearMonthPicker: React.FC<YearMonthPickerProps> = ({
   value, onChange, placeholder, minYear, maxYear,
-  presentLabel, pastYears = 60, futureYears = 1, enableDay = false,
+  presentLabel, pastYears = 60, futureYears = 1, enableDay = false, defaultStep = "year",
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [panelPosition, setPanelPosition] = useState<{ top: number; left: number } | null>(null)
@@ -59,11 +60,16 @@ const YearMonthPicker: React.FC<YearMonthPickerProps> = ({
   const openCalendar = () => {
     const initialYear = parsed?.year ?? currentYear
     setPageStart(min + Math.floor((initialYear - min) / YEARS_PER_PAGE) * YEARS_PER_PAGE)
-    setSelectedYear(parsed?.year ?? null)
-    setStep("year")
+    setSelectedYear(parsed?.year ?? initialYear)
+    setStep(enableDay && defaultStep === "day" ? "day" : defaultStep)
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
-      setPanelPosition({ top: rect.bottom + 6, left: rect.left })
+      const panelWidth = 300
+      let left = rect.left
+      if (left + panelWidth > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - panelWidth - 8)
+      }
+      setPanelPosition({ top: rect.bottom + 6, left })
     }
     setIsOpen(true)
   }
@@ -79,7 +85,7 @@ const YearMonthPicker: React.FC<YearMonthPickerProps> = ({
   }
   const selectDay = (day: number) => {
     if (selectedYear === null) return
-    const month = parsed?.month ?? 1
+    const month = activeYearMonth?.month ?? parsed?.month ?? 1
     onChange(selectedYear + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0"))
     closeCalendar()
   }
@@ -126,7 +132,8 @@ const YearMonthPicker: React.FC<YearMonthPickerProps> = ({
     if (step !== "day") return null
     if (parsed?.year && parsed?.month) return { year: parsed.year, month: parsed.month }
     if (selectedYear !== null && parsed?.month) return { year: selectedYear, month: parsed.month }
-    return selectedYear !== null ? { year: selectedYear, month: 1 } : null
+    if (selectedYear !== null) return { year: selectedYear, month: new Date().getMonth() + 1 }
+    return null
   }, [step, parsed, selectedYear])
 
   const panelContent = isOpen ? (
