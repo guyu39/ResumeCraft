@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { GitBranch, Settings, Sparkles, Link2, MessageSquare } from 'lucide-react'
+import { BriefcaseBusiness, GitBranch, Settings, Sparkles, Link2, MessageSquare } from 'lucide-react'
 import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType } from '@/types/resume'
@@ -482,6 +482,15 @@ const RightPanel: React.FC = () => {
                             <GitBranch className="w-3.5 h-3.5" />
                         </button>
                     )}
+
+                    <button
+                        onClick={() => { window.location.href = '/applications' }}
+                        className="flex-shrink-0 p-2 rounded-xl border border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
+                        title="投递管理 / 职位库"
+                        aria-label="投递管理 / 职位库"
+                    >
+                        <BriefcaseBusiness className="w-3.5 h-3.5" />
+                    </button>
 
                     {/* 设置按钮 */}
                     <button
