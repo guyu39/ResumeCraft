@@ -1,0 +1,424 @@
+package handler
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"resumecraft-pdf-backend/internal/middleware"
+	"resumecraft-pdf-backend/internal/model"
+	jobapplication "resumecraft-pdf-backend/internal/service/job_application"
+	"resumecraft-pdf-backend/pkg/response"
+
+	"github.com/gin-gonic/gin"
+)
+
+// ListApplications 获取投递记录列表
+// GET /api/applications
+func (h *Handler) ListApplications(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+
+	result, err := h.applicationService.List(c.Request.Context(), userID, parseApplicationFilters(c))
+	if err != nil {
+		handleApplicationError(c, "ListApplications", err)
+		return
+	}
+	response.JSONSuccess(c, result)
+}
+
+// GetApplication 获取投递记录详情
+// GET /api/applications/:id
+func (h *Handler) GetApplication(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	app, err := h.applicationService.GetByID(c.Request.Context(), userID, c.Param("id"))
+	if err != nil {
+		handleApplicationError(c, "GetApplication", err)
+		return
+	}
+	response.JSONSuccess(c, app)
+}
+
+// CreateApplication 创建投递记录
+// POST /api/applications
+func (h *Handler) CreateApplication(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.CreateJobApplicationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	app, err := h.applicationService.Create(c.Request.Context(), userID, req)
+	if err != nil {
+		handleApplicationError(c, "CreateApplication", err)
+		return
+	}
+	response.JSONCreated(c, app)
+}
+
+// UpdateApplication 更新投递记录
+// PUT /api/applications/:id
+func (h *Handler) UpdateApplication(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.UpdateJobApplicationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	app, err := h.applicationService.Update(c.Request.Context(), userID, c.Param("id"), req)
+	if err != nil {
+		handleApplicationError(c, "UpdateApplication", err)
+		return
+	}
+	response.JSONSuccess(c, app)
+}
+
+// DeleteApplication 删除投递记录
+// DELETE /api/applications/:id
+func (h *Handler) DeleteApplication(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	if err := h.applicationService.Delete(c.Request.Context(), userID, c.Param("id")); err != nil {
+		handleApplicationError(c, "DeleteApplication", err)
+		return
+	}
+	response.JSONSuccess(c, gin.H{"deleted": true})
+}
+
+// CheckApplicationDuplicates 检查重复投递记录
+// POST /api/applications/duplicates
+func (h *Handler) CheckApplicationDuplicates(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.DuplicateJobApplicationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	result, err := h.applicationService.CheckDuplicates(c.Request.Context(), userID, req)
+	if err != nil {
+		handleApplicationError(c, "CheckApplicationDuplicates", err)
+		return
+	}
+	response.JSONSuccess(c, result)
+}
+
+// UpdateApplicationStatus 更新投递状态
+// PUT /api/applications/:id/status
+func (h *Handler) UpdateApplicationStatus(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.UpdateJobApplicationStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	event, err := h.applicationService.UpdateStatus(c.Request.Context(), userID, c.Param("id"), req)
+	if err != nil {
+		handleApplicationError(c, "UpdateApplicationStatus", err)
+		return
+	}
+	response.JSONSuccess(c, event)
+}
+
+// CreateApplicationChecklistItem 新增检查清单项
+// POST /api/applications/:id/checklist
+func (h *Handler) CreateApplicationChecklistItem(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.CreateChecklistItemRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	item, err := h.applicationService.CreateChecklistItem(c.Request.Context(), userID, c.Param("id"), req)
+	if err != nil {
+		handleApplicationError(c, "CreateApplicationChecklistItem", err)
+		return
+	}
+	response.JSONCreated(c, item)
+}
+
+// UpdateApplicationChecklistItem 更新检查清单项
+// PUT /api/applications/:id/checklist/:itemId
+func (h *Handler) UpdateApplicationChecklistItem(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.UpdateChecklistItemRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	item, err := h.applicationService.UpdateChecklistItem(c.Request.Context(), userID, c.Param("id"), c.Param("itemId"), req)
+	if err != nil {
+		handleApplicationError(c, "UpdateApplicationChecklistItem", err)
+		return
+	}
+	response.JSONSuccess(c, item)
+}
+
+// DeleteApplicationChecklistItem 删除检查清单项
+// DELETE /api/applications/:id/checklist/:itemId
+func (h *Handler) DeleteApplicationChecklistItem(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	if err := h.applicationService.DeleteChecklistItem(c.Request.Context(), userID, c.Param("id"), c.Param("itemId")); err != nil {
+		handleApplicationError(c, "DeleteApplicationChecklistItem", err)
+		return
+	}
+	response.JSONSuccess(c, gin.H{"deleted": true})
+}
+
+// RegenerateApplicationChecklist 重新生成检查清单
+// POST /api/applications/:id/checklist/regenerate
+func (h *Handler) RegenerateApplicationChecklist(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	items, err := h.applicationService.RegenerateChecklist(c.Request.Context(), userID, c.Param("id"))
+	if err != nil {
+		handleApplicationError(c, "RegenerateApplicationChecklist", err)
+		return
+	}
+	response.JSONSuccess(c, gin.H{"items": items})
+}
+
+// CreateApplicationAIRun 保存 AI 结果摘要
+// POST /api/applications/:id/ai-runs
+func (h *Handler) CreateApplicationAIRun(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.CreateJobApplicationAIRunRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	run, err := h.applicationService.CreateAIRun(c.Request.Context(), userID, c.Param("id"), req)
+	if err != nil {
+		handleApplicationError(c, "CreateApplicationAIRun", err)
+		return
+	}
+	response.JSONCreated(c, run)
+}
+
+// CreateApplicationInterview 新增面试记录
+// POST /api/applications/:id/interviews
+func (h *Handler) CreateApplicationInterview(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.CreateInterviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	item, err := h.applicationService.CreateInterview(c.Request.Context(), userID, c.Param("id"), req)
+	if err != nil {
+		handleApplicationError(c, "CreateApplicationInterview", err)
+		return
+	}
+	response.JSONCreated(c, item)
+}
+
+// UpdateApplicationInterview 更新面试记录
+// PUT /api/applications/:id/interviews/:interviewId
+func (h *Handler) UpdateApplicationInterview(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req model.UpdateInterviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	item, err := h.applicationService.UpdateInterview(c.Request.Context(), userID, c.Param("id"), c.Param("interviewId"), req)
+	if err != nil {
+		handleApplicationError(c, "UpdateApplicationInterview", err)
+		return
+	}
+	response.JSONSuccess(c, item)
+}
+
+// DeleteApplicationInterview 删除面试记录
+// DELETE /api/applications/:id/interviews/:interviewId
+func (h *Handler) DeleteApplicationInterview(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	if err := h.applicationService.DeleteInterview(c.Request.Context(), userID, c.Param("id"), c.Param("interviewId")); err != nil {
+		handleApplicationError(c, "DeleteApplicationInterview", err)
+		return
+	}
+	response.JSONSuccess(c, gin.H{"deleted": true})
+}
+
+// ExportApplications 导出当前筛选投递表格
+// GET /api/applications/export
+func (h *Handler) ExportApplications(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	data, err := h.applicationService.ExportExcel(c.Request.Context(), userID, parseApplicationFilters(c))
+	if err != nil {
+		handleApplicationError(c, "ExportApplications", err)
+		return
+	}
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", `attachment; filename="job-applications.xlsx"`)
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data)
+}
+
+func getUserID(c *gin.Context) (string, bool) {
+	userID, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return "", false
+	}
+	id, ok := userID.(string)
+	if !ok || id == "" {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录")
+		return "", false
+	}
+	return id, true
+}
+
+func parseApplicationFilters(c *gin.Context) model.JobApplicationFilters {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	statuses := []model.JobApplicationStatus{}
+	rawStatuses := c.Query("statuses")
+	if rawStatuses == "" {
+		rawStatuses = c.Query("status")
+	}
+	for _, raw := range strings.Split(rawStatuses, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw != "" {
+			statuses = append(statuses, model.JobApplicationStatus(raw))
+		}
+	}
+	return model.JobApplicationFilters{
+		Page:     page,
+		PageSize: pageSize,
+		Keyword:  c.Query("keyword"),
+		Company:  c.Query("company"),
+		ResumeID: c.Query("resumeId"),
+		Statuses: statuses,
+	}
+}
+
+func handleApplicationError(c *gin.Context, op string, err error) {
+	if errors.Is(err, jobapplication.ErrApplicationNotFound) {
+		response.JSONError(c, http.StatusNotFound, "APPLICATION_NOT_FOUND", "投递记录不存在或无权限访问")
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInvalidAssociation) {
+		response.JSONError(c, http.StatusBadRequest, "INVALID_ASSOCIATION", "简历或快照关联无效")
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInvalidStatus) {
+		response.JSONError(c, http.StatusBadRequest, "INVALID_STATUS", "投递状态无效")
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInvalidPayload) {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "参数格式错误")
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInterviewRoundInvalid) {
+		response.JSONError(c, http.StatusBadRequest, "INTERVIEW_ROUND_INVALID", "面试阶段无效，请选择一面/二面/三面/主管面/HR面")
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInterviewRoundDuplicated) {
+		msg := err.Error()
+		if msg == "" {
+			msg = "该岗位已存在该阶段面试记录，不可重复添加"
+		}
+		response.JSONError(c, http.StatusBadRequest, "INTERVIEW_ROUND_DUPLICATED", msg)
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInterviewNoPrerequisite) {
+		msg := err.Error()
+		if msg == "" {
+			msg = "新增该面试阶段需至少存在一轮更早面试"
+		}
+		response.JSONError(c, http.StatusBadRequest, "INTERVIEW_NO_PREREQUISITE", msg)
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInterviewDateTooEarly) {
+		msg := err.Error()
+		if msg == "" {
+			msg = "面试日期必须晚于所有更早面试日期"
+		}
+		response.JSONError(c, http.StatusBadRequest, "INTERVIEW_DATE_TOO_EARLY", msg)
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInterviewDateConflict) {
+		msg := err.Error()
+		if msg == "" {
+			msg = "面试日期与相邻阶段冲突，必须晚于更早面试且早于后续面试"
+		}
+		response.JSONError(c, http.StatusBadRequest, "INTERVIEW_DATE_CONFLICT", msg)
+		return
+	}
+	if errors.Is(err, jobapplication.ErrInterviewNotDeletable) {
+		response.JSONError(c, http.StatusBadRequest, "INTERVIEW_NOT_DELETABLE", "仅可删除日期最新的那一条面试记录")
+		return
+	}
+	if errors.Is(err, jobapplication.ErrApplicationFinalized) {
+		response.JSONError(c, http.StatusBadRequest, "APPLICATION_FINALIZED", "投递已终止或已 offer，不可再添加面试")
+		return
+	}
+	log.Printf("[applications] %s error: %v", op, err)
+	response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("%s失败", applicationOperationLabel(op)))
+}
+
+func applicationOperationLabel(op string) string {
+	switch op {
+	case "ListApplications":
+		return "获取投递列表"
+	case "GetApplication":
+		return "获取投递详情"
+	case "CreateApplication":
+		return "创建投递记录"
+	case "UpdateApplication":
+		return "更新投递记录"
+	case "DeleteApplication":
+		return "删除投递记录"
+	case "ExportApplications":
+		return "导出投递记录"
+	default:
+		return "处理投递记录"
+	}
+}

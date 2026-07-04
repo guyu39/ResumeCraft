@@ -4,19 +4,21 @@ import (
 	"resumecraft-pdf-backend/internal/service/ai"
 	"resumecraft-pdf-backend/internal/service/auth"
 	"resumecraft-pdf-backend/internal/service/export"
+	jobapplication "resumecraft-pdf-backend/internal/service/job_application"
 	"resumecraft-pdf-backend/internal/service/pdf"
 	"resumecraft-pdf-backend/internal/service/resume"
 	"resumecraft-pdf-backend/internal/storage/object"
 )
 
 type Handler struct {
-	pdfService       pdf.Service
-	authService      auth.Service
-	resumeService    resume.Service
-	exportService    export.Service
-	aiService        ai.Service
-	objectStorage    object.ObjectStorage
-	parserServiceURL string
+	pdfService         pdf.Service
+	authService        auth.Service
+	resumeService      resume.Service
+	exportService      export.Service
+	aiService          ai.Service
+	applicationService jobapplication.Service
+	objectStorage      object.ObjectStorage
+	parserServiceURL   string
 }
 
 func New(
@@ -25,17 +27,19 @@ func New(
 	resumeService resume.Service,
 	exportService export.Service,
 	aiService ai.Service,
+	applicationService jobapplication.Service,
 	objectStorage object.ObjectStorage,
 	parserServiceURL string,
 ) *Handler {
 	return &Handler{
-		pdfService:       pdfService,
-		authService:      authService,
-		resumeService:    resumeService,
-		exportService:    exportService,
-		aiService:        aiService,
-		objectStorage:    objectStorage,
-		parserServiceURL: parserServiceURL,
+		pdfService:         pdfService,
+		authService:        authService,
+		resumeService:      resumeService,
+		exportService:      exportService,
+		aiService:          aiService,
+		applicationService: applicationService,
+		objectStorage:      objectStorage,
+		parserServiceURL:   parserServiceURL,
 	}
 }
 
@@ -57,6 +61,10 @@ func (h *Handler) ExportService() export.Service {
 
 func (h *Handler) AIService() ai.Service {
 	return h.aiService
+}
+
+func (h *Handler) ApplicationService() jobapplication.Service {
+	return h.applicationService
 }
 
 func (h *Handler) ObjectStorage() object.ObjectStorage {

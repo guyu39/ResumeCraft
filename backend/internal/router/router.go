@@ -156,6 +156,30 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 			}
 		}
 
+		// 投递管理 / 职位库接口 - 需要认证
+		if h.ApplicationService() != nil {
+			applicationGroup := api.Group("/applications")
+			applicationGroup.Use(middleware.AuthRequired(h.AuthService()))
+			{
+				applicationGroup.GET("", h.ListApplications)
+				applicationGroup.POST("", h.CreateApplication)
+				applicationGroup.GET("/export", h.ExportApplications)
+				applicationGroup.POST("/duplicates", h.CheckApplicationDuplicates)
+				applicationGroup.GET("/:id", h.GetApplication)
+				applicationGroup.PUT("/:id", h.UpdateApplication)
+				applicationGroup.DELETE("/:id", h.DeleteApplication)
+				applicationGroup.PUT("/:id/status", h.UpdateApplicationStatus)
+				applicationGroup.POST("/:id/checklist", h.CreateApplicationChecklistItem)
+				applicationGroup.POST("/:id/checklist/regenerate", h.RegenerateApplicationChecklist)
+				applicationGroup.PUT("/:id/checklist/:itemId", h.UpdateApplicationChecklistItem)
+				applicationGroup.DELETE("/:id/checklist/:itemId", h.DeleteApplicationChecklistItem)
+				applicationGroup.POST("/:id/ai-runs", h.CreateApplicationAIRun)
+				applicationGroup.POST("/:id/interviews", h.CreateApplicationInterview)
+				applicationGroup.PUT("/:id/interviews/:interviewId", h.UpdateApplicationInterview)
+				applicationGroup.DELETE("/:id/interviews/:interviewId", h.DeleteApplicationInterview)
+			}
+		}
+
 		// 导出任务查询和下载（独立路径）
 		if h.ExportService() != nil {
 			api.GET("/exports/:taskId", h.GetExportTask)

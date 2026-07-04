@@ -13,12 +13,14 @@ import (
 	"resumecraft-pdf-backend/internal/service/ai"
 	"resumecraft-pdf-backend/internal/service/auth"
 	"resumecraft-pdf-backend/internal/service/export"
+	jobapplication "resumecraft-pdf-backend/internal/service/job_application"
 	"resumecraft-pdf-backend/internal/service/mail"
 	"resumecraft-pdf-backend/internal/service/pdf"
 	"resumecraft-pdf-backend/internal/service/resume"
 	aiStorage "resumecraft-pdf-backend/internal/storage/ai"
 	"resumecraft-pdf-backend/internal/storage/db"
 	exportStorage "resumecraft-pdf-backend/internal/storage/export"
+	applicationStorage "resumecraft-pdf-backend/internal/storage/job_application"
 	"resumecraft-pdf-backend/internal/storage/object"
 	resumeStorage "resumecraft-pdf-backend/internal/storage/resume"
 
@@ -71,6 +73,7 @@ func NewServer() *http.Server {
 	var resumeService resume.Service
 	var exportService export.Service
 	var aiService ai.Service
+	var applicationService jobapplication.Service
 	var pool *pgxpool.Pool
 
 	if cfg.Auth.Enabled {
@@ -101,6 +104,9 @@ func NewServer() *http.Server {
 				aiParserCfgRepo := aiStorage.NewParserConfigRepository(pool)
 				aiInterviewRepo := aiStorage.NewInterviewRepository(pool)
 				aiService = ai.NewService(aiRepo, aiCfgRepo, aiSuggestRecordRepo, aiParserCfgRepo, aiInterviewRepo, cfg.AI, redisClient)
+				// 初始化投递管理服务
+				applicationRepo := applicationStorage.NewRepository(pool)
+				applicationService = jobapplication.NewService(applicationRepo)
 			}
 		}
 	}
@@ -130,7 +136,7 @@ func NewServer() *http.Server {
 	// 初始化对象存储（不依赖数据库）
 	objectStorage := object.NewObjectStorage(cfg.Storage)
 
-	h := handler.New(pdfService, authService, resumeService, exportService, aiService, objectStorage, cfg.Parser.ServiceURL)
+	h := handler.New(pdfService, authService, resumeService, exportService, aiService, applicationService, objectStorage, cfg.Parser.ServiceURL)
 	router.Register(engine, h, cfg.Server.FrontendDistDir, authLimiter, aiLimiter)
 
 	server := &http.Server{
