@@ -12,6 +12,12 @@ export type JobApplicationStatus =
   | 'rejected'
   | 'withdrawn'
 
+export interface JobApplicationInterviewBrief {
+  round: string
+  scheduledAt?: number
+  result?: string
+}
+
 export interface JobApplicationListItem {
   id: string
   resumeId: string
@@ -33,6 +39,7 @@ export interface JobApplicationListItem {
   writtenTestAt?: number
   updatedAt: number
   createdAt: number
+  interviews?: JobApplicationInterviewBrief[]
 }
 
 export interface JobApplication extends JobApplicationListItem {
@@ -211,6 +218,24 @@ export const applicationsApi = {
 
   deleteInterview: (id: string, interviewId: string) =>
     apiClient.delete<{ deleted: boolean }>(`/applications/${id}/interviews/${interviewId}`),
+
+  analyzeInterviewFile: async (id: string, file: File) => {
+    const headers: Record<string, string> = {}
+    const token = getToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch(`/api/applications/${id}/interviews/analyze-file`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      throw new Error(json?.message || '分析面试记录失败')
+    }
+    return json.data as { summary: string }
+  },
 
   exportExcel: async (params?: ListApplicationsParams) => {
     const headers: Record<string, string> = {}

@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"resumecraft-pdf-backend/internal/middleware"
 	"resumecraft-pdf-backend/internal/model"
+	ai "resumecraft-pdf-backend/internal/service/ai"
 	jobapplication "resumecraft-pdf-backend/internal/service/job_application"
 	"resumecraft-pdf-backend/pkg/response"
 
@@ -282,6 +284,66 @@ func (h *Handler) DeleteApplicationInterview(c *gin.Context) {
 		return
 	}
 	response.JSONSuccess(c, gin.H{"deleted": true})
+}
+
+const maxInterviewFileSize = 2 << 20 // 2MB，纯文本面试记录不应超过此大小
+
+// AnalyzeInterviewFile 上传面试记录文本文件，AI 生成总结（不落库，仅返回摘要供前端确认后保存）
+// POST /api/applications/:id/interviews/analyze-file
+func (h *Handler) AnalyzeInterviewFile(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	if h.aiService == nil {
+		response.JSONError(c, http.StatusServiceUnavailable, "AI_UNAVAILABLE", "AI 服务未启用")
+		return
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "请选择文件")
+		return
+	}
+	defer file.Close()
+
+	if header.Size > maxInterviewFileSize {
+		response.JSONError(c, http.StatusBadRequest, "FILE_TOO_LARGE", "文件大小不能超过 2MB")
+		return
+	}
+
+	data, err := io.ReadAll(io.LimitReader(file, maxInterviewFileSize+1))
+	if err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "读取文件失败")
+		return
+	}
+	if int64(len(data)) > maxInterviewFileSize {
+		response.JSONError(c, http.StatusBadRequest, "FILE_TOO_LARGE", "文件大小不能超过 2MB")
+		return
+	}
+
+	text := string(data)
+	if strings.TrimSpace(text) == "" {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "文件内容为空")
+		return
+	}
+	if isLikelyBinary(text) {
+		response.JSONError(c, http.StatusBadRequest, "INVALID_FILE_TYPE", "仅支持纯文本文件（.txt），检测到非文本内容")
+		return
+	}
+
+	summary, err := h.aiService.SummarizeInterviewNotes(c.Request.Context(), userID, text)
+	if err != nil {
+		if errors.Is(err, ai.ErrAIConfigNotFound) {
+			response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "请先配置 AI 服务")
+			return
+		}
+		log.Printf("[applications] AnalyzeInterviewFile error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "分析面试记录失败")
+		return
+	}
+
+	response.JSONSuccess(c, model.AnalyzeInterviewFileResponse{Summary: summary})
 }
 
 // ExportApplications 导出当前筛选投递表格
