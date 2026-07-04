@@ -560,9 +560,9 @@ const ApplicationsPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_48%,#f8fafc_100%)] text-slate-900">
+    <div className="flex h-screen flex-col overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_48%,#f8fafc_100%)] text-slate-900">
       <ToastContainer />
-      <div className="border-b border-slate-200/80 bg-white/85 backdrop-blur">
+      <div className="shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => { window.location.href = '/' }} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="返回简历列表">
@@ -581,9 +581,9 @@ const ApplicationsPage: React.FC = () => {
         </div>
       </div>
 
-      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-6 py-6 transition-all">
-        <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
+      <main className="mx-auto grid min-h-0 w-full max-w-7xl flex-1 grid-cols-1 gap-4 overflow-hidden px-6 py-6 transition-all">
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
             <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索公司、岗位、岗位JD" className="h-10 w-64 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
             <select value={status} onChange={(event) => setStatus(event.target.value as DisplayStatus | '')} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
               {DISPLAY_STATUS_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
@@ -594,9 +594,9 @@ const ApplicationsPage: React.FC = () => {
             </select>
           </div>
 
-          <div className={horizontalScrollClass}>
+          <div className={`min-h-0 flex-1 ${hiddenScrollClass} ${horizontalScrollClass}`}>
             <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-medium text-slate-500">
+              <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-medium text-slate-500">
                 <tr>
                   <th className="px-4 py-3">公司</th>
                   <th className="px-4 py-3">投递职位</th>
@@ -645,7 +645,7 @@ const ApplicationsPage: React.FC = () => {
             </table>
           </div>
 
-          <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3">
+          <div className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">第 {page} / {totalPages} 页</span>
               <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
