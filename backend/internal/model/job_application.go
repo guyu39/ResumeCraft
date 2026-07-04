@@ -70,6 +70,14 @@ type JobApplicationListItem struct {
 	WrittenTestAt     *int64               `json:"writtenTestAt,omitempty"`
 	UpdatedAt         int64                `json:"updatedAt"`
 	CreatedAt         int64                `json:"createdAt"`
+	Interviews        []JobApplicationInterviewBrief `json:"interviews,omitempty"`
+}
+
+// JobApplicationInterviewBrief 列表页展示用的面试轮次精简信息
+type JobApplicationInterviewBrief struct {
+	Round       string `json:"round"`
+	ScheduledAt *int64 `json:"scheduledAt,omitempty"`
+	Result      string `json:"result,omitempty"`
 }
 
 // JobApplicationStatusEvent 状态历史
@@ -241,4 +249,9 @@ type DuplicateJobApplicationRequest struct {
 
 type DuplicateJobApplicationResponse struct {
 	Items []JobApplicationListItem `json:"items"`
+}
+
+// AnalyzeInterviewFileResponse 上传面试记录文件 AI 总结的响应
+type AnalyzeInterviewFileResponse struct {
+	Summary string `json:"summary"`
 }

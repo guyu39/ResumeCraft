@@ -74,6 +74,9 @@ type Service interface {
 	// AI 增强（e.g. 抽取指标、补全风控、转STAR）
 	Enhance(ctx context.Context, userID string, req model.EnhanceRequest) (*model.EnhanceResponse, error)
 
+	// 投递管理：面试记录文件总结
+	SummarizeInterviewNotes(ctx context.Context, userID, text string) (string, error)
+
 	// STAR 引导改写（两阶段：分析 → 生成）
 	AnalyzeStar(ctx context.Context, userID string, req model.StarAnalyzeRequest) (*model.StarAnalyzeResponse, error)
 	GenerateStar(ctx context.Context, userID string, req model.StarGenerateRequest) (*model.EnhanceResponse, error)
@@ -1996,6 +1999,50 @@ func (s *service) Enhance(ctx context.Context, userID string, req model.EnhanceR
 	result.Text = s.unmaskResponse(san, result.Text)
 
 	return &model.EnhanceResponse{Result: strings.TrimSpace(result.Text)}, nil
+}
+
+func (s *service) SummarizeInterviewNotes(ctx context.Context, userID, text string) (string, error) {
+	cfg, err := s.cfgRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return "", ErrAIConfigNotFound
+	}
+	if !cfg.Enabled {
+		return "", fmt.Errorf("AI 功能未启用")
+	}
+
+	apiKey, err := s.encryption.Decrypt(cfg.APIKeyEncrypted)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt API key")
+	}
+
+	prompt := buildInterviewNotesSummaryPrompt(text)
+
+	maskedPrompt, san := s.maskPrompt(prompt)
+	result, err := s.aiProvider.Complete(ctx, CompleteRequest{
+		APIKey:    apiKey,
+		BaseURL:   cfg.BaseURL,
+		Model:     cfg.DefaultModel,
+		Prompt:    maskedPrompt,
+		TimeoutMs: cfg.TimeoutMs,
+	})
+	if err != nil {
+		log.Printf("[ai] SummarizeInterviewNotes failed: %v", err)
+		return "", ErrAIRequestFailed
+	}
+	return strings.TrimSpace(s.unmaskResponse(san, result.Text)), nil
+}
+
+func buildInterviewNotesSummaryPrompt(text string) string {
+	return fmt.Sprintf(`你是一位资深招聘顾问，请阅读以下面试记录原始文本，提炼生成一段简洁的总结。
+
+【输出要求】
+- 只输出一段总结文字，控制在 150-300 字
+- 概括面试涉及的主要问题方向、候选人表现要点、面试官反馈或印象
+- 不输出 JSON、Markdown 标题或列表符号，直接输出一段连贯的文字
+- 不要编造原文未提及的信息
+
+面试记录原始文本：
+%s`, text)
 }
 
 func buildEnhancePrompt(req model.EnhanceRequest) string {

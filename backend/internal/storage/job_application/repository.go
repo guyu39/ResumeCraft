@@ -154,7 +154,51 @@ func (r *repository) List(ctx context.Context, userID string, filters model.JobA
 	if err != nil {
 		return nil, 0, err
 	}
+	if err := r.attachInterviewBriefs(ctx, userID, items); err != nil {
+		return nil, 0, err
+	}
 	return items, total, nil
+}
+
+// attachInterviewBriefs 批量查询这一页投递记录的面试轮次精简信息，避免逐条查询造成 N+1
+func (r *repository) attachInterviewBriefs(ctx context.Context, userID string, items []model.JobApplicationListItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]string, len(items))
+	indexByID := make(map[string]int, len(items))
+	for i, item := range items {
+		ids[i] = item.ID
+		indexByID[item.ID] = i
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT application_id, round, scheduled_at, result
+		FROM job_application_interviews
+		WHERE application_id = ANY($1::uuid[]) AND user_id = $2
+		ORDER BY scheduled_at ASC NULLS LAST, created_at ASC
+	`, ids, userID)
+	if err != nil {
+		return fmt.Errorf("list interview briefs: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var applicationID, round, result string
+		var scheduledAt sql.NullTime
+		if err := rows.Scan(&applicationID, &round, &scheduledAt, &result); err != nil {
+			return fmt.Errorf("scan interview brief: %w", err)
+		}
+		brief := model.JobApplicationInterviewBrief{Round: round, Result: result}
+		if scheduledAt.Valid {
+			ms := scheduledAt.Time.UnixMilli()
+			brief.ScheduledAt = &ms
+		}
+		if idx, ok := indexByID[applicationID]; ok {
+			items[idx].Interviews = append(items[idx].Interviews, brief)
+		}
+	}
+	return rows.Err()
 }
 
 func (r *repository) GetByID(ctx context.Context, userID, applicationID string) (*model.JobApplication, error) {

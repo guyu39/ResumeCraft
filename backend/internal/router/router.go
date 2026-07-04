@@ -175,6 +175,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 				applicationGroup.DELETE("/:id/checklist/:itemId", h.DeleteApplicationChecklistItem)
 				applicationGroup.POST("/:id/ai-runs", h.CreateApplicationAIRun)
 				applicationGroup.POST("/:id/interviews", h.CreateApplicationInterview)
+				applicationGroup.POST("/:id/interviews/analyze-file", h.AnalyzeInterviewFile)
 				applicationGroup.PUT("/:id/interviews/:interviewId", h.UpdateApplicationInterview)
 				applicationGroup.DELETE("/:id/interviews/:interviewId", h.DeleteApplicationInterview)
 			}

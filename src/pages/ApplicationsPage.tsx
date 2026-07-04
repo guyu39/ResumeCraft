@@ -6,20 +6,24 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileCheck2,
   FilePlus2,
   FileText,
   Layers3,
   Link2,
+  Loader2,
   PanelRightClose,
   Plus,
   RefreshCw,
   Trash2,
+  UploadCloud,
   X,
 } from 'lucide-react'
 import { applicationsApi, resumeApi } from '@/api'
 import type {
   CreateInterviewRequest,
   JobApplication,
+  JobApplicationInterviewBrief,
   JobApplicationListItem,
   JobApplicationStatus,
   ListApplicationsParams,
@@ -92,8 +96,10 @@ const emptyInterviewForm: CreateInterviewRequest = {
 const fieldInputClass = 'mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
 const fieldTextareaClass = 'mt-1 h-40 w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition [scrollbar-width:none] focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 [&::-webkit-scrollbar]:hidden'
 const fieldLabelClass = 'text-xs font-medium text-slate-500'
+const selectFieldClass = 'h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+const selectFieldCompactClass = 'h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
 const hiddenScrollClass = 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-const horizontalScrollClass = 'overflow-x-auto overscroll-x-contain [scrollbar-width:thin] [scrollbar-color:#93c5fd_#e2e8f0] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-blue-300 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-200'
+const horizontalScrollClass = 'overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 
 const stickyActionClass = 'sticky right-0 z-10 border-l border-t border-slate-100 bg-white px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
 const stickyActionHeadClass = 'sticky right-0 z-10 border-l border-slate-100 bg-slate-50 px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
@@ -131,6 +137,14 @@ function isToday(ts?: number): boolean {
   const d = new Date(ts)
   const now = new Date()
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+}
+
+// 列表页面试轮次徽标：通过=绿色，终止=红色，无结果但已排期=灰色"进行中"，无记录=空
+function interviewRoundBadge(brief?: JobApplicationInterviewBrief): { label: string; className: string } | null {
+  if (!brief) return null
+  if (brief.result === '通过') return { label: '通过', className: 'bg-emerald-50 text-emerald-700 ring-emerald-200' }
+  if (brief.result === '终止') return { label: '终止', className: 'bg-red-50 text-red-600 ring-red-200' }
+  return { label: '进行中', className: 'bg-slate-100 text-slate-500 ring-slate-200' }
 }
 
 function canDeleteInterview(interviews: { id: string; scheduledAt?: number; createdAt: number }[], targetId: string): boolean {
@@ -256,6 +270,8 @@ const ApplicationsPage: React.FC = () => {
   const [flowEditorOpen, setFlowEditorOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingInterviewId, setEditingInterviewId] = useState<string | null>(null)
+  const [analyzingInterview, setAnalyzingInterview] = useState(false)
+  const [uploadedFileName, setUploadedFileName] = useState('')
 
   const filters = useMemo<ListApplicationsParams>(() => ({
     page,
@@ -495,7 +511,32 @@ const ApplicationsPage: React.FC = () => {
   const openEditInterview = (item: { id: string; round: string; scheduledAt?: number; notes?: string; result?: string }) => {
     setEditingInterviewId(item.id)
     setInterviewForm({ ...emptyInterviewForm, round: item.round, scheduledAt: item.scheduledAt, notes: item.notes || '', result: item.result || '' })
+    setUploadedFileName('')
     setFlowEditorOpen(true)
+  }
+
+  const analyzeInterviewFile = async (file: File) => {
+    if (!detail) return
+    if (!file.name.toLowerCase().endsWith('.txt')) {
+      toast('仅支持上传纯文本文件（.txt）')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast('文件大小不能超过 2MB')
+      return
+    }
+    setAnalyzingInterview(true)
+    setUploadedFileName(file.name)
+    try {
+      const { summary } = await applicationsApi.analyzeInterviewFile(detail.id, file)
+      setInterviewForm((current) => ({ ...current, notes: summary }))
+      toast('AI 总结已生成，可编辑后保存', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '分析面试记录失败')
+      setUploadedFileName('')
+    } finally {
+      setAnalyzingInterview(false)
+    }
   }
 
   const saveInterview = async () => {
@@ -563,7 +604,7 @@ const ApplicationsPage: React.FC = () => {
     <div className="flex h-screen flex-col overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_48%,#f8fafc_100%)] text-slate-900">
       <ToastContainer />
       <div className="shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-[1680px] items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => { window.location.href = '/' }} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="返回简历列表">
               <ArrowLeft className="h-4 w-4" />
@@ -581,21 +622,21 @@ const ApplicationsPage: React.FC = () => {
         </div>
       </div>
 
-      <main className="mx-auto grid min-h-0 w-full max-w-7xl flex-1 grid-cols-1 gap-4 overflow-hidden px-6 py-6 transition-all">
+      <main className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 grid-cols-1 gap-4 overflow-hidden px-6 py-6 transition-all">
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
             <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索公司、岗位、岗位JD" className="h-10 w-64 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
-            <select value={status} onChange={(event) => setStatus(event.target.value as DisplayStatus | '')} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
+            <select value={status} onChange={(event) => setStatus(event.target.value as DisplayStatus | '')} className={selectFieldClass}>
               {DISPLAY_STATUS_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
             </select>
-            <select value={resumeId} onChange={(event) => setResumeId(event.target.value)} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
+            <select value={resumeId} onChange={(event) => setResumeId(event.target.value)} className={selectFieldClass}>
               <option value="">全部简历</option>
               {resumes.map((resume) => <option key={resume.id} value={resume.id}>{resume.title}</option>)}
             </select>
           </div>
 
           <div className={`min-h-0 flex-1 ${hiddenScrollClass} ${horizontalScrollClass}`}>
-            <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
+            <table className="w-full min-w-[1480px] border-separate border-spacing-0 text-left text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-medium text-slate-500">
                 <tr>
                   <th className="px-4 py-3">公司</th>
@@ -604,20 +645,23 @@ const ApplicationsPage: React.FC = () => {
                   <th className="px-4 py-3 text-center">投递状态</th>
                   <th className="px-4 py-3 text-center">投递时间</th>
                   <th className="px-4 py-3 text-center">笔试时间</th>
+                  {interviewRoundOptions.map((round) => (
+                    <th key={round} className="px-4 py-3 text-center whitespace-nowrap">{round}</th>
+                  ))}
                   <th className="px-4 py-3 text-center">投递链接</th>
                   <th className={stickyActionHeadClass}>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400">加载中...</td></tr>
+                  <tr><td colSpan={8 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">加载中...</td></tr>
                 ) : items.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400">暂无投递记录</td></tr>
+                  <tr><td colSpan={8 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">暂无投递记录</td></tr>
                 ) : items.map((item) => (
                   <tr key={item.id} onClick={() => selectApplication(item.id)} className={`cursor-pointer border-t border-slate-100 transition hover:bg-blue-50/50 ${selectedId === item.id ? 'bg-blue-50/80' : ''}`}>
-                    <td className="border-t border-slate-100 px-4 py-3 font-medium text-slate-800">{item.companyName || '无'}</td>
+                    <td className="border-t border-slate-100 px-4 py-3 font-medium text-slate-800">{item.companyName || <span className="text-slate-400">无</span>}</td>
                     <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.targetTitle}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.department || '无'}</td>
+                    <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.department || <span className="text-slate-400">无</span>}</td>
                     <td className="border-t border-slate-100 px-4 py-3 text-center" onClick={(event) => event.stopPropagation()}>
                       <select
                         value={displayToBackendStatus(rowDisplayStatus(item.status))}
@@ -627,8 +671,24 @@ const ApplicationsPage: React.FC = () => {
                         {STATUS_SELECT_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                       </select>
                     </td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{displayDate(item.submittedAt)}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{displayDate(item.writtenTestAt)}</td>
+                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.submittedAt ? displayDate(item.submittedAt) : <span className="text-slate-300">无</span>}</td>
+                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.writtenTestAt ? displayDate(item.writtenTestAt) : <span className="text-slate-300">无</span>}</td>
+                    {interviewRoundOptions.map((round) => {
+                      const brief = item.interviews?.find((it) => it.round === round)
+                      const badge = interviewRoundBadge(brief)
+                      return (
+                        <td key={round} className="border-t border-slate-100 px-4 py-3 text-center">
+                          {badge ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${badge.className}`}>{badge.label}</span>
+                              <span className="text-[11px] text-slate-400">{displayDate(brief?.scheduledAt)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-300">无</span>
+                          )}
+                        </td>
+                      )
+                    })}
                     <td className="border-t border-slate-100 px-4 py-3 text-center">
                       {item.applicationUrl ? <a href={item.applicationUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="text-blue-600 hover:underline">链接</a> : <span className="text-slate-400">无</span>}
                     </td>
@@ -648,7 +708,7 @@ const ApplicationsPage: React.FC = () => {
           <div className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">第 {page} / {totalPages} 页</span>
-              <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
+              <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className={selectFieldCompactClass}>
                 {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size} 条/页</option>)}
               </select>
             </div>
@@ -681,7 +741,7 @@ const ApplicationsPage: React.FC = () => {
                   <section>
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-semibold">投递时间线</h3>
-                      <button type="button" disabled={finalStatuses.includes(detail.status)} onClick={() => { setEditingInterviewId(null); setInterviewForm(emptyInterviewForm); setFlowEditorOpen(true) }} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-lg transition ${finalStatuses.includes(detail.status) ? 'cursor-not-allowed bg-slate-300 shadow-none' : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'}`} title={finalStatuses.includes(detail.status) ? '投递已终态，不可新增面试' : '新增流程'}>
+                      <button type="button" disabled={finalStatuses.includes(detail.status)} onClick={() => { setEditingInterviewId(null); setInterviewForm(emptyInterviewForm); setUploadedFileName(''); setFlowEditorOpen(true) }} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-lg transition ${finalStatuses.includes(detail.status) ? 'cursor-not-allowed bg-slate-300 shadow-none' : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'}`} title={finalStatuses.includes(detail.status) ? '投递已终态，不可新增面试' : '新增流程'}>
                         <FilePlus2 className="h-3.5 w-3.5" />新增流程
                       </button>
                     </div>
@@ -765,7 +825,43 @@ const ApplicationsPage: React.FC = () => {
                           </div>
                         </label>
                         <label className={`${fieldLabelClass} col-span-2`}>面试记录
-                          <textarea value={interviewForm.notes} onChange={(event) => setInterviewForm({ ...interviewForm, notes: event.target.value })} placeholder="记录问题、回答、反馈或复盘点" className="mt-1 h-28 w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none [scrollbar-width:none] focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 [&::-webkit-scrollbar]:hidden" />
+                          <div className="mt-1 space-y-2">
+                            <label className={`flex h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed transition ${analyzingInterview ? 'cursor-not-allowed border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-slate-50/70 hover:border-blue-300 hover:bg-blue-50/40'}`}>
+                              <input
+                                type="file"
+                                accept=".txt,text/plain"
+                                className="hidden"
+                                disabled={analyzingInterview}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0]
+                                  if (file) analyzeInterviewFile(file)
+                                  event.target.value = ''
+                                }}
+                              />
+                              {analyzingInterview ? (
+                                <>
+                                  <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                                  <span className="text-xs font-medium text-blue-600">AI 正在分析「{uploadedFileName}」...</span>
+                                </>
+                              ) : uploadedFileName ? (
+                                <>
+                                  <FileCheck2 className="h-5 w-5 text-emerald-500" />
+                                  <span className="text-xs font-medium text-slate-600">已分析「{uploadedFileName}」，可重新上传覆盖</span>
+                                </>
+                              ) : (
+                                <>
+                                  <UploadCloud className="h-5 w-5 text-slate-400" />
+                                  <span className="text-xs font-medium text-slate-500">点击上传面试记录文本文件（.txt，≤2MB）</span>
+                                </>
+                              )}
+                            </label>
+                            <textarea
+                              value={interviewForm.notes}
+                              onChange={(event) => setInterviewForm({ ...interviewForm, notes: event.target.value })}
+                              placeholder="上传文件后，AI 生成的总结会显示在这里，可直接编辑调整"
+                              className="h-24 w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none [scrollbar-width:none] focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 [&::-webkit-scrollbar]:hidden"
+                            />
+                          </div>
                         </label>
                         <label className={fieldLabelClass}>结果
                           <select value={interviewForm.result || ''} onChange={(event) => setInterviewForm({ ...interviewForm, result: event.target.value })} disabled={editingInterviewId ? !isToday(interviewForm.scheduledAt) : false} className={fieldInputClass}>
