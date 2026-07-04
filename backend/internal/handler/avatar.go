@@ -91,6 +91,14 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 		return
 	}
 
+	// 同步更新该用户名下所有简历的 personal_data.avatar，不依赖前端异步 flushToCloud 落库，
+	// 避免切快照/刷新页面时旧的云端 personal_data 覆盖掉刚上传的新头像
+	if h.resumeService != nil {
+		if err := h.resumeService.SyncAvatarToPersonalData(c.Request.Context(), userID, avatarURL); err != nil {
+			log.Printf("[avatar] sync avatar to personal_data failed for user %s: %v", userID, err)
+		}
+	}
+
 	// 写库成功后清理旧头像文件，避免每次换头像都在对象存储中留下孤儿文件；
 	// 删除前重新核对 DB 当前值仍指向旧文件，防止与并发上传竞态误删刚写入的新文件
 	if existingURL != "" && existingURL != avatarURL {

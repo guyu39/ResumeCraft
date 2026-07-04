@@ -32,6 +32,7 @@ type Service interface {
 	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
 	GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error)
 	DiffSnapshots(ctx context.Context, userID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error)
+	SyncAvatarToPersonalData(ctx context.Context, userID, avatarURL string) error
 
 	// 分享链接
 	CreateShareLink(ctx context.Context, userID string, req model.CreateShareRequest) (*model.ShareLink, error)
@@ -226,4 +227,8 @@ func (s *service) GetSnapshotDetail(ctx context.Context, snapshotID, userID stri
 
 func (s *service) DiffSnapshots(ctx context.Context, userID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error) {
 	return s.repo.DiffSnapshots(ctx, req.SnapshotAID, req.SnapshotBID, req.CurrentModules, req.ComparisonModules)
+}
+
+func (s *service) SyncAvatarToPersonalData(ctx context.Context, userID, avatarURL string) error {
+	return s.repo.SyncAvatarToPersonalData(ctx, userID, avatarURL)
 }

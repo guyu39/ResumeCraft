@@ -120,7 +120,7 @@ const PersonalForm: React.FC<PersonalFormProps> = ({ moduleId, data }) => {
 
   const handleAvatarChange = (avatarUrl: string) => {
     update('avatar', avatarUrl)
-    flushToCloud()
+    void flushToCloud()
   }
 
   return (
