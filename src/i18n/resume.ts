@@ -95,6 +95,10 @@ const dict: I18nDict = {
   'enum.over10000': { 'zh-CN': '10000人以上', 'en-US': '10000+' },
 
   // 语言等级
+  'enum.cet4': { 'zh-CN': 'CET-4', 'en-US': 'CET-4' },
+  'enum.cet6': { 'zh-CN': 'CET-6', 'en-US': 'CET-6' },
+  'enum.tem4': { 'zh-CN': 'TEM-4', 'en-US': 'TEM-4' },
+  'enum.tem8': { 'zh-CN': 'TEM-8', 'en-US': 'TEM-8' },
   'enum.ielts60': { 'zh-CN': '雅思 6.0', 'en-US': 'IELTS 6.0' },
   'enum.ielts65': { 'zh-CN': '雅思 6.5', 'en-US': 'IELTS 6.5' },
   'enum.ielts70': { 'zh-CN': '雅思 7.0+', 'en-US': 'IELTS 7.0+' },

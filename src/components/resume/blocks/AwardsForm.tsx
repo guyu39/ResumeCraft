@@ -24,9 +24,9 @@ const AwardsForm: React.FC<AwardsFormProps> = ({ moduleId, items }) => {
   const AWARD_LEVEL_OPTIONS = [
     { label: t('enum.selectLevel'), value: '' },
     { label: t('enum.collegeLevel'), value: '院级' },
-    { label: t('enum.schoolLevel'), value: '校级' },
+    { label: t('enum.universityLevel'), value: '校级' },
     { label: t('enum.cityLevel'), value: '市级' },
-    { label: t('enum.provinceLevel'), value: '省级' },
+    { label: t('enum.provincialLevel'), value: '省级' },
     { label: t('enum.nationalLevel'), value: '国家级' },
     { label: t('enum.internationalLevel'), value: '国际级' },
     { label: t('enum.otherLevel'), value: '其他' },

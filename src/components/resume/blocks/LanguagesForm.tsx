@@ -29,7 +29,7 @@ const LEVEL_I18N_KEYS: Record<string, string> = {
   'TEM-8': 'enum.tem8',
   '口语流畅': 'enum.fluent',
   '口语良好': 'enum.good',
-  '口语一般': 'enum.average',
+  '口语一般': 'enum.basic',
 }
 
 const LanguagesForm: React.FC<LanguagesFormProps> = ({ moduleId, items }) => {
