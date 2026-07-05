@@ -15,6 +15,7 @@ export type JobApplicationStatus =
 export interface JobApplicationInterviewBrief {
   round: string
   scheduledAt?: number
+  scheduledEnd?: number
   result?: string
 }
 
@@ -94,6 +95,7 @@ export interface JobApplicationInterview {
   applicationId: string
   round: string
   scheduledAt?: number
+  scheduledEnd?: number
   format: string
   interviewer: string
   questions?: string

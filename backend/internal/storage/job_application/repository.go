@@ -44,21 +44,21 @@ type CreateApplicationParams struct {
 }
 
 type UpdateApplicationParams struct {
-	ResumeID          string
-	SnapshotVersionID string
-	CompanyName       string
-	TargetTitle       string
-	Department        string
-	JDText            string
-	JDHash            string
-	Source            string
-	ApplicationURL    string
-	NextAction        string
-	SubmittedAt       *time.Time
-	ClearSubmittedAt  bool
-	WrittenTestAt     *time.Time
+	ResumeID           string
+	SnapshotVersionID  string
+	CompanyName        string
+	TargetTitle        string
+	Department         string
+	JDText             string
+	JDHash             string
+	Source             string
+	ApplicationURL     string
+	NextAction         string
+	SubmittedAt        *time.Time
+	ClearSubmittedAt   bool
+	WrittenTestAt      *time.Time
 	ClearWrittenTestAt bool
-	Status            model.JobApplicationStatus
+	Status             model.JobApplicationStatus
 }
 
 type Repository interface {
@@ -173,7 +173,7 @@ func (r *repository) attachInterviewBriefs(ctx context.Context, userID string, i
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT application_id, round, scheduled_at, result
+		SELECT application_id, round, scheduled_at, scheduled_end, result
 		FROM job_application_interviews
 		WHERE application_id = ANY($1::uuid[]) AND user_id = $2
 		ORDER BY scheduled_at ASC NULLS LAST, created_at ASC
@@ -185,14 +185,18 @@ func (r *repository) attachInterviewBriefs(ctx context.Context, userID string, i
 
 	for rows.Next() {
 		var applicationID, round, result string
-		var scheduledAt sql.NullTime
-		if err := rows.Scan(&applicationID, &round, &scheduledAt, &result); err != nil {
+		var scheduledAt, scheduledEnd sql.NullTime
+		if err := rows.Scan(&applicationID, &round, &scheduledAt, &scheduledEnd, &result); err != nil {
 			return fmt.Errorf("scan interview brief: %w", err)
 		}
 		brief := model.JobApplicationInterviewBrief{Round: round, Result: result}
 		if scheduledAt.Valid {
 			ms := scheduledAt.Time.UnixMilli()
 			brief.ScheduledAt = &ms
+		}
+		if scheduledEnd.Valid {
+			ms := scheduledEnd.Time.UnixMilli()
+			brief.ScheduledEnd = &ms
 		}
 		if idx, ok := indexByID[applicationID]; ok {
 			items[idx].Interviews = append(items[idx].Interviews, brief)
@@ -778,7 +782,7 @@ func (r *repository) ListAIRuns(ctx context.Context, userID, applicationID strin
 
 func (r *repository) ListInterviews(ctx context.Context, userID, applicationID string) ([]model.JobApplicationInterview, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT it.id, it.application_id, it.round, it.scheduled_at, it.format,
+		SELECT it.id, it.application_id, it.round, it.scheduled_at, it.scheduled_end, it.format,
 		       it.interviewer, COALESCE(it.questions, ''), COALESCE(it.notes, ''),
 		       it.result, COALESCE(it.next_action, ''), it.created_at, it.updated_at
 		FROM job_application_interviews it
@@ -795,24 +799,25 @@ func (r *repository) ListInterviews(ctx context.Context, userID, applicationID s
 
 func (r *repository) CreateInterview(ctx context.Context, userID, applicationID string, req model.CreateInterviewRequest) (*model.JobApplicationInterview, error) {
 	scheduledAt := unixMilliToTime(req.ScheduledAt)
+	scheduledEnd := unixMilliToTime(req.ScheduledEnd)
 	var item model.JobApplicationInterview
-	var scheduled sql.NullTime
+	var scheduled, scheduledE sql.NullTime
 	var createdAt, updatedAt time.Time
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO job_application_interviews (
-			application_id, user_id, round, scheduled_at, format, interviewer,
+			application_id, user_id, round, scheduled_at, scheduled_end, format, interviewer,
 			questions, notes, result, next_action
 		)
-		SELECT $1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), $9, NULLIF($10, '')
+		SELECT $1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), NULLIF($9, ''), $10, NULLIF($11, '')
 		WHERE EXISTS (
 			SELECT 1 FROM job_applications WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 		)
-		RETURNING id, application_id, round, scheduled_at, format, interviewer,
+		RETURNING id, application_id, round, scheduled_at, scheduled_end, format, interviewer,
 		          COALESCE(questions, ''), COALESCE(notes, ''), result,
 		          COALESCE(next_action, ''), created_at, updated_at
-	`, applicationID, userID, req.Round, scheduledAt, req.Format, req.Interviewer,
+	`, applicationID, userID, req.Round, scheduledAt, scheduledEnd, req.Format, req.Interviewer,
 		req.Questions, req.Notes, req.Result, req.NextAction).Scan(
-		&item.ID, &item.ApplicationID, &item.Round, &scheduled, &item.Format, &item.Interviewer,
+		&item.ID, &item.ApplicationID, &item.Round, &scheduled, &scheduledE, &item.Format, &item.Interviewer,
 		&item.Questions, &item.Notes, &item.Result, &item.NextAction, &createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -825,6 +830,10 @@ func (r *repository) CreateInterview(ctx context.Context, userID, applicationID 
 		ms := scheduled.Time.UnixMilli()
 		item.ScheduledAt = &ms
 	}
+	if scheduledE.Valid {
+		ms := scheduledE.Time.UnixMilli()
+		item.ScheduledEnd = &ms
+	}
 	item.CreatedAt = createdAt.UnixMilli()
 	item.UpdatedAt = updatedAt.UnixMilli()
 	return &item, nil
@@ -832,15 +841,16 @@ func (r *repository) CreateInterview(ctx context.Context, userID, applicationID 
 
 func (r *repository) UpdateInterview(ctx context.Context, userID, applicationID, interviewID string, req model.UpdateInterviewRequest) (*model.JobApplicationInterview, error) {
 	scheduledAt := unixMilliToTime(req.ScheduledAt)
+	scheduledEnd := unixMilliToTime(req.ScheduledEnd)
 	result, err := r.pool.Exec(ctx, `
 		UPDATE job_application_interviews it
-		SET round = $1, scheduled_at = $2, format = $3, interviewer = $4,
-		    questions = NULLIF($5, ''), notes = NULLIF($6, ''), result = $7,
-		    next_action = NULLIF($8, ''), updated_at = NOW()
+		SET round = $1, scheduled_at = $2, scheduled_end = $3, format = $4, interviewer = $5,
+		    questions = NULLIF($6, ''), notes = NULLIF($7, ''), result = $8,
+		    next_action = NULLIF($9, ''), updated_at = NOW()
 		FROM job_applications ja
-		WHERE it.id = $9 AND it.application_id = $10 AND it.user_id = $11
+		WHERE it.id = $10 AND it.application_id = $11 AND it.user_id = $12
 		  AND ja.id = it.application_id AND ja.user_id = it.user_id
-	`, req.Round, scheduledAt, req.Format, req.Interviewer, req.Questions,
+	`, req.Round, scheduledAt, scheduledEnd, req.Format, req.Interviewer, req.Questions,
 		req.Notes, req.Result, req.NextAction, interviewID, applicationID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("update interview: %w", err)
@@ -1038,9 +1048,9 @@ func scanInterviewRows(rows pgx.Rows) ([]model.JobApplicationInterview, error) {
 	items := []model.JobApplicationInterview{}
 	for rows.Next() {
 		var item model.JobApplicationInterview
-		var scheduledAt sql.NullTime
+		var scheduledAt, scheduledEnd sql.NullTime
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&item.ID, &item.ApplicationID, &item.Round, &scheduledAt,
+		if err := rows.Scan(&item.ID, &item.ApplicationID, &item.Round, &scheduledAt, &scheduledEnd,
 			&item.Format, &item.Interviewer, &item.Questions, &item.Notes,
 			&item.Result, &item.NextAction, &createdAt, &updatedAt); err != nil {
 			return nil, fmt.Errorf("scan interview: %w", err)
@@ -1048,6 +1058,10 @@ func scanInterviewRows(rows pgx.Rows) ([]model.JobApplicationInterview, error) {
 		if scheduledAt.Valid {
 			ms := scheduledAt.Time.UnixMilli()
 			item.ScheduledAt = &ms
+		}
+		if scheduledEnd.Valid {
+			ms := scheduledEnd.Time.UnixMilli()
+			item.ScheduledEnd = &ms
 		}
 		item.CreatedAt = createdAt.UnixMilli()
 		item.UpdatedAt = updatedAt.UnixMilli()

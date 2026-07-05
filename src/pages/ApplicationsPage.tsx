@@ -23,7 +23,6 @@ import { applicationsApi, resumeApi } from '@/api'
 import type {
   CreateInterviewRequest,
   JobApplication,
-  JobApplicationInterviewBrief,
   JobApplicationListItem,
   JobApplicationStatus,
   ListApplicationsParams,
@@ -33,6 +32,7 @@ import type { SnapshotListItem } from '@/api/resume'
 import ToastContainer, { toast } from '@/components/common/Toast'
 import YearMonthPicker from '@/components/common/YearMonthPicker'
 import StyledSelect from '@/components/common/StyledSelect'
+import TimeRangePicker from '@/components/common/TimeRangePicker'
 
 type DisplayStatus = 'submitted' | 'written_test' | 'interview' | 'offer' | 'terminated'
 
@@ -87,6 +87,7 @@ const EMPTY_CREATE_FORM: CreateFormState = {
 const emptyInterviewForm: CreateInterviewRequest = {
   round: '',
   scheduledAt: undefined,
+  scheduledEnd: undefined,
   format: '',
   interviewer: '',
   questions: '',
@@ -115,11 +116,19 @@ const finalStatuses: JobApplicationStatus[] = ['offer', 'rejected', 'withdrawn']
 const interviewRoundOptions = ['一面', '二面', '三面', '主管面', 'HR面']
 const ROUND_ORDER: Record<string, number> = { '一面': 1, '二面': 2, '三面': 3, '主管面': 4, 'HR面': 5 }
 
+/** 从后端错误中截取中文部分（去掉 "xxx:中文" 前缀） */
+function cleanError(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : ''
+  if (!raw) return fallback
+  const idx = raw.search(/[\u4e00-\u9fff]/)
+  return idx >= 0 ? raw.slice(idx) : raw
+}
+
 // 列表页状态内联下拉可选项：后端 status -> 中文展示 + 反查映射
 const STATUS_SELECT_OPTIONS: Array<{ value: JobApplicationStatus; label: string }> = [
   { value: 'submitted', label: '已投递' },
   { value: 'written_test', label: '笔试' },
-  { value: 'interview', label: '面试' },
+  { value: 'interview', label: '面试中' },
   { value: 'offer', label: '已offer' },
   { value: 'rejected', label: '终止' },
   { value: 'withdrawn', label: '放弃' },
@@ -135,14 +144,6 @@ function isToday(ts?: number): boolean {
   const d = new Date(ts)
   const now = new Date()
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
-}
-
-// 列表页面试轮次徽标：通过=绿色，终止=红色，无结果但已排期=灰色"进行中"，无记录=空
-function interviewRoundBadge(brief?: JobApplicationInterviewBrief): { label: string; className: string } | null {
-  if (!brief) return null
-  if (brief.result === '通过') return { label: '通过', className: 'bg-emerald-50 text-emerald-700 ring-emerald-200' }
-  if (brief.result === '终止') return { label: '终止', className: 'bg-red-50 text-red-600 ring-red-200' }
-  return { label: '进行中', className: 'bg-slate-100 text-slate-500 ring-slate-200' }
 }
 
 function canDeleteInterview(interviews: { id: string; scheduledAt?: number; createdAt: number }[], targetId: string): boolean {
@@ -182,15 +183,6 @@ function validateInterviewDate(interviews: { round: string; scheduledAt?: number
   }
   return null
 }
-const interviewResultOptions = ['通过', '终止']
-
-function toDisplayStatus(status: JobApplicationStatus): DisplayStatus {
-  if (status === 'written_test') return 'written_test'
-  if (status === 'interview') return 'interview'
-  if (status === 'offer') return 'offer'
-  if (status === 'rejected' || status === 'withdrawn') return 'terminated'
-  return 'submitted'
-}
 
 function toBackendStatuses(status: DisplayStatus | ''): JobApplicationStatus[] | undefined {
   if (!status) return undefined
@@ -217,25 +209,52 @@ function toDatePickerValue(value?: number): string {
   return localDate.toISOString().slice(0, 10)
 }
 
+/** 格式化时间段，同一天: "2026/07/05 15:00 - 16:00"，跨天: "2026/07/05 23:00 - 2026/07/06 01:00" */
+function displayDatetimeRange(start?: number, end?: number): string {
+  if (!start && !end) return '无'
+  const d1 = start ? new Date(start) : null
+  const d2 = end ? new Date(end) : null
+  const sameDay = d1 && d2 && d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate()
+  const fmt = (d: Date | null, withDate: boolean) => {
+    if (!d) return ''
+    const date = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    return withDate ? `${date} ${time}` : time
+  }
+  const s = fmt(d1, true)
+  const e = fmt(d2, !sameDay)
+  if (s && e) return `${s} - ${e}`
+  return s
+}
+
+/** 从时间戳拆出 { hour, minute } */
+function extractHourMinute(value?: number): { hour: string; minute: string } {
+  if (!value) return { hour: '09', minute: '00' }
+  const d = new Date(value)
+  return { hour: String(d.getHours()).padStart(2, '0'), minute: String(d.getMinutes()).padStart(2, '0') }
+}
+
+/** 用日期时间戳 + 时/分重建完整时间戳 */
+function buildTimestamp(dateTimestamp: number | undefined, hour: string, minute: string): number {
+  const d = new Date(dateTimestamp || Date.now())
+  if (!dateTimestamp) d.setHours(0, 0, 0, 0) // 未选日期时用当天 0 点
+  d.setHours(parseInt(hour, 10) || 0, parseInt(minute, 10) || 0, 0, 0)
+  return d.getTime()
+}
+
+/** 时间戳 + 1 小时 */
+function addOneHour(value: number | undefined): number | undefined {
+  if (!value) return undefined
+  const d = new Date(value)
+  d.setHours(d.getHours() + 1)
+  return d.getTime()
+}
+
 function summarizeAiRun(summary: Record<string, unknown>): string {
   const values = Object.values(summary || {})
   const firstText = values.find((value) => typeof value === 'string' && value.trim())
   if (typeof firstText === 'string') return firstText
   return JSON.stringify(summary || {})
-}
-
-function inferStatusFromInterview(form: CreateInterviewRequest): JobApplicationStatus | undefined {
-  const text = `${form.round || ''} ${form.result || ''}`.toLowerCase()
-  if (text.includes('终止')) return 'withdrawn'
-  if (form.round.trim() || form.notes?.trim()) return 'interview'
-  return undefined
-}
-
-function shouldAutoUpdateStatus(currentStatus: JobApplicationStatus, nextStatus: JobApplicationStatus): boolean {
-  if (currentStatus === nextStatus || finalStatuses.includes(currentStatus)) return false
-  if (nextStatus === 'written_test') return toDisplayStatus(currentStatus) === 'submitted'
-  if (nextStatus === 'interview') return toDisplayStatus(currentStatus) === 'submitted' || currentStatus === 'written_test'
-  return nextStatus === 'offer' || nextStatus === 'withdrawn'
 }
 
 const STATUS_COLOR_CLASS: Record<string, string> = {
@@ -286,7 +305,7 @@ const ApplicationsPage: React.FC = () => {
       setItems(res.items || [])
       setTotalPages(res.pagination?.totalPages || 1)
     } catch (err) {
-      toast(err instanceof Error ? err.message : '加载投递记录失败')
+      toast(cleanError(err, '加载投递记录失败'))
     } finally {
       setLoading(false)
     }
@@ -298,7 +317,7 @@ const ApplicationsPage: React.FC = () => {
       const app = await applicationsApi.get(id)
       setDetail(app)
     } catch (err) {
-      toast(err instanceof Error ? err.message : '加载投递详情失败')
+      toast(cleanError(err, '加载投递详情失败'))
     } finally {
       setDetailLoading(false)
     }
@@ -347,10 +366,12 @@ const ApplicationsPage: React.FC = () => {
         result: '',
         notes: '',
         scheduledAt: undefined as number | undefined,
+        scheduledEnd: undefined as number | undefined,
       } : null,
       ...(detail.interviews || []).map((item) => ({
         key: `interview-${item.id}`,
         time: item.scheduledAt || item.createdAt,
+        timeEnd: item.scheduledEnd,
         title: item.round || '面试流程',
         description: '',
         interviewId: item.id,
@@ -358,6 +379,7 @@ const ApplicationsPage: React.FC = () => {
         result: item.result || '',
         notes: item.notes || '',
         scheduledAt: item.scheduledAt,
+        scheduledEnd: item.scheduledEnd,
       })),
       ...(detail.statusEvents || [])
         .filter((event) => event.toStatus === 'offer' || event.toStatus === 'withdrawn' || event.toStatus === 'rejected')
@@ -372,6 +394,7 @@ const ApplicationsPage: React.FC = () => {
           result: '',
           notes: '',
           scheduledAt: undefined as number | undefined,
+          scheduledEnd: undefined as number | undefined,
         })),
     ].filter(Boolean).sort((a, b) => (a?.time || 0) - (b?.time || 0))
   }, [detail])
@@ -400,7 +423,7 @@ const ApplicationsPage: React.FC = () => {
       })
       setCreateOpen(true)
     } catch (err) {
-      toast(err instanceof Error ? err.message : '加载详情失败')
+      toast(cleanError(err, '加载详情失败'))
     }
   }
 
@@ -442,6 +465,10 @@ const ApplicationsPage: React.FC = () => {
         })
         if (detail?.id === editingId) await loadDetail(editingId)
         await loadList()
+        // 编辑时填写了笔试日期则自动更新状态
+        if (writtenTestAt && detail?.status === 'submitted') {
+          await applicationsApi.updateStatus(editingId, 'written_test')
+        }
         toast('投递记录已更新', 'success')
       } else {
         const created = await applicationsApi.create({
@@ -455,7 +482,10 @@ const ApplicationsPage: React.FC = () => {
           applicationUrl: createForm.applicationUrl.trim(),
         })
         if (submittedAt) await applicationsApi.update(created.id, { submittedAt })
-        if (writtenTestAt) await applicationsApi.update(created.id, { writtenTestAt })
+        if (writtenTestAt) {
+          await applicationsApi.update(created.id, { writtenTestAt })
+          await applicationsApi.updateStatus(created.id, 'written_test')
+        }
         setSelectedId(created.id)
         setDetailOpen(true)
         await loadList()
@@ -466,7 +496,7 @@ const ApplicationsPage: React.FC = () => {
       setCreateForm(EMPTY_CREATE_FORM)
       setEditingId(null)
     } catch (err) {
-      toast(err instanceof Error ? err.message : '保存失败')
+      toast(cleanError(err, '保存失败'))
     } finally {
       setCreating(false)
     }
@@ -484,7 +514,7 @@ const ApplicationsPage: React.FC = () => {
       if (detail?.id === id) await loadDetail(id)
       toast(`${target?.companyName || '投递记录'}状态已更新为${rowDisplayStatus(status)}`)
     } catch (err) {
-      toast(err instanceof Error ? err.message : '更新状态失败')
+      toast(cleanError(err, '更新状态失败'))
     }
   }
 
@@ -502,13 +532,13 @@ const ApplicationsPage: React.FC = () => {
       await loadList()
       toast('投递记录已删除', 'success')
     } catch (err) {
-      toast(err instanceof Error ? err.message : '删除投递记录失败')
+      toast(cleanError(err, '删除投递记录失败'))
     }
   }
 
-  const openEditInterview = (item: { id: string; round: string; scheduledAt?: number; notes?: string; result?: string }) => {
+  const openEditInterview = (item: { id: string; round: string; scheduledAt?: number; scheduledEnd?: number; notes?: string; result?: string }) => {
     setEditingInterviewId(item.id)
-    setInterviewForm({ ...emptyInterviewForm, round: item.round, scheduledAt: item.scheduledAt, notes: item.notes || '', result: item.result || '' })
+    setInterviewForm({ ...emptyInterviewForm, round: item.round, scheduledAt: item.scheduledAt, scheduledEnd: item.scheduledEnd, notes: item.notes || '', result: item.result || '' })
     setUploadedFileName('')
     setFlowEditorOpen(true)
   }
@@ -530,7 +560,7 @@ const ApplicationsPage: React.FC = () => {
       setInterviewForm((current) => ({ ...current, notes: summary }))
       toast('AI 总结已生成，可编辑后保存', 'success')
     } catch (err) {
-      toast(err instanceof Error ? err.message : '分析面试记录失败')
+      toast(cleanError(err, '分析面试记录失败'))
       setUploadedFileName('')
     } finally {
       setAnalyzingInterview(false)
@@ -558,10 +588,6 @@ const ApplicationsPage: React.FC = () => {
         await applicationsApi.updateInterview(detail.id, editingInterviewId, interviewForm)
       } else {
         await applicationsApi.createInterview(detail.id, interviewForm)
-        const nextStatus = inferStatusFromInterview(interviewForm)
-        if (nextStatus && shouldAutoUpdateStatus(detail.status, nextStatus)) {
-          await applicationsApi.updateStatus(detail.id, nextStatus)
-        }
       }
       setInterviewForm(emptyInterviewForm)
       setEditingInterviewId(null)
@@ -569,7 +595,7 @@ const ApplicationsPage: React.FC = () => {
       await loadDetail(detail.id)
       await loadList()
     } catch (err) {
-      toast(err instanceof Error ? err.message : '保存面试记录失败')
+      toast(cleanError(err, '保存面试记录失败'))
     }
   }
 
@@ -580,7 +606,42 @@ const ApplicationsPage: React.FC = () => {
       await loadDetail(detail.id)
       await loadList()
     } catch (err) {
-      toast(err instanceof Error ? err.message : '删除面试记录失败')
+      toast(cleanError(err, '删除面试记录失败'))
+    }
+  }
+
+  const updateInterviewResult = async (interviewId: string, result: string) => {
+    if (!detail) return
+    if (finalStatuses.includes(detail.status)) {
+      toast('投递已终止或已 offer，不可修改面试结果')
+      return
+    }
+    const interview = detail.interviews?.find((i) => i.id === interviewId)
+    if (!interview) return
+    // 权重校验：若存在更高权重的面试，则不允许修改当前面试结果
+    const currentWeight = ROUND_ORDER[interview.round] || 0
+    if (currentWeight > 0) {
+      const hasHigher = (detail.interviews || []).some((i) => i.id !== interviewId && (ROUND_ORDER[i.round] || 0) > currentWeight)
+      if (hasHigher) {
+        toast('存在后续面试流程，不允许修改当前面试结果')
+        return
+      }
+    }
+    try {
+      await applicationsApi.updateInterview(detail.id, interviewId, {
+        round: interview.round,
+        scheduledAt: interview.scheduledAt,
+        scheduledEnd: interview.scheduledEnd,
+        format: interview.format,
+        interviewer: interview.interviewer,
+        questions: interview.questions,
+        notes: interview.notes,
+        result,
+      })
+      await loadDetail(detail.id)
+      await loadList()
+    } catch (err) {
+      toast(cleanError(err, '更新面试结果失败'))
     }
   }
 
@@ -594,7 +655,7 @@ const ApplicationsPage: React.FC = () => {
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      toast(err instanceof Error ? err.message : '导出失败')
+      toast(cleanError(err, '导出失败'))
     }
   }
 
@@ -623,9 +684,9 @@ const ApplicationsPage: React.FC = () => {
       <main className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 grid-cols-1 gap-4 overflow-hidden px-6 py-6 transition-all">
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
-            <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索公司、岗位、岗位JD" className="h-10 w-64 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
-            <div className="w-36"><StyledSelect value={status} onChange={(v) => setStatus(v as DisplayStatus | '')} options={DISPLAY_STATUS_OPTIONS.map((option) => ({ label: option.label, value: option.value }))} /></div>
-            <div className="w-44"><StyledSelect value={resumeId} onChange={setResumeId} placeholder="全部简历" options={[{ label: '全部简历', value: '' }, ...resumes.map((resume) => ({ label: resume.title, value: resume.id }))]} /></div>
+            <input value={keyword} onChange={(event) => { setKeyword(event.target.value); setDetailOpen(false) }} placeholder="搜索公司、岗位、岗位JD" className="h-10 w-64 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
+            <div className="w-36"><StyledSelect value={status} onChange={(v) => { setStatus(v as DisplayStatus | ''); setDetailOpen(false) }} options={DISPLAY_STATUS_OPTIONS.map((option) => ({ label: option.label, value: option.value }))} /></div>
+            <div className="w-44"><StyledSelect value={resumeId} onChange={(v) => { setResumeId(v); setDetailOpen(false) }} placeholder="全部简历" options={[{ label: '全部简历', value: '' }, ...resumes.map((resume) => ({ label: resume.title, value: resume.id }))]} /></div>
           </div>
 
           <div className={`min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain thin-scrollbar [scrollbar-width:thin] [&::-webkit-scrollbar]:block [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 hover:[&::-webkit-scrollbar-thumb]:bg-slate-400`}>
@@ -636,20 +697,20 @@ const ApplicationsPage: React.FC = () => {
                   <th className="px-4 py-3">投递职位</th>
                   <th className="px-4 py-3">投递部门</th>
                   <th className="px-4 py-3 text-center">投递状态</th>
-                  <th className="px-4 py-3 text-center">投递时间</th>
-                  <th className="px-4 py-3 text-center">笔试时间</th>
                   {interviewRoundOptions.map((round) => (
                     <th key={round} className="px-4 py-3 text-center whitespace-nowrap">{round}</th>
                   ))}
+                  <th className="px-4 py-3 text-center">投递时间</th>
+                  <th className="px-4 py-3 text-center">笔试时间</th>
                   <th className="px-4 py-3 text-center">投递链接</th>
                   <th className={stickyActionHeadClass}>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">加载中...</td></tr>
+                  <tr><td colSpan={6 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">加载中...</td></tr>
                 ) : items.length === 0 ? (
-                  <tr><td colSpan={8 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">暂无投递记录</td></tr>
+                  <tr><td colSpan={6 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">暂无投递记录</td></tr>
                 ) : items.map((item) => (
                   <tr key={item.id} onClick={() => selectApplication(item.id)} className={`cursor-pointer border-t border-slate-100 transition hover:bg-blue-50/50 ${selectedId === item.id ? 'bg-blue-50/80' : ''}`}>
                     <td className="border-t border-slate-100 px-4 py-3 font-medium text-slate-800">{item.companyName || <span className="text-slate-400">无</span>}</td>
@@ -666,17 +727,16 @@ const ApplicationsPage: React.FC = () => {
                         />
                       </div>
                     </td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.submittedAt ? displayDate(item.submittedAt) : <span className="text-slate-300">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.writtenTestAt ? displayDate(item.writtenTestAt) : <span className="text-slate-300">无</span>}</td>
                     {interviewRoundOptions.map((round) => {
                       const brief = item.interviews?.find((it) => it.round === round)
-                      const badge = interviewRoundBadge(brief)
                       return (
                         <td key={round} className="border-t border-slate-100 px-4 py-3 text-center">
-                          {badge ? (
+                          {brief ? (
                             <div className="flex flex-col items-center gap-0.5">
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${badge.className}`}>{badge.label}</span>
-                              <span className="text-[11px] text-slate-400">{displayDate(brief?.scheduledAt)}</span>
+                              {brief.result === '通过' ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-100">通过</span>
+                               : brief.result === '终止' ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 ring-1 ring-red-100">终止</span>
+                               : <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 ring-1 ring-blue-100">面试中</span>}
+                              {brief.scheduledAt ? <span className="text-[11px] text-slate-400">{displayDate(brief.scheduledAt)}</span> : null}
                             </div>
                           ) : (
                             <span className="text-slate-300">无</span>
@@ -684,6 +744,8 @@ const ApplicationsPage: React.FC = () => {
                         </td>
                       )
                     })}
+                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.submittedAt ? displayDate(item.submittedAt) : <span className="text-slate-300">无</span>}</td>
+                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.writtenTestAt ? displayDate(item.writtenTestAt) : <span className="text-slate-300">无</span>}</td>
                     <td className="border-t border-slate-100 px-4 py-3 text-center">
                       {item.applicationUrl ? <a href={item.applicationUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="text-blue-600 hover:underline">链接</a> : <span className="text-slate-400">无</span>}
                     </td>
@@ -734,7 +796,7 @@ const ApplicationsPage: React.FC = () => {
                   <section>
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-semibold">投递时间线</h3>
-                      <button type="button" disabled={finalStatuses.includes(detail.status)} onClick={() => { setEditingInterviewId(null); setInterviewForm(emptyInterviewForm); setUploadedFileName(''); setFlowEditorOpen(true) }} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-lg transition ${finalStatuses.includes(detail.status) ? 'cursor-not-allowed bg-slate-300 shadow-none' : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'}`} title={finalStatuses.includes(detail.status) ? '投递已终态，不可新增面试' : '新增流程'}>
+                      <button type="button" disabled={finalStatuses.includes(detail.status) || (detail?.interviews || []).some((i) => i.result === '终止')} onClick={() => { setEditingInterviewId(null); setInterviewForm(emptyInterviewForm); setUploadedFileName(''); setFlowEditorOpen(true) }} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-lg transition ${(finalStatuses.includes(detail.status) || (detail?.interviews || []).some((i) => i.result === '终止')) ? 'cursor-not-allowed bg-slate-300 shadow-none' : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'}`} title={(detail?.interviews || []).some((i) => i.result === '终止') ? '已有面试被标记为终止，不可新增' : finalStatuses.includes(detail.status) ? '投递已终态，不可新增面试' : '新增流程'}>
                         <FilePlus2 className="h-3.5 w-3.5" />新增流程
                       </button>
                     </div>
@@ -742,23 +804,48 @@ const ApplicationsPage: React.FC = () => {
                       {timelineItems.length === 0 ? (
                         <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-400">暂无流程节点，可新增一面、二面、主管面或 HR 面。</p>
                       ) : timelineItems.map((node) => {
-                        const editable = node?.interviewId ? isToday(node?.scheduledAt) : false
+                        node?.interviewId ? isToday(node?.scheduledAt) : false;
                         const canDel = node?.interviewId ? canDeleteInterview(detail?.interviews || [], node.interviewId) : false
+                        // 权重校验：存在更高权重面试时，禁止修改当前结果
+                        const nodeWeight = node?.round ? (ROUND_ORDER[node.round] || 0) : 0
+                        const hasHigherRound = nodeWeight > 0 && (detail?.interviews || []).some((i) => i.id !== node?.interviewId && (ROUND_ORDER[i.round] || 0) > nodeWeight)
+                        const appTerminal = detail?.status ? finalStatuses.includes(detail.status) : false
                         return (
                         <div key={node?.key} className="grid grid-cols-[86px_1fr] gap-3 text-sm">
-                          <span className="text-xs text-slate-400">{displayDate(node?.time)}</span>
+                          <span className="text-xs text-slate-400">{node?.scheduledEnd ? displayDatetimeRange(node?.scheduledAt, node?.scheduledEnd) : displayDate(node?.time)}</span>
                           <div className="border-l border-blue-200 pl-3">
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <p className="font-medium text-slate-800">{node?.title}</p>
                                 {node?.interviewId && (node?.notes ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 ring-1 ring-blue-100">已上传</span> : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-400 ring-1 ring-slate-200">待上传</span>)}
-                                {node?.result === '通过' && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-100">已通过</span>}
-                                {node?.result === '终止' && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 ring-1 ring-red-100">终止</span>}
+                                {node?.interviewId && (
+                                  <div className="w-20" onClick={(e) => e.stopPropagation()} title={appTerminal ? '投递已终止或已 offer' : hasHigherRound ? '存在后续面试流程，不允许修改' : ''}>
+                                    <StyledSelect
+                                      size="compact"
+                                      value={node?.result || '面试中'}
+                                      onChange={(v) => updateInterviewResult(node!.interviewId!, v)}
+                                      disabled={hasHigherRound || appTerminal}
+                                      options={[
+                                        { label: '面试中', value: '面试中' },
+                                        { label: '通过', value: '通过' },
+                                        { label: '终止', value: '终止' },
+                                      ]}
+                                      buttonClassName={`rounded-full font-medium ring-1 ${hasHigherRound || appTerminal ? 'opacity-50 cursor-not-allowed' : ''} ${node?.result === '通过' ? 'bg-emerald-50 text-emerald-600 ring-emerald-100' : node?.result === '终止' ? 'bg-red-50 text-red-600 ring-red-100' : 'bg-blue-50 text-blue-600 ring-blue-100'}`}
+                                    />
+                                  </div>
+                                )}
                               </div>
                               {node?.interviewId && (
                                 <div className="flex shrink-0 items-center gap-1">
-                                  <button type="button" onClick={() => editable ? openEditInterview({ id: node!.interviewId!, round: node!.round, scheduledAt: node!.scheduledAt, notes: node!.notes, result: node!.result }) : toast('仅面试当天可编辑面试记录')} className={`text-slate-400 hover:text-blue-600 ${!editable ? 'opacity-40' : ''}`} title={editable ? '编辑' : '仅当天可编辑'}><FilePlus2 className="h-3.5 w-3.5" /></button>
-                                  <button type="button" onClick={() => canDel ? deleteInterview(node!.interviewId!) : toast('当前面试后已有面试，不支持删除')} className={`text-slate-400 hover:text-red-600 ${!canDel ? 'opacity-40' : ''}`} title={canDel ? '删除' : '后续已有面试，不可删除'}><Trash2 className="h-3.5 w-3.5" /></button>
+                                  {(() => {
+                                    const canEdit = !!node?.interviewId && !!node?.scheduledAt && node.scheduledAt <= Date.now()
+                                    return (
+                                      <>
+                                        <button type="button" onClick={() => canEdit ? openEditInterview({ id: node!.interviewId!, round: node!.round, scheduledAt: node!.scheduledAt, scheduledEnd: node!.scheduledEnd, notes: node!.notes, result: node!.result }) : toast('面试时间未到，不可上传')} className={`text-slate-400 hover:text-blue-600 ${!canEdit ? 'opacity-40' : ''}`} title={canEdit ? '编辑' : '面试时间未到，不可上传'}><FilePlus2 className="h-3.5 w-3.5" /></button>
+                                        <button type="button" onClick={() => canDel ? deleteInterview(node!.interviewId!) : toast('当前面试后已有面试，不支持删除')} className={`text-slate-400 hover:text-red-600 ${!canDel ? 'opacity-40' : ''}`} title={canDel ? '删除' : '后续已有面试，不可删除'}><Trash2 className="h-3.5 w-3.5" /></button>
+                                      </>
+                                    )
+                                  })()}
                                 </div>
                               )}
                             </div>
@@ -804,9 +891,9 @@ const ApplicationsPage: React.FC = () => {
                       </div>
                       <button type="button" onClick={() => { setFlowEditorOpen(false); setEditingInterviewId(null) }} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
                     </div>
-                    <div className={`max-h-[calc(100vh-220px)] px-4 py-4 ${hiddenScrollClass}`}>
-                      <div className="grid grid-cols-2 gap-3">
-                        <label className={fieldLabelClass}>投递状态
+                    <div className="max-h-[calc(100vh-220px)] flex flex-col overflow-hidden px-4 pt-4">
+                      <div className="shrink-0 grid grid-cols-2 gap-3 pb-4">
+                        <label className={fieldLabelClass}>面试流程
                           <StyledSelect
                             value={interviewForm.round}
                             onChange={(v) => setInterviewForm({ ...interviewForm, round: v })}
@@ -820,6 +907,31 @@ const ApplicationsPage: React.FC = () => {
                             <YearMonthPicker value={toDatePickerValue(interviewForm.scheduledAt)} onChange={(value) => setInterviewForm({ ...interviewForm, scheduledAt: fromDatePickerValue(value) })} placeholder="选择日期" enableDay defaultStep="day" futureYears={3} />
                           </div>
                         </label>
+                        <label className={`${fieldLabelClass} col-span-2`}>时间范围
+                          <div className="mt-1">
+                            <TimeRangePicker
+                              startHour={extractHourMinute(interviewForm.scheduledAt).hour}
+                              startMinute={extractHourMinute(interviewForm.scheduledAt).minute}
+                              endHour={extractHourMinute(interviewForm.scheduledEnd || interviewForm.scheduledAt).hour}
+                              endMinute={extractHourMinute(interviewForm.scheduledEnd || interviewForm.scheduledAt).minute}
+                              onChangeStart={(h, m) => {
+                                const newStart = buildTimestamp(interviewForm.scheduledAt, h, m)
+                                setInterviewForm({
+                                  ...interviewForm,
+                                  scheduledAt: newStart,
+                                  // 结束时间自动设为开始 + 1 小时（仅当结束时间未被用户手动修改过 或 结束 ≤ 新开始）
+                                  scheduledEnd: (!interviewForm.scheduledEnd || (interviewForm.scheduledEnd <= (newStart ?? 0))) ? addOneHour(newStart) : interviewForm.scheduledEnd,
+                                })
+                              }}
+                              onChangeEnd={(h, m) => setInterviewForm({ ...interviewForm, scheduledEnd: buildTimestamp(interviewForm.scheduledEnd ?? interviewForm.scheduledAt, h, m) })}
+                              endBeforeStart={!!(interviewForm.scheduledEnd && interviewForm.scheduledAt && interviewForm.scheduledEnd < interviewForm.scheduledAt)}
+                            />
+                          </div>
+                        </label>
+                      </div>
+                      {/* 面试记录 + 结果 — 可滚动区域 */}
+                      <div className={`min-h-0 flex-1 border-t border-slate-100 pt-4 ${hiddenScrollClass}`}>
+                        <div className="grid grid-cols-2 gap-3 pb-4">
                         <label className={`${fieldLabelClass} col-span-2`}>面试记录
                           <div className="mt-1 space-y-2">
                             <label className={`flex h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed transition ${analyzingInterview ? 'cursor-not-allowed border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-slate-50/70 hover:border-blue-300 hover:bg-blue-50/40'}`}>
@@ -859,17 +971,8 @@ const ApplicationsPage: React.FC = () => {
                             />
                           </div>
                         </label>
-                        <label className={fieldLabelClass}>结果
-                          <StyledSelect
-                            value={interviewForm.result || ''}
-                            onChange={(v) => setInterviewForm({ ...interviewForm, result: v })}
-                            placeholder="请选择结果"
-                            disabled={editingInterviewId ? !isToday(interviewForm.scheduledAt) : false}
-                            options={interviewResultOptions.map((result) => ({ label: result, value: result }))}
-                            className="mt-1"
-                          />
-                        </label>
                       </div>
+                    </div>
                     </div>
                     <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
                       <button type="button" onClick={() => setFlowEditorOpen(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-100">取消</button>

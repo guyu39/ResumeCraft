@@ -50,34 +50,35 @@ type JobApplication struct {
 
 // JobApplicationListItem 投递列表项
 type JobApplicationListItem struct {
-	ID                string               `json:"id"`
-	ResumeID          string               `json:"resumeId"`
-	ResumeTitle       string               `json:"resumeTitle,omitempty"`
-	SnapshotVersionID string               `json:"snapshotVersionId"`
-	SnapshotLabel     string               `json:"snapshotLabel,omitempty"`
-	CompanyName       string               `json:"companyName"`
-	Department        string               `json:"department,omitempty"`
-	TargetTitle       string               `json:"targetTitle"`
-	Source            string               `json:"source"`
-	ApplicationURL    string               `json:"applicationUrl,omitempty"`
-	Status            JobApplicationStatus `json:"status"`
-	MatchScore        *int                 `json:"matchScore,omitempty"`
-	JDScore           *int                 `json:"jdScore,omitempty"`
-	ChecklistDone     int                  `json:"checklistDone"`
-	ChecklistTotal    int                  `json:"checklistTotal"`
-	NextAction        string               `json:"nextAction,omitempty"`
-	SubmittedAt       *int64               `json:"submittedAt,omitempty"`
-	WrittenTestAt     *int64               `json:"writtenTestAt,omitempty"`
-	UpdatedAt         int64                `json:"updatedAt"`
-	CreatedAt         int64                `json:"createdAt"`
+	ID                string                         `json:"id"`
+	ResumeID          string                         `json:"resumeId"`
+	ResumeTitle       string                         `json:"resumeTitle,omitempty"`
+	SnapshotVersionID string                         `json:"snapshotVersionId"`
+	SnapshotLabel     string                         `json:"snapshotLabel,omitempty"`
+	CompanyName       string                         `json:"companyName"`
+	Department        string                         `json:"department,omitempty"`
+	TargetTitle       string                         `json:"targetTitle"`
+	Source            string                         `json:"source"`
+	ApplicationURL    string                         `json:"applicationUrl,omitempty"`
+	Status            JobApplicationStatus           `json:"status"`
+	MatchScore        *int                           `json:"matchScore,omitempty"`
+	JDScore           *int                           `json:"jdScore,omitempty"`
+	ChecklistDone     int                            `json:"checklistDone"`
+	ChecklistTotal    int                            `json:"checklistTotal"`
+	NextAction        string                         `json:"nextAction,omitempty"`
+	SubmittedAt       *int64                         `json:"submittedAt,omitempty"`
+	WrittenTestAt     *int64                         `json:"writtenTestAt,omitempty"`
+	UpdatedAt         int64                          `json:"updatedAt"`
+	CreatedAt         int64                          `json:"createdAt"`
 	Interviews        []JobApplicationInterviewBrief `json:"interviews,omitempty"`
 }
 
 // JobApplicationInterviewBrief 列表页展示用的面试轮次精简信息
 type JobApplicationInterviewBrief struct {
-	Round       string `json:"round"`
-	ScheduledAt *int64 `json:"scheduledAt,omitempty"`
-	Result      string `json:"result,omitempty"`
+	Round        string `json:"round"`
+	ScheduledAt  *int64 `json:"scheduledAt,omitempty"`
+	ScheduledEnd *int64 `json:"scheduledEnd,omitempty"`
+	Result       string `json:"result,omitempty"`
 }
 
 // JobApplicationStatusEvent 状态历史
@@ -125,6 +126,7 @@ type JobApplicationInterview struct {
 	ApplicationID string `json:"applicationId"`
 	Round         string `json:"round"`
 	ScheduledAt   *int64 `json:"scheduledAt,omitempty"`
+	ScheduledEnd  *int64 `json:"scheduledEnd,omitempty"`
 	Format        string `json:"format"`
 	Interviewer   string `json:"interviewer"`
 	Questions     string `json:"questions,omitempty"`
@@ -229,14 +231,15 @@ type CreateJobApplicationAIRunRequest struct {
 }
 
 type CreateInterviewRequest struct {
-	Round       string `json:"round"`
-	ScheduledAt *int64 `json:"scheduledAt"`
-	Format      string `json:"format"`
-	Interviewer string `json:"interviewer"`
-	Questions   string `json:"questions"`
-	Notes       string `json:"notes"`
-	Result      string `json:"result"`
-	NextAction  string `json:"nextAction"`
+	Round        string `json:"round"`
+	ScheduledAt  *int64 `json:"scheduledAt"`
+	ScheduledEnd *int64 `json:"scheduledEnd"`
+	Format       string `json:"format"`
+	Interviewer  string `json:"interviewer"`
+	Questions    string `json:"questions"`
+	Notes        string `json:"notes"`
+	Result       string `json:"result"`
+	NextAction   string `json:"nextAction"`
 }
 
 type UpdateInterviewRequest = CreateInterviewRequest

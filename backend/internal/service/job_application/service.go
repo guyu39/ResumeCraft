@@ -27,9 +27,9 @@ var (
 
 // 面试阶段权重：从小到大，顺序不可逆
 var interviewRoundWeights = map[string]int{
-	"一面": 1,
-	"二面": 2,
-	"三面": 3,
+	"一面":  1,
+	"二面":  2,
+	"三面":  3,
 	"主管面": 4,
 	"HR面": 5,
 }
@@ -178,20 +178,20 @@ func (s *service) Update(ctx context.Context, userID, applicationID string, req 
 		clearWrittenTestAt = true
 	}
 	params := appRepo.UpdateApplicationParams{
-		ResumeID:          strings.TrimSpace(req.ResumeID),
-		SnapshotVersionID: strings.TrimSpace(req.SnapshotVersionID),
-		CompanyName:       strings.TrimSpace(req.CompanyName),
-		Department:        strings.TrimSpace(req.Department),
-		TargetTitle:       strings.TrimSpace(req.TargetTitle),
-		JDText:            strings.TrimSpace(req.JDText),
-		Source:            strings.TrimSpace(req.Source),
-		ApplicationURL:    strings.TrimSpace(req.ApplicationURL),
-		NextAction:        strings.TrimSpace(req.NextAction),
-		SubmittedAt:       submittedAt,
-		ClearSubmittedAt:  clearSubmittedAt,
-		WrittenTestAt:     writtenTestAt,
+		ResumeID:           strings.TrimSpace(req.ResumeID),
+		SnapshotVersionID:  strings.TrimSpace(req.SnapshotVersionID),
+		CompanyName:        strings.TrimSpace(req.CompanyName),
+		Department:         strings.TrimSpace(req.Department),
+		TargetTitle:        strings.TrimSpace(req.TargetTitle),
+		JDText:             strings.TrimSpace(req.JDText),
+		Source:             strings.TrimSpace(req.Source),
+		ApplicationURL:     strings.TrimSpace(req.ApplicationURL),
+		NextAction:         strings.TrimSpace(req.NextAction),
+		SubmittedAt:        submittedAt,
+		ClearSubmittedAt:   clearSubmittedAt,
+		WrittenTestAt:      writtenTestAt,
 		ClearWrittenTestAt: clearWrittenTestAt,
-		Status:            req.Status,
+		Status:             req.Status,
 	}
 	if params.JDText != "" {
 		params.JDHash = hashJD(params.JDText)
@@ -289,7 +289,14 @@ func (s *service) CreateInterview(ctx context.Context, userID, applicationID str
 		return nil, err
 	}
 	item, err := s.repo.CreateInterview(ctx, userID, applicationID, req)
-	return item, mapRepoError(err)
+	if err != nil {
+		return nil, mapRepoError(err)
+	}
+	// 创建面试后自动将投递状态更新为"面试中"（非终态且当前非面试）
+	if !isFinalStatus(status) && status != model.JobApplicationStatusInterview {
+		_, _ = s.repo.UpdateStatus(ctx, userID, applicationID, model.JobApplicationStatusInterview, "")
+	}
+	return item, nil
 }
 
 func (s *service) UpdateInterview(ctx context.Context, userID, applicationID, interviewID string, req model.UpdateInterviewRequest) (*model.JobApplicationInterview, error) {
@@ -387,7 +394,7 @@ func (s *service) ExportExcel(ctx context.Context, userID string, filters model.
 		byRound := interviewsByItem[row]
 		for _, round := range rounds {
 			if it, ok := byRound[round]; ok {
-				values = append(values, interviewResultCell(it), formatTimePtr(it.ScheduledAt))
+				values = append(values, interviewResultCell(it), formatInterviewTime(it))
 			} else {
 				values = append(values, "", "")
 			}
@@ -603,6 +610,19 @@ func formatTime(value int64) string {
 		return ""
 	}
 	return time.UnixMilli(value).Format("2006-01-02 15:04")
+}
+
+// 面试时间段: 有结束时间 → "2026-07-05 09:00-10:00"，否则 → "2026-07-05"
+func formatInterviewTime(it model.JobApplicationInterview) string {
+	if it.ScheduledAt == nil || *it.ScheduledAt <= 0 {
+		return ""
+	}
+	start := time.UnixMilli(*it.ScheduledAt).Format("2006-01-02 15:04")
+	if it.ScheduledEnd != nil && *it.ScheduledEnd > 0 {
+		end := time.UnixMilli(*it.ScheduledEnd).Format("15:04")
+		return start + "-" + end
+	}
+	return time.UnixMilli(*it.ScheduledAt).Format("2006-01-02")
 }
 
 func statusLabel(status model.JobApplicationStatus) string {

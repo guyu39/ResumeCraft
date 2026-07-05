@@ -784,6 +784,7 @@ create table if not exists job_application_interviews
             on delete cascade,
     round          varchar(100)             default ''::character varying not null,
     scheduled_at   timestamp with time zone,
+    scheduled_end  timestamp with time zone,
     format         varchar(100)             default ''::character varying not null,
     interviewer    varchar(200)             default ''::character varying not null,
     questions      text,
