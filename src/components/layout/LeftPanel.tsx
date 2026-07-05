@@ -22,7 +22,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Trash2, Eye, EyeOff, FileText } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Eye, EyeOff, FileText } from 'lucide-react'
 
 import { useResumeStore } from '@/store/resumeStore'
 import { Module, MODULE_META_LIST, ModuleType, FIXED_MODULE_TYPES } from '@/types/resume'
@@ -225,6 +225,13 @@ const LeftPanel: React.FC = () => {
       {/* 顶部：简历标题 */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
         <div className="flex items-center gap-2 mb-2">
+          <a
+            href="/"
+            className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
+            title="回到首页"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </a>
           <FileText className="w-4 h-4 text-primary flex-shrink-0" />
           <input
             type="text"

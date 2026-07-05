@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { aiApi } from '@/api'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
+import { Building2, Loader2, Search } from 'lucide-react'
+import { aiApi, applicationsApi } from '@/api'
 import type { ConversationItem, JDMatchResponse, JDScoreResponse } from '@/api/ai'
 import type { Resume } from '@/types/resume'
 import { useResumeStore } from '@/store/resumeStore'
@@ -59,6 +60,42 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
     const [historyLoading, setHistoryLoading] = useState(false)
     const [historyItems, setHistoryItems] = useState<ConversationItem[]>([])
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
+
+    // 投递查询回显
+    const [appSearchOpen, setAppSearchOpen] = useState(false)
+    const [appSearchKeyword, setAppSearchKeyword] = useState('')
+    const [appSearchResults, setAppSearchResults] = useState<Array<{ id: string; companyName: string; targetTitle: string }>>([])
+    const [appSearchLoading, setAppSearchLoading] = useState(false)
+    const appSearchRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        if (!appSearchOpen) return
+        const handler = (e: MouseEvent) => {
+            if (appSearchRef.current && !appSearchRef.current.contains(e.target as Node)) setAppSearchOpen(false)
+        }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [appSearchOpen])
+
+    const handleSearchApps = useCallback(async (keyword?: string) => {
+        setAppSearchLoading(true)
+        try {
+            const res = await applicationsApi.list({ keyword, pageSize: 20 })
+            setAppSearchResults(res.items.filter((i) => i.companyName || i.targetTitle).map((i) => ({
+                id: i.id, companyName: i.companyName, targetTitle: i.targetTitle,
+            })))
+        } catch { setAppSearchResults([]) } finally { setAppSearchLoading(false) }
+    }, [])
+
+    const handleSelectApp = useCallback(async (appId: string) => {
+        setAppSearchOpen(false)
+        try {
+            const app = await applicationsApi.get(appId)
+            if (app.companyName) setCompanyName(app.companyName)
+            if (app.targetTitle) setTargetTitle(app.targetTitle)
+            if (app.jdText) setJdText(app.jdText)
+        } catch { /* ignore */ }
+    }, [])
 
     // 从 store 获取快照列表，用于在对话历史中显示快照标签
     const snapshots = useResumeStore((s) => s.snapshots)
@@ -184,6 +221,54 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                             placeholder="公司名称，可选"
                             className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-primary"
                         />
+                        {/* 查询投递一键回显 */}
+                        <div ref={appSearchRef} className="relative">
+                            <button
+                                type="button"
+                                onClick={() => { setAppSearchOpen(!appSearchOpen); if (!appSearchOpen) handleSearchApps() }}
+                                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-3 py-2 text-xs font-medium text-slate-500 transition hover:border-blue-300 hover:bg-blue-50/40 hover:text-blue-600"
+                            >
+                                <Search className="h-3.5 w-3.5" />
+                                查询投递
+                            </button>
+                            {appSearchOpen && (
+                                <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-slate-200 bg-white shadow-xl">
+                                    <div className="p-2">
+                                        <input
+                                            value={appSearchKeyword}
+                                            onChange={(e) => { setAppSearchKeyword(e.target.value); handleSearchApps(e.target.value) }}
+                                            placeholder="搜索公司或岗位..."
+                                            className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs outline-none focus:border-blue-400"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="max-h-48 overflow-y-auto no-scrollbar border-t border-slate-100">
+                                        {appSearchLoading ? (
+                                            <div className="flex items-center justify-center py-6">
+                                                <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                                            </div>
+                                        ) : appSearchResults.length === 0 ? (
+                                            <p className="px-3 py-4 text-center text-xs text-slate-400">暂无投递记录</p>
+                                        ) : (
+                                            appSearchResults.map((item) => (
+                                                <button
+                                                    key={item.id}
+                                                    type="button"
+                                                    onClick={() => handleSelectApp(item.id)}
+                                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition hover:bg-blue-50"
+                                                >
+                                                    <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate font-medium text-slate-700">{item.companyName || '未填公司'}</p>
+                                                        <p className="truncate text-slate-400">{item.targetTitle || '未填岗位'}</p>
+                                                    </div>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                         <textarea
                             value={jdText}
                             onChange={(event) => setJdText(event.target.value)}

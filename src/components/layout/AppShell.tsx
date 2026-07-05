@@ -11,13 +11,11 @@ import { useCloudSync } from '@/hooks/useCloudSync'
 import { usePendingParse } from '@/hooks/usePendingParse'
 import type { NoticeItem } from '@/components/common/NoticeCenter'
 import { useResumeStore } from '@/store/resumeStore'
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import ToastContainer from '@/components/common/Toast'
 import ConflictDialog from '@/components/common/ConflictDialog'
 
 const STORAGE_KEY_LEFT = 'resumecraft_panel_left_width'
 const STORAGE_KEY_RIGHT = 'resumecraft_panel_right_width'
-const STORAGE_KEY_LEFT_COLLAPSED = 'resumecraft_panel_left_collapsed'
 
 const MIN_LEFT = 200; const MAX_LEFT = 320; const DEFAULT_LEFT = 300
 const MIN_RIGHT = 300; const MAX_RIGHT = 550; const DEFAULT_RIGHT = 600
@@ -46,19 +44,11 @@ function loadPanelWidths(): { left: number; right: number } {
   return { left: Math.max(MIN_LEFT, Math.min(MAX_LEFT, rawLeft)), right: Math.max(MIN_RIGHT, Math.min(MAX_RIGHT, rawRight)) }
 }
 
-function loadCollapsed(): { left: boolean } {
-  return { left: localStorage.getItem(STORAGE_KEY_LEFT_COLLAPSED) === '1' }
-}
-
 const AppShell: React.FC = () => {
   const initial = React.useMemo(() => loadPanelWidths(), [])
-  const initialCollapsed = React.useMemo(() => loadCollapsed(), [])
   const [左栏宽度, 设置左栏宽度] = React.useState(initial.left)
   const [右栏宽度, 设置右栏宽度] = React.useState(initial.right)
-  const [左栏折叠, 设置左栏折叠] = React.useState(initialCollapsed.left)
   const [拖拽中, 设置拖拽中] = React.useState<'left' | 'right' | null>(null)
-  // 保存折叠前的宽度，以便恢复
-  const 左栏恢复宽度Ref = React.useRef(initial.left)
   const 左栏宽度Ref = React.useRef(initial.left)
   const 右栏宽度Ref = React.useRef(initial.right)
   const resume = useResumeStore((s) => s.resume)
@@ -68,17 +58,6 @@ const AppShell: React.FC = () => {
 
   // 后台解析简历（从简历列表页传入的文件）
   const { status: parseStatus, error: parseError, dismiss: dismissParse } = usePendingParse()
-
-  const 切换左栏折叠 = () => {
-    if (左栏折叠) {
-      设置左栏宽度(左栏恢复宽度Ref.current)
-    } else {
-      左栏恢复宽度Ref.current = 左栏宽度
-      设置左栏宽度(0)
-    }
-    设置左栏折叠(!左栏折叠)
-    localStorage.setItem(STORAGE_KEY_LEFT_COLLAPSED, String(!左栏折叠 ? 1 : 0))
-  }
 
   // 持久化面板宽度到 localStorage
   React.useEffect(() => {
@@ -211,15 +190,13 @@ const AppShell: React.FC = () => {
     }
   }, [拖拽中])
 
-  // 窗口尺寸变化时自动缩放侧栏（P2: resize 监听）
+  // 窗口尺寸变化时自动缩放侧栏
   React.useEffect(() => {
     const handleResize = () => {
       const totalWidth = window.innerWidth
-      if (左栏宽度 === 0) return
-      const currentLeft = 左栏宽度 > 0 ? 左栏宽度 : 左栏恢复宽度Ref.current
-      if (currentLeft + 右栏宽度 + MIDDLE_MIN + GUTTER_TOTAL > totalWidth) {
+      if (左栏宽度 + 右栏宽度 + MIDDLE_MIN + GUTTER_TOTAL > totalWidth) {
         const available = totalWidth - 右栏宽度 - MIDDLE_MIN - GUTTER_TOTAL
-        if (左栏宽度 > 0) 设置左栏宽度(Math.max(MIN_LEFT, Math.floor(available * currentLeft / (currentLeft + 右栏宽度))))
+        设置左栏宽度(Math.max(MIN_LEFT, Math.floor(available * 左栏宽度 / (左栏宽度 + 右栏宽度))))
       }
     }
     window.addEventListener('resize', handleResize)
@@ -233,30 +210,18 @@ const AppShell: React.FC = () => {
       <div className="flex flex-1 w-full overflow-hidden gap-3">
         {/* 左栏 — 模块管理面板 */}
         <aside
-          className={`flex-shrink-0 flex flex-col bg-white/80 border border-white/75 rounded-[24px] shadow-[0_18px_44px_rgba(15,23,42,0.08)] overflow-hidden backdrop-blur-xl ${
-            拖拽中 === 'left' ? '' : 'transition-[width,opacity] duration-200'
-          }`}
-          style={{ width: `${左栏折叠 ? 0 : 左栏宽度}px`, opacity: 左栏折叠 ? 0 : 1 }}
+          className={`flex-shrink-0 flex flex-col bg-white/80 border border-white/75 rounded-[24px] shadow-[0_18px_44px_rgba(15,23,42,0.08)] overflow-hidden backdrop-blur-xl ${拖拽中 === 'left' ? '' : 'transition-[width] duration-200'}`}
+          style={{ width: `${左栏宽度}px` }}
         >
-          {!左栏折叠 && <LeftPanel />}
+          <LeftPanel />
         </aside>
 
-        {/* 左拖拽条 + 折叠按钮 */}
-        <div className="relative flex-shrink-0 flex items-center h-full">
-          <div
-            className={`h-full w-1.5 rounded-full cursor-col-resize bg-transparent hover:bg-primary/20 active:bg-primary/30 transition-colors ${拖拽中 === 'left' ? 'bg-primary/30' : ''}`}
-            onMouseDown={(event) => 开始拖拽('left', event)}
-            title="拖拽调整左侧宽度"
-          />
-          <button
-            onClick={切换左栏折叠}
-            className="absolute top-1/2 left-1/2 z-10 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/95 shadow-md"
-            style={{ opacity: 左栏折叠 ? 1 : undefined, transition: 'opacity 0.15s' }}
-            title={左栏折叠 ? '展开左栏' : '折叠左栏'}
-          >
-            {左栏折叠 ? <PanelLeftOpen className="w-2.5 h-2.5 text-gray-500" /> : <PanelLeftClose className="w-2.5 h-2.5 text-gray-500" />}
-          </button>
-        </div>
+        {/* 左拖拽条 */}
+        <div
+          className="w-1.5 rounded-full flex-shrink-0 cursor-col-resize bg-transparent hover:bg-primary/20 active:bg-primary/30 transition-colors"
+          onMouseDown={(event) => 开始拖拽('left', event)}
+          title="拖拽调整左侧宽度"
+        />
 
         {/* 中栏 flex:1 — 简历实时预览 */}
         <main className="flex-1 flex flex-col overflow-hidden rounded-[28px] border border-white/75 bg-white/68 shadow-[0_20px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl" style={{ minWidth: `${MIDDLE_MIN}px` }}>
