@@ -35,8 +35,10 @@ docker/minio-data/
 *.local
 
 # workbuddy
-workbuddy/
+.workbuddy/
 .claude/commands/
 .claude/skills/
 .codebuddy/
 .agents/
+
+extension/
