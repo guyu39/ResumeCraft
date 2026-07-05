@@ -5,6 +5,7 @@
 
 import React, { useRef, useState } from 'react'
 import { getAutoFixEnabled, inspectClipboardText } from '@/utils/textGuard'
+import StyledSelect from '@/components/common/StyledSelect'
 
 interface FormFieldProps {
   label: string
@@ -200,11 +201,12 @@ export const TextArea: React.FC<TextAreaProps> = ({
 }
 
 // ---------- Select ----------
-interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'onChange'> {
+interface SelectProps {
   value: string
   onChange: (value: string) => void
   options: { label: string; value: string }[]
   error?: boolean
+  className?: string
 }
 
 export const Select: React.FC<SelectProps> = ({
@@ -213,30 +215,16 @@ export const Select: React.FC<SelectProps> = ({
   options,
   error = false,
   className = '',
-  ...props
 }) => {
   return (
-    <select
+    <StyledSelect
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`
-        w-full h-9 px-3 text-sm text-gray-800
-        border rounded-md bg-white
-        outline-none transition-all duration-150
-        ${error
-          ? 'border-red-400 focus:border-red-500'
-          : 'border-gray-200 focus:border-primary'
-        }
-        ${className}
-      `}
-      {...props}
-    >
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      options={options}
+      size="compact"
+      buttonClassName={error ? '!border-red-400 focus:!border-red-500' : ''}
+      className={className}
+    />
   )
 }
 

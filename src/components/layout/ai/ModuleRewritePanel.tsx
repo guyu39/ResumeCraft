@@ -5,6 +5,7 @@ import { useResumeStore } from '@/store/resumeStore'
 import { useModuleRewrite } from '@/hooks/useModuleRewrite'
 import RichTextPreview from '@/components/common/RichTextPreview'
 import InlineError from '@/components/common/InlineError'
+import StyledSelect from '@/components/common/StyledSelect'
 
 interface ModuleRewritePanelProps {
     resume: Resume
@@ -164,15 +165,12 @@ const ModuleRewritePanel: React.FC<ModuleRewritePanelProps> = ({ resume }) => {
                             </p>
                         ) : (
                             <>
-                                <select
+                                <StyledSelect
                                     value={selectedModuleId}
-                                    onChange={(e) => switchModule(e.target.value)}
-                                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-primary"
-                                >
-                                    {rewritableModules.map((m) => (
-                                        <option key={m.id} value={m.id}>{m.title}</option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => switchModule(v)}
+                                    options={rewritableModules.map((m) => ({ label: m.title, value: m.id }))}
+                                    className="mt-1"
+                                />
 
                                 {/* 条目勾选（仅 items 模块且多于 1 条时显示） */}
                                 {isItemModule && moduleItems.length > 1 && (

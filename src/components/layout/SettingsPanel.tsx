@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Globe, X, ChevronDown } from 'lucide-react'
+import StyledSelect from '@/components/common/StyledSelect'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { getAutoFixEnabled, setAutoFixEnabled } from '@/utils/textGuard'
@@ -324,15 +325,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 {resume.template !== 'modern' && (
                     <div className="space-y-1.5">
                         <label className="text-xs font-medium text-gray-700">头像位置</label>
-                        <select
+                        <StyledSelect
                             value={styleSettings.avatarPosition ?? 'right'}
-                            onChange={(e) => setStyleSettings({ avatarPosition: e.target.value as 'center' | 'right' | 'left' })}
-                            className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        >
-                            <option value="right">居右显示</option>
-                            <option value="center">居中显示</option>
-                            <option value="left">居左显示</option>
-                        </select>
+                            onChange={(v) => setStyleSettings({ avatarPosition: v as 'center' | 'right' | 'left' })}
+                            options={[
+                                { label: '居右显示', value: 'right' },
+                                { label: '居中显示', value: 'center' },
+                                { label: '居左显示', value: 'left' },
+                            ]}
+                            size="compact"
+                            className="mt-1"
+                        />
                     </div>
                 )}
 
@@ -340,17 +343,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     <label className="text-xs font-medium text-gray-700">
                         内容字体（{FONT_OPTIONS.find((item) => item.value === styleSettings.fontFamily)?.label ?? styleSettings.fontFamily}）
                     </label>
-                    <select
+                    <StyledSelect
                         value={styleSettings.fontFamily}
-                        onChange={(e) => setStyleSettings({ fontFamily: e.target.value })}
-                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                        {FONT_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </select>
+                        onChange={(v) => setStyleSettings({ fontFamily: v })}
+                        options={FONT_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+                        size="compact"
+                        className="mt-1"
+                    />
                 </div>
 
                 <RangeField
@@ -369,17 +368,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                         <label className="text-xs font-medium text-gray-700">
                             标题字体（{FONT_OPTIONS.find((item) => item.value === (styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily))?.label ?? (styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily)}）
                         </label>
-                        <select
+                        <StyledSelect
                             value={styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily}
-                            onChange={(e) => setStyleSettings({ moduleTitleFontFamily: e.target.value })}
-                            className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        >
-                            {FONT_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                            onChange={(v) => setStyleSettings({ moduleTitleFontFamily: v })}
+                            options={FONT_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+                            size="compact"
+                            className="mt-1"
+                        />
                     </div>
 
                     <RangeField
@@ -558,15 +553,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     <>
                         <div className="space-y-1.5">
                             <label className="text-xs font-medium text-gray-700">模型供应商</label>
-                            <select
+                            <StyledSelect
                                 value={aiForm.providerPreset}
-                                onChange={(e) => applyProviderPreset(e.target.value as AIProviderPreset)}
-                                className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            >
-                                {AI_PROVIDER_PRESETS.map((preset) => (
-                                    <option key={preset.id} value={preset.id}>{preset.label}</option>
-                                ))}
-                            </select>
+                                onChange={(v) => applyProviderPreset(v as AIProviderPreset)}
+                                options={AI_PROVIDER_PRESETS.map((p) => ({ label: p.label, value: p.id }))}
+                                size="compact"
+                                className="mt-1"
+                            />
                         </div>
 
                         {aiForm.providerPreset === 'custom' && (
@@ -645,19 +638,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                         <>
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-gray-700">模型供应商</label>
-                                <select
+                                <StyledSelect
                                     value={parserForm.provider}
-                                    onChange={(e) => setParserForm((prev) => ({ ...prev, provider: e.target.value }))}
-                                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                >
-                                    <option value="openai">OpenAI</option>
-                                    <option value="doubao">豆包 (Doubao)</option>
-                                    <option value="deepseek">DeepSeek</option>
-                                    <option value="zhipu">智谱 (GLM)</option>
-                                    <option value="qwen">通义千问</option>
-                                    <option value="moonshot">Moonshot</option>
-                                    <option value="custom">自定义</option>
-                                </select>
+                                    onChange={(v) => setParserForm((prev) => ({ ...prev, provider: v }))}
+                                    options={[
+                                        { label: 'OpenAI', value: 'openai' },
+                                        { label: '豆包 (Doubao)', value: 'doubao' },
+                                        { label: 'DeepSeek', value: 'deepseek' },
+                                        { label: '智谱 (GLM)', value: 'zhipu' },
+                                        { label: '通义千问', value: 'qwen' },
+                                        { label: 'Moonshot', value: 'moonshot' },
+                                        { label: '自定义', value: 'custom' },
+                                    ]}
+                                    size="compact"
+                                    className="mt-1"
+                                />
                             </div>
 
                             {parserForm.provider === 'custom' && (

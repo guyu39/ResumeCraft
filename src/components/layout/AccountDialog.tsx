@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import StyledSelect from '@/components/common/StyledSelect'
 import { useAuthStore } from '@/store/authStore'
 import {
     AIProviderPreset,
@@ -231,15 +232,12 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                         <>
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-gray-700">模型供应商</label>
-                                <select
+                                <StyledSelect
                                     value={aiForm.providerPreset}
-                                    onChange={(e) => applyProviderPreset(e.target.value as AIProviderPreset)}
-                                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                >
-                                    {AI_PROVIDER_PRESETS.map((p) => (
-                                        <option key={p.id} value={p.id}>{p.label}</option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => applyProviderPreset(v as AIProviderPreset)}
+                                    options={AI_PROVIDER_PRESETS.map((p) => ({ label: p.label, value: p.id }))}
+                                    size="compact"
+                                />
                             </div>
 
                             {aiForm.providerPreset === 'custom' && (
@@ -315,19 +313,20 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                             <>
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-medium text-gray-700">模型供应商</label>
-                                    <select
+                                    <StyledSelect
                                         value={parserForm.provider}
-                                        onChange={(e) => setParserForm((prev) => ({ ...prev, provider: e.target.value }))}
-                                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                    >
-                                        <option value="openai">OpenAI</option>
-                                        <option value="doubao">豆包 (Doubao)</option>
-                                        <option value="deepseek">DeepSeek</option>
-                                        <option value="zhipu">智谱 (GLM)</option>
-                                        <option value="qwen">通义千问</option>
-                                        <option value="moonshot">Moonshot</option>
-                                        <option value="custom">自定义</option>
-                                    </select>
+                                        onChange={(v) => setParserForm((prev) => ({ ...prev, provider: v }))}
+                                        options={[
+                                            { label: 'OpenAI', value: 'openai' },
+                                            { label: '豆包 (Doubao)', value: 'doubao' },
+                                            { label: 'DeepSeek', value: 'deepseek' },
+                                            { label: '智谱 (GLM)', value: 'zhipu' },
+                                            { label: '通义千问', value: 'qwen' },
+                                            { label: 'Moonshot', value: 'moonshot' },
+                                            { label: '自定义', value: 'custom' },
+                                        ]}
+                                        size="compact"
+                                    />
                                 </div>
 
                                 {parserForm.provider === 'custom' && (
