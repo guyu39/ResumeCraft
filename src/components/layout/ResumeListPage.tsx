@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch, BriefcaseBusiness } from 'lucide-react'
+import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch, BriefcaseBusiness, ChevronDown, KeyRound } from 'lucide-react'
 import {
     createDefaultResume,
     getAllResumesFromStorage,
@@ -19,6 +19,8 @@ import type { Resume, TemplateType } from '@/types/resume'
 import type { ResumeListItem } from '@/api'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 import AccountDialog from '@/components/layout/AccountDialog'
+import ChangePasswordDialog from '@/components/layout/ChangePasswordDialog'
+import ToastContainer from '@/components/common/Toast'
 import { createPortal } from 'react-dom'
 
 const TEMPLATE_LABELS: Record<TemplateType, string> = {
@@ -70,6 +72,8 @@ const ResumeListPage: React.FC<ResumeListPageProps> = ({
 
     const [showCreateMode, setShowCreateMode] = useState(false)
     const [showAccount, setShowAccount] = useState(false)
+    const [showChangePassword, setShowChangePassword] = useState(false)
+    const [showAvatarMenu, setShowAvatarMenu] = useState(false)
     const [parseError, setParseError] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const refresh = useCallback(() => {
@@ -451,6 +455,7 @@ setPendingCreateName(defaultTitle)
 
     return (
         <>
+            <ToastContainer />
             <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-8">
                 <div className="mx-auto max-w-5xl space-y-6">
                     {/* 头部 */}
@@ -466,15 +471,41 @@ setPendingCreateName(defaultTitle)
                             </div>
                             <div className="flex items-center gap-3">
                                 {isAuthenticated && user && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAccount(true)}
-                                        className="flex items-center gap-2 text-sm text-slate-600 hover:text-primary transition-colors cursor-pointer rounded-lg hover:bg-white/60 px-2 py-1"
-                                    >
-                                        <User className="h-4 w-4" />
-                                        <span>{user.displayName || user.email}</span>
-                                        {syncing && <Cloud className="h-4 w-4 animate-pulse" />}
-                                    </button>
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAvatarMenu(!showAvatarMenu)}
+                                            className="flex items-center gap-2 text-sm text-slate-600 hover:text-primary transition-colors cursor-pointer rounded-lg hover:bg-white/60 px-2 py-1"
+                                        >
+                                            <User className="h-4 w-4" />
+                                            <span>{user.displayName || user.email}</span>
+                                            {syncing && <Cloud className="h-4 w-4 animate-pulse" />}
+                                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAvatarMenu ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {showAvatarMenu && (
+                                            <>
+                                                <div className="fixed inset-0 z-30" onClick={() => setShowAvatarMenu(false)} />
+                                                <div className="absolute right-0 top-full z-40 mt-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setShowAvatarMenu(false); setShowAccount(true) }}
+                                                        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                                                    >
+                                                        <User className="h-3.5 w-3.5" />
+                                                        账户设置
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setShowAvatarMenu(false); setShowChangePassword(true) }}
+                                                        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                                                    >
+                                                        <KeyRound className="h-3.5 w-3.5" />
+                                                        修改密码
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
                                 )}
                                 <button
                                     type="button"
@@ -673,6 +704,13 @@ setPendingCreateName(defaultTitle)
                 open={showAccount}
                 onClose={() => setShowAccount(false)}
                 user={user}
+            />
+            {/* 修改密码弹窗 */}
+            <ChangePasswordDialog
+                open={showChangePassword}
+                onClose={() => setShowChangePassword(false)}
+                email={user?.email || ''}
+                onSuccess={onLogout}
             />
         </>
     )

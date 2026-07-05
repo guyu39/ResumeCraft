@@ -45,6 +45,7 @@ type Service interface {
 	Refresh(ctx context.Context, refreshToken, ip, ua string) (*model.AuthPayload, error)
 	Logout(ctx context.Context, accessToken, refreshToken string) error
 	Me(ctx context.Context, userID string) (*model.AuthUser, error)
+	ChangePassword(ctx context.Context, userID string, req model.ChangePasswordRequest) error
 	ParseAccessToken(token string) (string, error)
 	GetAvatarMeta(ctx context.Context, userID string) (string, string, error)
 	UpdateAvatar(ctx context.Context, userID, avatarURL, avatarHash string) error
@@ -100,14 +101,14 @@ func NewService(pool *pgxpool.Pool, rdb *redis.Client, cfg config.AuthConfig, ma
 
 // ---------- 邮箱验证码 ----------
 
-func emailCodeKey(purpose, email string) string   { return "email_code:" + purpose + ":" + email }
+func emailCodeKey(purpose, email string) string    { return "email_code:" + purpose + ":" + email }
 func emailCodeCDKey(purpose, email string) string  { return "email_code_cd:" + purpose + ":" + email }
 func emailCodeTryKey(purpose, email string) string { return "email_code_try:" + purpose + ":" + email }
 
 // 验证码最多允许校验失败次数，达上限作废该码强制重发，防止 6 位码被暴力枚举
 const maxCodeAttempts = 5
 
-// SendEmailCode 生成并发送邮箱验证码。purpose: register | login。
+// SendEmailCode 生成并发送邮箱验证码。purpose: register | login | change_password。
 func (s *service) SendEmailCode(ctx context.Context, email, purpose string) error {
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" {
@@ -120,7 +121,7 @@ func (s *service) SendEmailCode(ctx context.Context, email, purpose string) erro
 		return ErrSMTPNotConfigured
 	}
 
-	// 注册：邮箱已存在则拒绝；登录：邮箱不存在则拒绝
+	// 注册：邮箱已存在则拒绝；登录/改密：邮箱不存在则拒绝
 	exists, err := s.emailExists(ctx, email)
 	if err != nil {
 		return err
@@ -128,7 +129,7 @@ func (s *service) SendEmailCode(ctx context.Context, email, purpose string) erro
 	if purpose == "register" && exists {
 		return ErrEmailExists
 	}
-	if purpose == "login" && !exists {
+	if (purpose == "login" || purpose == "change_password") && !exists {
 		return ErrEmailNotRegistered
 	}
 
@@ -466,6 +467,39 @@ func (s *service) UpdateAvatar(ctx context.Context, userID, avatarURL, avatarHas
 		avatarURL, avatarHash, userID,
 	)
 	return err
+}
+
+func (s *service) ChangePassword(ctx context.Context, userID string, req model.ChangePasswordRequest) error {
+	var email string
+	err := s.pool.QueryRow(ctx,
+		`SELECT email FROM users WHERE id = $1 AND deleted_at IS NULL`,
+		userID,
+	).Scan(&email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrInvalidCredentials
+		}
+		return fmt.Errorf("query user: %w", err)
+	}
+
+	// 校验邮箱验证码
+	if err := s.verifyEmailCode(ctx, email, "change_password", req.Code); err != nil {
+		return err
+	}
+
+	// 加密新密码并更新
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash new password: %w", err)
+	}
+	if _, err := s.pool.Exec(ctx,
+		`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`,
+		string(newHash), userID,
+	); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+
+	return nil
 }
 
 // ============================================================================

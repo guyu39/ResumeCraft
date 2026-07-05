@@ -2,7 +2,7 @@ package model
 
 type SendCodeRequest struct {
 	Email   string `json:"email" binding:"required,email,max=255"`
-	Purpose string `json:"purpose" binding:"required,oneof=register login"`
+	Purpose string `json:"purpose" binding:"required,oneof=register login change_password"`
 }
 
 type RegisterRequest struct {
@@ -26,6 +26,11 @@ type RefreshRequest struct {
 type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required"`
 	AccessToken  string `json:"accessToken"` // 用于即时撤销 access token
+}
+
+type ChangePasswordRequest struct {
+	NewPassword string `json:"newPassword" binding:"required,min=8,max=72"`
+	Code        string `json:"code" binding:"required"`
 }
 
 type AuthTokens struct {

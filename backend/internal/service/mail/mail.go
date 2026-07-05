@@ -29,23 +29,28 @@ func (s *Sender) Configured() bool {
 	return s.cfg.Configured()
 }
 
-// SendCode 发送验证码邮件。purpose: register | login。
+// SendCode 发送验证码邮件。purpose: register | login | change_password。
 func (s *Sender) SendCode(to, code, purpose string) error {
 	if !s.cfg.Configured() {
 		return ErrNotConfigured
 	}
 
 	action := "注册"
+	actionDesc := "注册"
 	if purpose == "login" {
 		action = "登录"
+		actionDesc = "登录"
+	} else if purpose == "change_password" {
+		action = "修改密码"
+		actionDesc = "修改密码"
 	}
 	subject := fmt.Sprintf("【ResumeCraft】%s验证码", action)
 	htmlBody := fmt.Sprintf(`<div style="font-family:'Microsoft YaHei',sans-serif;max-width:480px;margin:0 auto;padding:24px">
   <h2 style="color:#111827;font-size:18px">ResumeCraft %s验证码</h2>
-  <p style="color:#4b5563;font-size:14px">你正在%s ResumeCraft，验证码为：</p>
+  <p style="color:#4b5563;font-size:14px">你正在%s，验证码为：</p>
   <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#6366f1;margin:16px 0">%s</div>
   <p style="color:#9ca3af;font-size:12px">验证码 5 分钟内有效，请勿泄露给他人。若非本人操作，请忽略此邮件。</p>
-</div>`, action, action, code)
+</div>`, action, actionDesc, code)
 
 	return s.send(to, subject, htmlBody)
 }

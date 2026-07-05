@@ -204,9 +204,9 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
     return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
             <div className="absolute inset-0 bg-black/35" onClick={onClose} />
-            <div className="relative w-full max-w-xl max-h-[85vh] overflow-y-auto no-scrollbar rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl">
-                {/* 头部 */}
-                <div className="flex items-center justify-between mb-5">
+            <div className="relative w-full max-w-xl rounded-2xl border border-gray-100 bg-white shadow-2xl flex flex-col max-h-[85vh]">
+                {/* 头部 — 固定 */}
+                <div className="flex-shrink-0 flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
                     <div>
                         <h3 className="text-base font-semibold text-gray-800">账户设置</h3>
                         {user && (
@@ -221,8 +221,9 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                     </button>
                 </div>
 
-                {/* AI 评估配置 */}
-                <div className="space-y-3">
+                {/* 内容 — 可滚动 */}
+                <div className="flex-1 overflow-y-auto no-scrollbar px-6 py-4">
+                <div className="space-y-5">
                     <h5 className="text-sm font-semibold text-gray-800">AI 配置</h5>
                     <p className="text-xs text-gray-400">用于「AI 评估润色、JD 匹配分析、求职信」功能</p>
 
@@ -380,6 +381,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                             </>
                         )}
                     </div>
+                </div>
                 </div>
             </div>
         </div>,

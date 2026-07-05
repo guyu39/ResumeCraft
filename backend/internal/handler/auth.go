@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SendCode 发送邮箱验证码（注册/登录）
+// SendCode 发送邮箱验证码（注册/登录/修改密码）
 func (h *Handler) SendCode(c *gin.Context) {
 	if h.authService == nil {
 		response.JSONError(c, http.StatusServiceUnavailable, "AUTH_DISABLED", "登录功能未启用")
@@ -187,6 +187,43 @@ func (h *Handler) Me(c *gin.Context) {
 	}
 
 	response.JSONSuccess(c, user)
+}
+
+// ChangePassword 修改密码（需邮箱验证码）
+func (h *Handler) ChangePassword(c *gin.Context) {
+	if h.authService == nil {
+		response.JSONError(c, http.StatusServiceUnavailable, "AUTH_DISABLED", "登录功能未启用")
+		return
+	}
+
+	userIDAny, ok := c.Get(middleware.ContextUserIDKey)
+	if !ok {
+		response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录或登录已过期")
+		return
+	}
+	userID, _ := userIDAny.(string)
+
+	var req model.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "INVALID_PARAMS", "参数格式错误")
+		return
+	}
+
+	err := h.authService.ChangePassword(c.Request.Context(), userID, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrCodeInvalid):
+			response.JSONError(c, http.StatusBadRequest, "CODE_INVALID", "验证码错误或已过期")
+		case errors.Is(err, auth.ErrCodeUnavailable):
+			response.JSONError(c, http.StatusServiceUnavailable, "CODE_UNAVAILABLE", "验证码服务暂不可用")
+		default:
+			log.Printf("[auth] ChangePassword failed: %v", err)
+			response.JSONError(c, http.StatusInternalServerError, "CHANGE_PASSWORD_FAILED", "修改密码失败")
+		}
+		return
+	}
+
+	response.JSONSuccess(c, gin.H{"changed": true})
 }
 
 // clientIP 获取客户端 IP。

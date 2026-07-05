@@ -32,6 +32,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 			authGroup.POST("/logout", h.Logout)
 			if h.AuthEnabled() {
 				authGroup.GET("/me", middleware.AuthRequired(h.AuthService()), h.Me)
+				authGroup.POST("/change-password", middleware.AuthRequired(h.AuthService()), h.ChangePassword)
 			}
 		}
 

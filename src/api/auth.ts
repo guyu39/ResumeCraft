@@ -9,12 +9,13 @@ import type {
   RefreshRequest,
   LogoutRequest,
   SendCodeRequest,
+  ChangePasswordRequest,
   AuthPayload,
   AuthUser,
 } from './types'
 
 export const authApi = {
-  sendCode: (email: string, purpose: 'register' | 'login') =>
+  sendCode: (email: string, purpose: 'register' | 'login' | 'change_password') =>
     apiClient.post<{ sent: boolean }>('/auth/send-code', { email, purpose } as SendCodeRequest, { auth: false }),
 
   register: async (data: RegisterRequest) => {
@@ -53,6 +54,9 @@ export const authApi = {
   },
 
   me: () => apiClient.get<AuthUser>('/auth/me'),
+
+  changePassword: (data: ChangePasswordRequest) =>
+    apiClient.post<{ changed: boolean }>('/auth/change-password', data),
 }
 
 // Token 管理

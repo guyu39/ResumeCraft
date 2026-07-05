@@ -27,7 +27,12 @@ export interface RegisterRequest {
 
 export interface SendCodeRequest {
   email: string
-  purpose: 'register' | 'login'
+  purpose: 'register' | 'login' | 'change_password'
+}
+
+export interface ChangePasswordRequest {
+  newPassword: string
+  code: string
 }
 
 export interface RefreshRequest {
