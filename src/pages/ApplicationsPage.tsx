@@ -32,6 +32,7 @@ import type { ResumeListItem } from '@/api/types'
 import type { SnapshotListItem } from '@/api/resume'
 import ToastContainer, { toast } from '@/components/common/Toast'
 import YearMonthPicker from '@/components/common/YearMonthPicker'
+import StyledSelect from '@/components/common/StyledSelect'
 
 type DisplayStatus = 'submitted' | 'written_test' | 'interview' | 'offer' | 'terminated'
 
@@ -96,8 +97,6 @@ const emptyInterviewForm: CreateInterviewRequest = {
 const fieldInputClass = 'mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
 const fieldTextareaClass = 'mt-1 h-40 w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition [scrollbar-width:none] focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 [&::-webkit-scrollbar]:hidden'
 const fieldLabelClass = 'text-xs font-medium text-slate-500'
-const selectFieldClass = 'h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
-const selectFieldCompactClass = 'h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
 const hiddenScrollClass = 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 
 const stickyActionClass = 'sticky right-0 z-[5] border-l border-t border-slate-100 bg-white px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
@@ -625,13 +624,8 @@ const ApplicationsPage: React.FC = () => {
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
             <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索公司、岗位、岗位JD" className="h-10 w-64 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
-            <select value={status} onChange={(event) => setStatus(event.target.value as DisplayStatus | '')} className={selectFieldClass}>
-              {DISPLAY_STATUS_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
-            </select>
-            <select value={resumeId} onChange={(event) => setResumeId(event.target.value)} className={selectFieldClass}>
-              <option value="">全部简历</option>
-              {resumes.map((resume) => <option key={resume.id} value={resume.id}>{resume.title}</option>)}
-            </select>
+            <div className="w-36"><StyledSelect value={status} onChange={(v) => setStatus(v as DisplayStatus | '')} options={DISPLAY_STATUS_OPTIONS.map((option) => ({ label: option.label, value: option.value }))} /></div>
+            <div className="w-44"><StyledSelect value={resumeId} onChange={setResumeId} placeholder="全部简历" options={[{ label: '全部简历', value: '' }, ...resumes.map((resume) => ({ label: resume.title, value: resume.id }))]} /></div>
           </div>
 
           <div className={`min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain thin-scrollbar [scrollbar-width:thin] [&::-webkit-scrollbar]:block [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 hover:[&::-webkit-scrollbar-thumb]:bg-slate-400`}>
@@ -662,13 +656,15 @@ const ApplicationsPage: React.FC = () => {
                     <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.targetTitle}</td>
                     <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.department || <span className="text-slate-400">无</span>}</td>
                     <td className="border-t border-slate-100 px-4 py-3 text-center" onClick={(event) => event.stopPropagation()}>
-                      <select
-                        value={displayToBackendStatus(rowDisplayStatus(item.status))}
-                        onChange={(event) => changeApplicationStatus(item.id, event.target.value as JobApplicationStatus)}
-                        className={`h-7 cursor-pointer rounded-full px-2 text-xs font-medium ring-1 outline-none ${STATUS_COLOR_CLASS[rowDisplayStatus(item.status)] || STATUS_COLOR_CLASS["已投递"]}`}
-                      >
-                        {STATUS_SELECT_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                      </select>
+                      <div className="w-24">
+                        <StyledSelect
+                          size="compact"
+                          value={displayToBackendStatus(rowDisplayStatus(item.status))}
+                          onChange={(v) => changeApplicationStatus(item.id, v as JobApplicationStatus)}
+                          options={STATUS_SELECT_OPTIONS.map((opt) => ({ label: opt.label, value: opt.value }))}
+                          buttonClassName={`rounded-full font-medium ring-1 ${STATUS_COLOR_CLASS[rowDisplayStatus(item.status)] || STATUS_COLOR_CLASS["已投递"]}`}
+                        />
+                      </div>
                     </td>
                     <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.submittedAt ? displayDate(item.submittedAt) : <span className="text-slate-300">无</span>}</td>
                     <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.writtenTestAt ? displayDate(item.writtenTestAt) : <span className="text-slate-300">无</span>}</td>
@@ -707,9 +703,7 @@ const ApplicationsPage: React.FC = () => {
           <div className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">第 {page} / {totalPages} 页</span>
-              <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className={selectFieldCompactClass}>
-                {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size} 条/页</option>)}
-              </select>
+              <div className="w-24"><StyledSelect size="compact" value={String(pageSize)} onChange={(v) => setPageSize(Number(v))} options={PAGE_SIZE_OPTIONS.map((size) => ({ label: `${size} 条/页`, value: String(size) }))} /></div>
             </div>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" />上一页</button>
@@ -813,14 +807,17 @@ const ApplicationsPage: React.FC = () => {
                     <div className={`max-h-[calc(100vh-220px)] px-4 py-4 ${hiddenScrollClass}`}>
                       <div className="grid grid-cols-2 gap-3">
                         <label className={fieldLabelClass}>投递状态
-                          <select value={interviewForm.round} onChange={(event) => setInterviewForm({ ...interviewForm, round: event.target.value })} className={fieldInputClass}>
-                            <option value="">请选择流程</option>
-                            {getAvailableRounds(detail?.interviews?.map((i) => i.round) || [], editingInterviewId ? interviewForm.round : undefined).map((round) => <option key={round} value={round}>{round}</option>)}
-                          </select>
+                          <StyledSelect
+                            value={interviewForm.round}
+                            onChange={(v) => setInterviewForm({ ...interviewForm, round: v })}
+                            placeholder="请选择流程"
+                            options={getAvailableRounds(detail?.interviews?.map((i) => i.round) || [], editingInterviewId ? interviewForm.round : undefined).map((round) => ({ label: round, value: round }))}
+                            className="mt-1"
+                          />
                         </label>
                         <label className={fieldLabelClass}>日期
                           <div className="mt-1 [&_button]:!h-10 [&_button]:!rounded-xl [&_button]:!border-slate-200 [&_button]:!text-slate-800 [&_button]:focus:!border-blue-500 [&_button]:focus:!ring-4 [&_button]:focus:!ring-blue-500/10">
-                            <YearMonthPicker value={toDatePickerValue(interviewForm.scheduledAt)} onChange={(value) => setInterviewForm({ ...interviewForm, scheduledAt: fromDatePickerValue(value) })} placeholder="选择日期" enableDay defaultStep="month" futureYears={3} />
+                            <YearMonthPicker value={toDatePickerValue(interviewForm.scheduledAt)} onChange={(value) => setInterviewForm({ ...interviewForm, scheduledAt: fromDatePickerValue(value) })} placeholder="选择日期" enableDay defaultStep="day" futureYears={3} />
                           </div>
                         </label>
                         <label className={`${fieldLabelClass} col-span-2`}>面试记录
@@ -863,10 +860,14 @@ const ApplicationsPage: React.FC = () => {
                           </div>
                         </label>
                         <label className={fieldLabelClass}>结果
-                          <select value={interviewForm.result || ''} onChange={(event) => setInterviewForm({ ...interviewForm, result: event.target.value })} disabled={editingInterviewId ? !isToday(interviewForm.scheduledAt) : false} className={fieldInputClass}>
-                            <option value="">请选择结果</option>
-                            {interviewResultOptions.map((result) => <option key={result} value={result}>{result}</option>)}
-                          </select>
+                          <StyledSelect
+                            value={interviewForm.result || ''}
+                            onChange={(v) => setInterviewForm({ ...interviewForm, result: v })}
+                            placeholder="请选择结果"
+                            disabled={editingInterviewId ? !isToday(interviewForm.scheduledAt) : false}
+                            options={interviewResultOptions.map((result) => ({ label: result, value: result }))}
+                            className="mt-1"
+                          />
                         </label>
                       </div>
                     </div>
@@ -936,16 +937,22 @@ const ApplicationsPage: React.FC = () => {
                     <div className="mb-3 flex items-center gap-2"><Layers3 className="h-4 w-4 text-blue-600" /><h4 className="text-sm font-semibold text-slate-900">关联简历快照</h4></div>
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className={fieldLabelClass}>关联简历
-                        <select value={createForm.resumeId} onChange={(event) => setCreateForm({ ...createForm, resumeId: event.target.value, snapshotVersionId: '' })} className={fieldInputClass}>
-                          <option value="">请选择简历</option>
-                          {resumes.map((resume) => <option key={resume.id} value={resume.id}>{resume.title}</option>)}
-                        </select>
+                        <StyledSelect
+                          value={createForm.resumeId}
+                          onChange={(v) => setCreateForm({ ...createForm, resumeId: v, snapshotVersionId: '' })}
+                          placeholder="请选择简历"
+                          options={resumes.map((resume) => ({ label: resume.title, value: resume.id }))}
+                          className="mt-1"
+                        />
                       </label>
                       <label className={fieldLabelClass}>关联快照
-                        <select value={createForm.snapshotVersionId} onChange={(event) => setCreateForm({ ...createForm, snapshotVersionId: event.target.value })} className={fieldInputClass}>
-                          <option value="">请选择快照</option>
-                          {createSnapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{snapshot.label || snapshot.snapshotType || snapshot.id.slice(0, 8)}</option>)}
-                        </select>
+                        <StyledSelect
+                          value={createForm.snapshotVersionId}
+                          onChange={(v) => setCreateForm({ ...createForm, snapshotVersionId: v })}
+                          placeholder="请选择快照"
+                          options={createSnapshots.map((snapshot) => ({ label: snapshot.label || snapshot.snapshotType || snapshot.id.slice(0, 8), value: snapshot.id }))}
+                          className="mt-1"
+                        />
                       </label>
                     </div>
                   </section>

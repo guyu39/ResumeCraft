@@ -214,6 +214,18 @@ body {
   background-color: rgba(0, 0, 0, 0.3);
 }
 
+/* 统一 select 外观：去掉原生箭头，注入自定义 SVG 箭头，圆角与输入框一致 */
+.select-styled {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 16px;
+  padding-right: 2rem;
+}
+
 /* 富文本链接统一样式（编辑态 + 预览态） */
 .rich-editor-content a,
 .rich-preview-content a,

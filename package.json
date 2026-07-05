@@ -13,6 +13,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource/noto-sans-sc": "^5.2.9",
+    "@headlessui/react": "^2.2.10",
     "@tiptap/extension-link": "^3.22.2",
     "@tiptap/extension-underline": "^3.22.2",
     "@tiptap/react": "^3.22.2",

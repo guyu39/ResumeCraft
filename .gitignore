@@ -36,3 +36,7 @@ docker/minio-data/
 
 # workbuddy
 workbuddy/
+.claude/commands/
+.claude/skills/
+.codebuddy/
+.agents/
