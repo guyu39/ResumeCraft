@@ -99,10 +99,9 @@ const fieldLabelClass = 'text-xs font-medium text-slate-500'
 const selectFieldClass = 'h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
 const selectFieldCompactClass = 'h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
 const hiddenScrollClass = 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-const horizontalScrollClass = 'overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 
-const stickyActionClass = 'sticky right-0 z-10 border-l border-t border-slate-100 bg-white px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
-const stickyActionHeadClass = 'sticky right-0 z-10 border-l border-slate-100 bg-slate-50 px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
+const stickyActionClass = 'sticky right-0 z-[5] border-l border-t border-slate-100 bg-white px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
+const stickyActionHeadClass = 'sticky right-0 z-20 border-l border-slate-100 bg-slate-50 px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
 
 function rowDisplayStatus(status: JobApplicationStatus): string {
   if (status === 'interview') return '面试中'
@@ -635,7 +634,7 @@ const ApplicationsPage: React.FC = () => {
             </select>
           </div>
 
-          <div className={`min-h-0 flex-1 ${hiddenScrollClass} ${horizontalScrollClass}`}>
+          <div className={`min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain thin-scrollbar [scrollbar-width:thin] [&::-webkit-scrollbar]:block [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 hover:[&::-webkit-scrollbar-thumb]:bg-slate-400`}>
             <table className="w-full min-w-[1480px] border-separate border-spacing-0 text-left text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-medium text-slate-500">
                 <tr>
