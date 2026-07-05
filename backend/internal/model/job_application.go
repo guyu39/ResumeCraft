@@ -122,19 +122,20 @@ type JobApplicationAIRun struct {
 
 // JobApplicationInterview 面试记录
 type JobApplicationInterview struct {
-	ID            string `json:"id"`
-	ApplicationID string `json:"applicationId"`
-	Round         string `json:"round"`
-	ScheduledAt   *int64 `json:"scheduledAt,omitempty"`
-	ScheduledEnd  *int64 `json:"scheduledEnd,omitempty"`
-	Format        string `json:"format"`
-	Interviewer   string `json:"interviewer"`
-	Questions     string `json:"questions,omitempty"`
-	Notes         string `json:"notes,omitempty"`
-	Result        string `json:"result,omitempty"`
-	NextAction    string `json:"nextAction,omitempty"`
-	CreatedAt     int64  `json:"createdAt"`
-	UpdatedAt     int64  `json:"updatedAt"`
+	ID                  string                    `json:"id"`
+	ApplicationID       string                    `json:"applicationId"`
+	Round               string                    `json:"round"`
+	ScheduledAt         *int64                    `json:"scheduledAt,omitempty"`
+	ScheduledEnd        *int64                    `json:"scheduledEnd,omitempty"`
+	Format              string                    `json:"format"`
+	Interviewer         string                    `json:"interviewer"`
+	Questions           string                    `json:"questions,omitempty"`
+	Notes               string                    `json:"notes,omitempty"`
+	Result              string                    `json:"result,omitempty"`
+	NextAction          string                    `json:"nextAction,omitempty"`
+	RecordingAttachment *JobApplicationAttachment `json:"recordingAttachment,omitempty"`
+	CreatedAt           int64                     `json:"createdAt"`
+	UpdatedAt           int64                     `json:"updatedAt"`
 }
 
 // JobApplicationAttachment 预留附件元数据
@@ -257,4 +258,15 @@ type DuplicateJobApplicationResponse struct {
 // AnalyzeInterviewFileResponse 上传面试记录文件 AI 总结的响应
 type AnalyzeInterviewFileResponse struct {
 	Summary string `json:"summary"`
+}
+
+// UploadInterviewRecordingResponse 上传面试录音文件后的响应
+type UploadInterviewRecordingResponse struct {
+	Attachment JobApplicationAttachment `json:"attachment"`
+}
+
+// GetInterviewRecordingResponse 获取面试录音文件内容
+type GetInterviewRecordingResponse struct {
+	Attachment *JobApplicationAttachment `json:"attachment,omitempty"`
+	Content    string                    `json:"content,omitempty"`
 }

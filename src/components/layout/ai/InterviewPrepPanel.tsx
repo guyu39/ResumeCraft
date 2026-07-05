@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import {
     GraduationCap,
     Wand2,
@@ -18,7 +18,7 @@ import {
     History,
 } from 'lucide-react'
 import { useInterviewPrep } from '@/hooks/useInterviewPrep'
-import { aiApi } from '@/api'
+import { aiApi, applicationsApi } from '@/api'
 import { extractTextFromDocx, isDocxFile } from '@/utils/docxParser'
 import { InterviewHistoryDrawer } from './InterviewHistoryDrawer'
 import { scoreClass } from './shared'
@@ -119,6 +119,80 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
 
     // 追问轮数上限：最多 3 轮 AI 追问，达上限自动结束，避免无限追问烧 token
     const MAX_FOLLOWUP_ROUNDS = 3
+
+    // 从投递页跳转而来时，读取 URL 上下文并预填录音分析表单
+    useEffect(() => {
+        const contextRaw = sessionStorage.getItem('interview_analysis_context')
+        if (!contextRaw) return
+        try {
+            const context = JSON.parse(contextRaw) as {
+                mode?: string
+                applicationId?: string
+                interviewId?: string
+                interviewRound?: string
+                companyName?: string
+                targetTitle?: string
+                jdText?: string
+            }
+            if (context.mode === 'transcript') {
+                setMode('transcript')
+            }
+            if (context.interviewRound) {
+                // 中文轮次映射到面板选项：HR 面 -> hr，其余 -> technical
+                const round = context.interviewRound === 'HR面' ? 'hr' : 'technical'
+                setInterviewRound(round as InterviewRound)
+            }
+            if (context.companyName) setLocalCompanyName(context.companyName)
+            if (context.targetTitle) setLocalTargetTitle(context.targetTitle)
+            if (context.jdText) setLocalJdText(context.jdText)
+        } catch {
+            // ignore invalid context
+        }
+    }, [setMode, setInterviewRound])
+
+    // 从投递页带来的面试录音文件，解码后预填到转写文本；无录音时 fallback 到面试记录文本
+    useEffect(() => {
+        const contextRaw = sessionStorage.getItem('interview_analysis_context')
+        const transcriptFallback = sessionStorage.getItem('interview_analysis_transcript')
+        if (!contextRaw) {
+            if (transcriptFallback) {
+                setTranscriptText(transcriptFallback)
+                sessionStorage.removeItem('interview_analysis_transcript')
+            }
+            return
+        }
+        ;(async () => {
+            try {
+                const context = JSON.parse(contextRaw) as {
+                    applicationId?: string
+                    interviewId?: string
+                }
+                let text = transcriptFallback || ''
+                if (context.applicationId && context.interviewId) {
+                    try {
+                        const data = await applicationsApi.getInterviewRecording(context.applicationId, context.interviewId)
+                        if (data.attachment && data.content) {
+                            const bytes = base64ToArrayBuffer(data.content)
+                            if (data.attachment.fileType === 'docx') {
+                                const file = new File([bytes], data.attachment.fileName, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+                                text = await extractTextFromDocx(file)
+                            } else {
+                                text = new TextDecoder().decode(bytes)
+                            }
+                        }
+                    } catch {
+                        // 录音读取失败时仍尝试使用 fallback 文本
+                    }
+                }
+                if (text) setTranscriptText(text)
+            } catch {
+                if (transcriptFallback) setTranscriptText(transcriptFallback)
+            } finally {
+                sessionStorage.removeItem('interview_analysis_context')
+                sessionStorage.removeItem('interview_analysis_transcript')
+            }
+        })()
+    }, [setTranscriptText])
 
     const startOrContinueFollowup = async (questionId: string, questionText: string, firstAnswer: string) => {
         if (!sessionId) return
@@ -968,6 +1042,15 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
             />
         </div>
     )
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = atob(base64)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+    }
+    return bytes.buffer
 }
 
 export default InterviewPrepPanel

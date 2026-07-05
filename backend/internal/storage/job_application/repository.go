@@ -61,6 +61,15 @@ type UpdateApplicationParams struct {
 	Status             model.JobApplicationStatus
 }
 
+type CreateInterviewAttachmentParams struct {
+	InterviewID string
+	FileName    string
+	FileType    string
+	FileSize    int64
+	StorageKey  string
+	Metadata    json.RawMessage
+}
+
 type Repository interface {
 	List(ctx context.Context, userID string, filters model.JobApplicationFilters) ([]model.JobApplicationListItem, int, error)
 	GetByID(ctx context.Context, userID, applicationID string) (*model.JobApplication, error)
@@ -85,6 +94,10 @@ type Repository interface {
 	CreateInterview(ctx context.Context, userID, applicationID string, req model.CreateInterviewRequest) (*model.JobApplicationInterview, error)
 	UpdateInterview(ctx context.Context, userID, applicationID, interviewID string, req model.UpdateInterviewRequest) (*model.JobApplicationInterview, error)
 	DeleteInterview(ctx context.Context, userID, applicationID, interviewID string) error
+
+	CreateInterviewAttachment(ctx context.Context, userID, applicationID string, params CreateInterviewAttachmentParams) (*model.JobApplicationAttachment, error)
+	GetInterviewAttachment(ctx context.Context, userID, applicationID, interviewID string) (*model.JobApplicationAttachment, error)
+	DeleteInterviewAttachment(ctx context.Context, userID, applicationID, interviewID string) error
 
 	GetStatus(ctx context.Context, userID, applicationID string) (model.JobApplicationStatus, error)
 }
@@ -794,7 +807,18 @@ func (r *repository) ListInterviews(ctx context.Context, userID, applicationID s
 		return nil, fmt.Errorf("list interviews: %w", err)
 	}
 	defer rows.Close()
-	return scanInterviewRows(rows)
+	items, err := scanInterviewRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		attachment, err := r.GetInterviewAttachment(ctx, userID, applicationID, items[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		items[i].RecordingAttachment = attachment
+	}
+	return items, nil
 }
 
 func (r *repository) CreateInterview(ctx context.Context, userID, applicationID string, req model.CreateInterviewRequest) (*model.JobApplicationInterview, error) {
@@ -884,6 +908,88 @@ func (r *repository) DeleteInterview(ctx context.Context, userID, applicationID,
 	if result.RowsAffected() == 0 {
 		return ErrApplicationNotFound
 	}
+	return nil
+}
+
+func (r *repository) CreateInterviewAttachment(ctx context.Context, userID, applicationID string, params CreateInterviewAttachmentParams) (*model.JobApplicationAttachment, error) {
+	metadata := params.Metadata
+	if len(metadata) == 0 {
+		metadata = json.RawMessage(`{}`)
+	}
+	// 一个面试记录只保留一份录音附件，新上传覆盖旧附件
+	if _, err := r.pool.Exec(ctx, `
+		DELETE FROM job_application_attachments a
+		USING job_application_interviews it, job_applications ja
+		WHERE a.interview_id = $1 AND a.application_id = $2 AND a.user_id = $3
+		  AND it.id = a.interview_id AND it.user_id = a.user_id
+		  AND ja.id = it.application_id AND ja.user_id = it.user_id
+	`, params.InterviewID, applicationID, userID); err != nil {
+		return nil, fmt.Errorf("clear old interview attachment: %w", err)
+	}
+	var attachment model.JobApplicationAttachment
+	var createdAt time.Time
+	err := r.pool.QueryRow(ctx, `
+		INSERT INTO job_application_attachments (
+			application_id, interview_id, user_id, file_name, file_type, file_size, storage_key, metadata
+		)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8
+		WHERE EXISTS (
+			SELECT 1 FROM job_application_interviews
+			WHERE id = $2 AND application_id = $1 AND user_id = $3
+		)
+		RETURNING id, application_id, interview_id, file_name, file_type, file_size, storage_key, metadata, created_at
+	`, applicationID, params.InterviewID, userID, params.FileName, params.FileType, params.FileSize, params.StorageKey, metadata).Scan(
+		&attachment.ID, &attachment.ApplicationID, &attachment.InterviewID, &attachment.FileName,
+		&attachment.FileType, &attachment.FileSize, &attachment.StorageKey, &attachment.Metadata, &createdAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrApplicationNotFound
+		}
+		return nil, fmt.Errorf("create interview attachment: %w", err)
+	}
+	attachment.CreatedAt = createdAt.UnixMilli()
+	return &attachment, nil
+}
+
+func (r *repository) GetInterviewAttachment(ctx context.Context, userID, applicationID, interviewID string) (*model.JobApplicationAttachment, error) {
+	var attachment model.JobApplicationAttachment
+	var createdAt time.Time
+	err := r.pool.QueryRow(ctx, `
+		SELECT a.id, a.application_id, a.interview_id, a.file_name, a.file_type, a.file_size, a.storage_key, a.metadata, a.created_at
+		FROM job_application_attachments a
+		JOIN job_application_interviews it ON it.id = a.interview_id
+		JOIN job_applications ja ON ja.id = it.application_id
+		WHERE a.interview_id = $1 AND a.application_id = $2 AND a.user_id = $3
+		  AND it.user_id = $3 AND ja.user_id = $3
+		ORDER BY a.created_at DESC
+		LIMIT 1
+	`, interviewID, applicationID, userID).Scan(
+		&attachment.ID, &attachment.ApplicationID, &attachment.InterviewID, &attachment.FileName,
+		&attachment.FileType, &attachment.FileSize, &attachment.StorageKey, &attachment.Metadata, &createdAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get interview attachment: %w", err)
+	}
+	attachment.CreatedAt = createdAt.UnixMilli()
+	return &attachment, nil
+}
+
+func (r *repository) DeleteInterviewAttachment(ctx context.Context, userID, applicationID, interviewID string) error {
+	result, err := r.pool.Exec(ctx, `
+		DELETE FROM job_application_attachments a
+		USING job_application_interviews it, job_applications ja
+		WHERE a.interview_id = $1 AND a.application_id = $2 AND a.user_id = $3
+		  AND it.id = a.interview_id AND it.user_id = a.user_id
+		  AND ja.id = it.application_id AND ja.user_id = it.user_id
+	`, interviewID, applicationID, userID)
+	if err != nil {
+		return fmt.Errorf("delete interview attachment: %w", err)
+	}
+	_ = result
 	return nil
 }
 

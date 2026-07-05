@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  ExternalLink,
   FileCheck2,
   FilePlus2,
   FileText,
@@ -15,6 +16,7 @@ import {
   PanelRightClose,
   Plus,
   RefreshCw,
+  Sparkles,
   Trash2,
   UploadCloud,
   X,
@@ -23,6 +25,7 @@ import { applicationsApi, resumeApi } from '@/api'
 import type {
   CreateInterviewRequest,
   JobApplication,
+  JobApplicationAttachment,
   JobApplicationListItem,
   JobApplicationStatus,
   ListApplicationsParams,
@@ -250,13 +253,6 @@ function addOneHour(value: number | undefined): number | undefined {
   return d.getTime()
 }
 
-function summarizeAiRun(summary: Record<string, unknown>): string {
-  const values = Object.values(summary || {})
-  const firstText = values.find((value) => typeof value === 'string' && value.trim())
-  if (typeof firstText === 'string') return firstText
-  return JSON.stringify(summary || {})
-}
-
 const STATUS_COLOR_CLASS: Record<string, string> = {
   '面试中': 'bg-amber-50 text-amber-700 ring-amber-200',
   '终止': 'bg-red-50 text-red-600 ring-red-200',
@@ -287,8 +283,6 @@ const ApplicationsPage: React.FC = () => {
   const [flowEditorOpen, setFlowEditorOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingInterviewId, setEditingInterviewId] = useState<string | null>(null)
-  const [analyzingInterview, setAnalyzingInterview] = useState(false)
-  const [uploadedFileName, setUploadedFileName] = useState('')
 
   const filters = useMemo<ListApplicationsParams>(() => ({
     page,
@@ -359,12 +353,14 @@ const ApplicationsPage: React.FC = () => {
       detail.submittedAt ? {
         key: 'submitted',
         time: detail.submittedAt,
+        timeEnd: undefined as number | undefined,
         title: '投递',
         description: `${detail.companyName || '未填写公司'} · ${detail.targetTitle}`,
         interviewId: undefined as string | undefined,
         round: '',
         result: '',
         notes: '',
+        recordingAttachment: undefined as JobApplicationAttachment | undefined,
         scheduledAt: undefined as number | undefined,
         scheduledEnd: undefined as number | undefined,
       } : null,
@@ -378,6 +374,7 @@ const ApplicationsPage: React.FC = () => {
         round: item.round,
         result: item.result || '',
         notes: item.notes || '',
+        recordingAttachment: item.recordingAttachment,
         scheduledAt: item.scheduledAt,
         scheduledEnd: item.scheduledEnd,
       })),
@@ -387,12 +384,14 @@ const ApplicationsPage: React.FC = () => {
         .map((event) => ({
           key: `status-${event.id}`,
           time: event.createdAt,
+          timeEnd: undefined as number | undefined,
           title: STATUS_LABELS[event.toStatus],
           description: event.note || `状态更新为${STATUS_LABELS[event.toStatus]}`,
           interviewId: undefined as string | undefined,
           round: '',
           result: '',
           notes: '',
+          recordingAttachment: undefined as JobApplicationAttachment | undefined,
           scheduledAt: undefined as number | undefined,
           scheduledEnd: undefined as number | undefined,
         })),
@@ -539,31 +538,53 @@ const ApplicationsPage: React.FC = () => {
   const openEditInterview = (item: { id: string; round: string; scheduledAt?: number; scheduledEnd?: number; notes?: string; result?: string }) => {
     setEditingInterviewId(item.id)
     setInterviewForm({ ...emptyInterviewForm, round: item.round, scheduledAt: item.scheduledAt, scheduledEnd: item.scheduledEnd, notes: item.notes || '', result: item.result || '' })
-    setUploadedFileName('')
     setFlowEditorOpen(true)
   }
 
-  const analyzeInterviewFile = async (file: File) => {
+  const goToRecordingAnalysis = () => {
     if (!detail) return
-    if (!file.name.toLowerCase().endsWith('.txt')) {
-      toast('仅支持上传纯文本文件（.txt）')
+    if (!editingInterviewId) return
+    const params = new URLSearchParams({
+      tab: 'interview',
+      mode: 'transcript',
+      applicationId: detail.id,
+      resumeId: detail.resumeId,
+      snapshotId: detail.snapshotVersionId,
+      interviewId: editingInterviewId,
+      interviewRound: interviewForm.round || '',
+      companyName: detail.companyName || '',
+      targetTitle: detail.targetTitle || '',
+      jdText: detail.jdText || '',
+    })
+    // 将当前面试记录文本作为 fallback 暂存，便于 edit 页预填
+    sessionStorage.setItem('interview_analysis_transcript', interviewForm.notes || '')
+    sessionStorage.setItem('interview_analysis_source', '面试记录')
+    window.open(`/editor?${params.toString()}`, '_blank')
+  }
+
+  const currentInterview = useMemo(() => detail?.interviews?.find((i) => i.id === editingInterviewId), [detail, editingInterviewId])
+  const [uploadingRecording, setUploadingRecording] = useState(false)
+
+  const uploadInterviewRecording = async (file: File) => {
+    if (!detail || !editingInterviewId) return
+    const name = file.name.toLowerCase()
+    if (!name.endsWith('.txt') && !name.endsWith('.docx')) {
+      toast('仅支持 .txt 或 .docx 格式')
       return
     }
     if (file.size > 2 * 1024 * 1024) {
       toast('文件大小不能超过 2MB')
       return
     }
-    setAnalyzingInterview(true)
-    setUploadedFileName(file.name)
+    setUploadingRecording(true)
     try {
-      const { summary } = await applicationsApi.analyzeInterviewFile(detail.id, file)
-      setInterviewForm((current) => ({ ...current, notes: summary }))
-      toast('AI 总结已生成，可编辑后保存', 'success')
+      await applicationsApi.uploadInterviewRecording(detail.id, editingInterviewId, file)
+      await loadDetail(detail.id)
+      toast('录音文件上传成功', 'success')
     } catch (err) {
-      toast(cleanError(err, '分析面试记录失败'))
-      setUploadedFileName('')
+      toast(cleanError(err, '上传录音文件失败'))
     } finally {
-      setAnalyzingInterview(false)
+      setUploadingRecording(false)
     }
   }
 
@@ -775,7 +796,7 @@ const ApplicationsPage: React.FC = () => {
         </section>
 
         {detailOpen && (
-          <aside className="fixed bottom-6 right-6 top-24 z-40 w-[min(400px,calc(100vw-3rem))] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-950/15 transition-all">
+          <aside className="fixed bottom-6 right-6 top-24 z-40 w-[min(450px,calc(100vw-3rem))] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-950/15 transition-all">
             <div className="relative flex h-full min-h-0 flex-col">
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div>
@@ -795,8 +816,8 @@ const ApplicationsPage: React.FC = () => {
                 <div className={`min-h-0 flex-1 space-y-5 px-4 py-4 ${hiddenScrollClass}`}>
                   <section>
                     <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold">投递时间线</h3>
-                      <button type="button" disabled={finalStatuses.includes(detail.status) || (detail?.interviews || []).some((i) => i.result === '终止')} onClick={() => { setEditingInterviewId(null); setInterviewForm(emptyInterviewForm); setUploadedFileName(''); setFlowEditorOpen(true) }} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-lg transition ${(finalStatuses.includes(detail.status) || (detail?.interviews || []).some((i) => i.result === '终止')) ? 'cursor-not-allowed bg-slate-300 shadow-none' : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'}`} title={(detail?.interviews || []).some((i) => i.result === '终止') ? '已有面试被标记为终止，不可新增' : finalStatuses.includes(detail.status) ? '投递已终态，不可新增面试' : '新增流程'}>
+                      <h3 className="text-sm font-semibold">面试时间线</h3>
+                      <button type="button" disabled={finalStatuses.includes(detail.status) || (detail?.interviews || []).some((i) => i.result === '终止')} onClick={() => { setEditingInterviewId(null); setInterviewForm(emptyInterviewForm); setFlowEditorOpen(true) }} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-lg transition ${(finalStatuses.includes(detail.status) || (detail?.interviews || []).some((i) => i.result === '终止')) ? 'cursor-not-allowed bg-slate-300 shadow-none' : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'}`} title={(detail?.interviews || []).some((i) => i.result === '终止') ? '已有面试被标记为终止，不可新增' : finalStatuses.includes(detail.status) ? '投递已终态，不可新增面试' : '新增流程'}>
                         <FilePlus2 className="h-3.5 w-3.5" />新增流程
                       </button>
                     </div>
@@ -817,7 +838,7 @@ const ApplicationsPage: React.FC = () => {
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <p className="font-medium text-slate-800">{node?.title}</p>
-                                {node?.interviewId && (node?.notes ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 ring-1 ring-blue-100">已上传</span> : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-400 ring-1 ring-slate-200">待上传</span>)}
+                                {node?.interviewId && (node?.recordingAttachment ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 ring-1 ring-blue-100">已上传录音</span> : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-400 ring-1 ring-slate-200">待上传录音</span>)}
                                 {node?.interviewId && (
                                   <div className="w-20" onClick={(e) => e.stopPropagation()} title={appTerminal ? '投递已终止或已 offer' : hasHigherRound ? '存在后续面试流程，不允许修改' : ''}>
                                     <StyledSelect
@@ -854,23 +875,6 @@ const ApplicationsPage: React.FC = () => {
                         </div>
                         )
                       })}
-                    </div>
-                  </section>
-
-                  <section>
-                    <h3 className="text-sm font-semibold">AI 分析摘要</h3>
-                    <div className="mt-3 space-y-2">
-                      {(detail.aiRuns || []).length === 0 ? (
-                        <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-400">暂无 AI 分析摘要。当前后端未提供“根据面试记录生成分析”的接口。</p>
-                      ) : detail.aiRuns?.map((run) => (
-                        <div key={run.id} className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">{run.resultType === 'jd_match' ? '快速匹配' : run.resultType === 'jd_score' ? '深度评分' : run.resultType}</span>
-                            <span className="text-xs text-slate-400">{displayDate(run.createdAt)}</span>
-                          </div>
-                          <p className="mt-2 line-clamp-4 text-xs leading-5 text-slate-600">{summarizeAiRun(run.summary)}</p>
-                        </div>
-                      ))}
                     </div>
                   </section>
 
@@ -933,42 +937,83 @@ const ApplicationsPage: React.FC = () => {
                       <div className={`min-h-0 flex-1 border-t border-slate-100 pt-4 ${hiddenScrollClass}`}>
                         <div className="grid grid-cols-2 gap-3 pb-4">
                         <label className={`${fieldLabelClass} col-span-2`}>面试记录
+                          <textarea
+                            value={interviewForm.notes}
+                            onChange={(event) => setInterviewForm({ ...interviewForm, notes: event.target.value })}
+                            placeholder="记录面试问题、回答要点、面试官反馈等"
+                            className="mt-1 h-24 w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none [scrollbar-width:none] focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 [&::-webkit-scrollbar]:hidden"
+                          />
+                        </label>
+                        <label className={`${fieldLabelClass} col-span-2`}>面试录音
                           <div className="mt-1 space-y-2">
-                            <label className={`flex h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed transition ${analyzingInterview ? 'cursor-not-allowed border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-slate-50/70 hover:border-blue-300 hover:bg-blue-50/40'}`}>
-                              <input
-                                type="file"
-                                accept=".txt,text/plain"
-                                className="hidden"
-                                disabled={analyzingInterview}
-                                onChange={(event) => {
-                                  const file = event.target.files?.[0]
-                                  if (file) analyzeInterviewFile(file)
-                                  event.target.value = ''
-                                }}
-                              />
-                              {analyzingInterview ? (
-                                <>
-                                  <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
-                                  <span className="text-xs font-medium text-blue-600">AI 正在分析「{uploadedFileName}」...</span>
-                                </>
-                              ) : uploadedFileName ? (
-                                <>
-                                  <FileCheck2 className="h-5 w-5 text-emerald-500" />
-                                  <span className="text-xs font-medium text-slate-600">已分析「{uploadedFileName}」，可重新上传覆盖</span>
-                                </>
-                              ) : (
-                                <>
-                                  <UploadCloud className="h-5 w-5 text-slate-400" />
-                                  <span className="text-xs font-medium text-slate-500">点击上传面试记录文本文件（.txt，≤2MB）</span>
-                                </>
-                              )}
-                            </label>
-                            <textarea
-                              value={interviewForm.notes}
-                              onChange={(event) => setInterviewForm({ ...interviewForm, notes: event.target.value })}
-                              placeholder="上传文件后，AI 生成的总结会显示在这里，可直接编辑调整"
-                              className="h-24 w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none [scrollbar-width:none] focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 [&::-webkit-scrollbar]:hidden"
-                            />
+                            {currentInterview?.recordingAttachment ? (
+                              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <FileCheck2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                                  <span className="truncate text-sm text-slate-700" title={currentInterview.recordingAttachment.fileName}>{currentInterview.recordingAttachment.fileName}</span>
+                                  <span className="text-xs text-slate-400">({(currentInterview.recordingAttachment.fileSize / 1024).toFixed(1)} KB)</span>
+                                </div>
+                                <label className="cursor-pointer rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50">
+                                  重新上传
+                                  <input
+                                    type="file"
+                                    accept=".txt,.docx"
+                                    className="hidden"
+                                    disabled={uploadingRecording}
+                                    onChange={(event) => {
+                                      const file = event.target.files?.[0]
+                                      if (file) uploadInterviewRecording(file)
+                                      event.target.value = ''
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            ) : (
+                              <label className={`flex h-20 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed transition ${uploadingRecording ? 'cursor-not-allowed border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-slate-50/70 hover:border-blue-300 hover:bg-blue-50/40'}`}>
+                                <input
+                                  type="file"
+                                  accept=".txt,.docx"
+                                  className="hidden"
+                                  disabled={uploadingRecording}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0]
+                                    if (file) uploadInterviewRecording(file)
+                                    event.target.value = ''
+                                  }}
+                                />
+                                {uploadingRecording ? (
+                                  <>
+                                    <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                                    <span className="text-xs font-medium text-blue-600">正在上传录音文件...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <UploadCloud className="h-5 w-5 text-slate-400" />
+                                    <span className="text-xs font-medium text-slate-500">点击上传面试录音文件（.txt / .docx，≤2MB）</span>
+                                  </>
+                                )}
+                              </label>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={goToRecordingAnalysis}
+                                disabled={!editingInterviewId}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                前往录音分析
+                              </button>
+                              <button
+                                type="button"
+                                disabled
+                                title="手动分析功能即将上线"
+                                className="flex flex-1 cursor-not-allowed items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-400"
+                              >
+                                <Sparkles className="h-3.5 w-3.5" />
+                                手动分析
+                              </button>
+                            </div>
                           </div>
                         </label>
                       </div>

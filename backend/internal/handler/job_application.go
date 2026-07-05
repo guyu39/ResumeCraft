@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -16,6 +19,7 @@ import (
 	"resumecraft-pdf-backend/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // ListApplications 获取投递记录列表
@@ -344,6 +348,123 @@ func (h *Handler) AnalyzeInterviewFile(c *gin.Context) {
 	}
 
 	response.JSONSuccess(c, model.AnalyzeInterviewFileResponse{Summary: summary})
+}
+
+// UploadInterviewRecording 上传面试录音文件（txt/docx）并关联到面试记录
+// POST /api/applications/:id/interviews/:interviewId/recording
+func (h *Handler) UploadInterviewRecording(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	applicationID := c.Param("id")
+	interviewID := c.Param("interviewId")
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "请选择文件")
+		return
+	}
+	defer file.Close()
+
+	if header.Size > maxInterviewFileSize {
+		response.JSONError(c, http.StatusBadRequest, "FILE_TOO_LARGE", "文件大小不能超过 2MB")
+		return
+	}
+
+	data, err := io.ReadAll(io.LimitReader(file, maxInterviewFileSize+1))
+	if err != nil {
+		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "读取文件失败")
+		return
+	}
+	if int64(len(data)) > maxInterviewFileSize {
+		response.JSONError(c, http.StatusBadRequest, "FILE_TOO_LARGE", "文件大小不能超过 2MB")
+		return
+	}
+
+	fileName := header.Filename
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext != ".txt" && ext != ".docx" {
+		response.JSONError(c, http.StatusBadRequest, "INVALID_FILE_TYPE", "仅支持 .txt 或 .docx 格式")
+		return
+	}
+
+	fileType := ext[1:]
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		if ext == ".txt" {
+			contentType = "text/plain; charset=utf-8"
+		} else {
+			contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		}
+	}
+
+	key := fmt.Sprintf("applications/%s/interviews/%s/recording-%s%s", applicationID, interviewID, uuid.New().String(), ext)
+	if _, err := h.objectStorage.Upload(c.Request.Context(), key, strings.NewReader(string(data)), int64(len(data)), contentType); err != nil {
+		log.Printf("[applications] UploadInterviewRecording storage upload failed: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "UPLOAD_FAILED", "文件上传失败")
+		return
+	}
+
+	attachment, err := h.applicationService.UploadInterviewRecording(c.Request.Context(), userID, applicationID, jobapplication.UploadInterviewRecordingParams{
+		InterviewID: interviewID,
+		FileName:    fileName,
+		FileType:    fileType,
+		FileSize:    int64(len(data)),
+		StorageKey:  key,
+	})
+	if err != nil {
+		log.Printf("[applications] UploadInterviewRecording save attachment failed: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "SAVE_FAILED", "文件记录保存失败")
+		return
+	}
+
+	response.JSONSuccess(c, model.UploadInterviewRecordingResponse{Attachment: *attachment})
+}
+
+// GetInterviewRecording 获取面试录音文件内容
+// GET /api/applications/:id/interviews/:interviewId/recording
+func (h *Handler) GetInterviewRecording(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	applicationID := c.Param("id")
+	interviewID := c.Param("interviewId")
+
+	attachment, err := h.applicationService.GetInterviewRecording(c.Request.Context(), userID, applicationID, interviewID)
+	if err != nil {
+		handleApplicationError(c, "GetInterviewRecording", err)
+		return
+	}
+	if attachment == nil {
+		response.JSONSuccess(c, model.GetInterviewRecordingResponse{})
+		return
+	}
+
+	reader, size, _, err := h.objectStorage.Download(c.Request.Context(), attachment.StorageKey)
+	if err != nil {
+		log.Printf("[applications] GetInterviewRecording download failed: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "DOWNLOAD_FAILED", "文件读取失败")
+		return
+	}
+	defer reader.Close()
+
+	if size > maxInterviewFileSize {
+		response.JSONError(c, http.StatusBadRequest, "FILE_TOO_LARGE", "文件大小超过限制")
+		return
+	}
+
+	data, err := io.ReadAll(io.LimitReader(reader, maxInterviewFileSize+1))
+	if err != nil {
+		response.JSONError(c, http.StatusInternalServerError, "DOWNLOAD_FAILED", "文件读取失败")
+		return
+	}
+
+	response.JSONSuccess(c, model.GetInterviewRecordingResponse{
+		Attachment: attachment,
+		Content:    base64.StdEncoding.EncodeToString(data),
+	})
 }
 
 // ExportApplications 导出当前筛选投递表格

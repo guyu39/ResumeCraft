@@ -90,6 +90,18 @@ export interface JobApplicationAIRun {
   createdAt: number
 }
 
+export interface JobApplicationAttachment {
+  id: string
+  applicationId: string
+  interviewId?: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  storageKey: string
+  metadata?: Record<string, unknown>
+  createdAt: number
+}
+
 export interface JobApplicationInterview {
   id: string
   applicationId: string
@@ -102,8 +114,14 @@ export interface JobApplicationInterview {
   notes?: string
   result?: string
   nextAction?: string
+  recordingAttachment?: JobApplicationAttachment
   createdAt: number
   updatedAt: number
+}
+
+export interface InterviewRecordingResponse {
+  attachment?: JobApplicationAttachment
+  content?: string
 }
 
 export interface ListApplicationsParams {
@@ -221,22 +239,34 @@ export const applicationsApi = {
   deleteInterview: (id: string, interviewId: string) =>
     apiClient.delete<{ deleted: boolean }>(`/applications/${id}/interviews/${interviewId}`),
 
-  analyzeInterviewFile: async (id: string, file: File) => {
+  uploadInterviewRecording: async (id: string, interviewId: string, file: File) => {
     const headers: Record<string, string> = {}
     const token = getToken()
     if (token) headers.Authorization = `Bearer ${token}`
     const formData = new FormData()
     formData.append('file', file)
-    const res = await fetch(`/api/applications/${id}/interviews/analyze-file`, {
+    const res = await fetch(`/api/applications/${id}/interviews/${interviewId}/recording`, {
       method: 'POST',
       headers,
       body: formData,
     })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
-      throw new Error(json?.message || '分析面试记录失败')
+      throw new Error(json?.message || '上传面试录音失败')
     }
-    return json.data as { summary: string }
+    return json.data as { attachment: JobApplicationAttachment }
+  },
+
+  getInterviewRecording: async (id: string, interviewId: string) => {
+    const headers: Record<string, string> = {}
+    const token = getToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+    const res = await fetch(`/api/applications/${id}/interviews/${interviewId}/recording`, { headers })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      throw new Error(json?.message || '获取面试录音失败')
+    }
+    return json.data as InterviewRecordingResponse
   },
 
   exportExcel: async (params?: ListApplicationsParams) => {

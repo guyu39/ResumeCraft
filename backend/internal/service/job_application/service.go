@@ -61,7 +61,17 @@ type Service interface {
 	CreateInterview(ctx context.Context, userID, applicationID string, req model.CreateInterviewRequest) (*model.JobApplicationInterview, error)
 	UpdateInterview(ctx context.Context, userID, applicationID, interviewID string, req model.UpdateInterviewRequest) (*model.JobApplicationInterview, error)
 	DeleteInterview(ctx context.Context, userID, applicationID, interviewID string) error
+	UploadInterviewRecording(ctx context.Context, userID, applicationID string, params UploadInterviewRecordingParams) (*model.JobApplicationAttachment, error)
+	GetInterviewRecording(ctx context.Context, userID, applicationID, interviewID string) (*model.JobApplicationAttachment, error)
 	ExportExcel(ctx context.Context, userID string, filters model.JobApplicationFilters) ([]byte, error)
+}
+
+type UploadInterviewRecordingParams struct {
+	InterviewID string
+	FileName    string
+	FileType    string
+	FileSize    int64
+	StorageKey  string
 }
 
 type service struct {
@@ -331,6 +341,25 @@ func (s *service) DeleteInterview(ctx context.Context, userID, applicationID, in
 		}
 	}
 	return mapRepoError(s.repo.DeleteInterview(ctx, userID, applicationID, interviewID))
+}
+
+func (s *service) UploadInterviewRecording(ctx context.Context, userID, applicationID string, params UploadInterviewRecordingParams) (*model.JobApplicationAttachment, error) {
+	if strings.TrimSpace(params.FileName) == "" || strings.TrimSpace(params.StorageKey) == "" {
+		return nil, ErrInvalidPayload
+	}
+	attachment, err := s.repo.CreateInterviewAttachment(ctx, userID, applicationID, appRepo.CreateInterviewAttachmentParams{
+		InterviewID: params.InterviewID,
+		FileName:    params.FileName,
+		FileType:    params.FileType,
+		FileSize:    params.FileSize,
+		StorageKey:  params.StorageKey,
+	})
+	return attachment, mapRepoError(err)
+}
+
+func (s *service) GetInterviewRecording(ctx context.Context, userID, applicationID, interviewID string) (*model.JobApplicationAttachment, error) {
+	attachment, err := s.repo.GetInterviewAttachment(ctx, userID, applicationID, interviewID)
+	return attachment, mapRepoError(err)
 }
 
 func (s *service) ExportExcel(ctx context.Context, userID string, filters model.JobApplicationFilters) ([]byte, error) {

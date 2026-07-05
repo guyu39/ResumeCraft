@@ -178,6 +178,8 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 				applicationGroup.POST("/:id/interviews/analyze-file", h.AnalyzeInterviewFile)
 				applicationGroup.PUT("/:id/interviews/:interviewId", h.UpdateApplicationInterview)
 				applicationGroup.DELETE("/:id/interviews/:interviewId", h.DeleteApplicationInterview)
+				applicationGroup.POST("/:id/interviews/:interviewId/recording", h.UploadInterviewRecording)
+				applicationGroup.GET("/:id/interviews/:interviewId/recording", h.GetInterviewRecording)
 			}
 		}
 

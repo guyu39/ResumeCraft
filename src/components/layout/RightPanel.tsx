@@ -231,6 +231,40 @@ const RightPanel: React.FC = () => {
         })
     }, [isAuthenticated])
 
+    // 解析 URL 参数：从投递页跳转而来时自动打开面试录音分析面板
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
+        const tab = params.get('tab')
+        const mode = params.get('mode')
+        if (tab !== 'interview') return
+
+        // 打开 AI 面板并切换到"面试" tab
+        setShowSettings(false)
+        setShowComments(false)
+        setShowAIEvaluation(true)
+        setActiveAITool('interview_prep')
+
+        // 将相关参数存入 sessionStorage，供 InterviewPrepPanel 读取并预填
+        if (mode === 'transcript') {
+            const payload = {
+                mode,
+                applicationId: params.get('applicationId') || '',
+                resumeId: params.get('resumeId') || resume.id,
+                snapshotId: params.get('snapshotId') || activeSnapshotId || '',
+                interviewId: params.get('interviewId') || '',
+                interviewRound: params.get('interviewRound') || '',
+                companyName: params.get('companyName') || '',
+                targetTitle: params.get('targetTitle') || '',
+                jdText: params.get('jdText') || '',
+            }
+            sessionStorage.setItem('interview_analysis_context', JSON.stringify(payload))
+        }
+
+        // 清理 URL 参数，避免刷新时重复触发
+        const cleanUrl = `${window.location.pathname}${window.location.hash}`
+        window.history.replaceState({}, '', cleanUrl)
+    }, [isAuthenticated, resume.id, activeSnapshotId])
+
     // 进入评估面板时：加载当前快照对应的最新评估历史
     useEffect(() => {
         if (!showAIEvaluation) {
