@@ -340,7 +340,26 @@ func (s *service) DeleteInterview(ctx context.Context, userID, applicationID, in
 			return ErrInterviewNotDeletable
 		}
 	}
-	return mapRepoError(s.repo.DeleteInterview(ctx, userID, applicationID, interviewID))
+	if err := s.repo.DeleteInterview(ctx, userID, applicationID, interviewID); err != nil {
+		return mapRepoError(err)
+	}
+
+	// 删除唯一一条面试后，状态从「面试中」回退：
+	//   有笔试时间 → 笔试；无笔试时间 → 已投递
+	// 仅在当前状态为 interview 时回退（终态不回退，避免误改 offer/rejected/withdrawn）
+	if len(existing) == 1 {
+		app, err := s.repo.GetByID(ctx, userID, applicationID)
+		if err == nil && app.Status == model.JobApplicationStatusInterview {
+			var next model.JobApplicationStatus
+			if app.WrittenTestAt != nil && *app.WrittenTestAt > 0 {
+				next = model.JobApplicationStatusWrittenTest
+			} else {
+				next = model.JobApplicationStatusSubmitted
+			}
+			_, _ = s.repo.UpdateStatus(ctx, userID, applicationID, next, "")
+		}
+	}
+	return nil
 }
 
 func (s *service) UploadInterviewRecording(ctx context.Context, userID, applicationID string, params UploadInterviewRecordingParams) (*model.JobApplicationAttachment, error) {
