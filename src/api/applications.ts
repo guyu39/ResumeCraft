@@ -29,6 +29,7 @@ export interface JobApplicationListItem {
   department?: string
   targetTitle: string
   source: string
+  preferredCity?: string
   applicationUrl?: string
   status: JobApplicationStatus
   matchScore?: number
@@ -146,6 +147,7 @@ export interface CreateApplicationRequest {
   targetTitle: string
   jdText: string
   source?: string
+  preferredCity?: string
   applicationUrl?: string
   nextAction?: string
   matchResult?: JDMatchResponse
@@ -160,6 +162,7 @@ export interface UpdateApplicationRequest {
   targetTitle?: string
   jdText?: string
   source?: string
+  preferredCity?: string
   applicationUrl?: string
   nextAction?: string
   submittedAt?: number

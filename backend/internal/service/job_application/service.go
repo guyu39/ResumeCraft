@@ -127,6 +127,7 @@ func (s *service) Create(ctx context.Context, userID string, req model.CreateJob
 		JDText:            jdText,
 		JDHash:            hashJD(jdText),
 		Source:            strings.TrimSpace(req.Source),
+		PreferredCity:     strings.TrimSpace(req.PreferredCity),
 		ApplicationURL:    strings.TrimSpace(req.ApplicationURL),
 		NextAction:        strings.TrimSpace(req.NextAction),
 		MatchScore:        matchScore,
@@ -195,6 +196,7 @@ func (s *service) Update(ctx context.Context, userID, applicationID string, req 
 		TargetTitle:        strings.TrimSpace(req.TargetTitle),
 		JDText:             strings.TrimSpace(req.JDText),
 		Source:             strings.TrimSpace(req.Source),
+		PreferredCity:      strings.TrimSpace(req.PreferredCity),
 		ApplicationURL:     strings.TrimSpace(req.ApplicationURL),
 		NextAction:         strings.TrimSpace(req.NextAction),
 		SubmittedAt:        submittedAt,
@@ -419,7 +421,7 @@ func (s *service) ExportExcel(ctx context.Context, userID string, filters model.
 	const sheet = "投递记录"
 	f.SetSheetName("Sheet1", sheet)
 
-	header := []string{"公司", "岗位", "投递部门", "投递链接", "关联简历", "关联快照", "投递时间"}
+	header := []string{"公司", "岗位", "投递部门", "投递链接", "关联简历", "关联快照", "投递时间", "意向城市"}
 	for _, round := range rounds {
 		header = append(header, round, round+"时间")
 	}
@@ -438,6 +440,7 @@ func (s *service) ExportExcel(ctx context.Context, userID string, filters model.
 			item.ResumeTitle,
 			item.SnapshotLabel,
 			formatTimePtr(item.SubmittedAt),
+			item.PreferredCity,
 		}
 		byRound := interviewsByItem[row]
 		for _, round := range rounds {

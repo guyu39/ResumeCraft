@@ -35,7 +35,9 @@ import type { SnapshotListItem } from '@/api/resume'
 import ToastContainer, { toast } from '@/components/common/Toast'
 import YearMonthPicker from '@/components/common/YearMonthPicker'
 import StyledSelect from '@/components/common/StyledSelect'
+import CityCascadeSelect from '@/components/common/CityCascadeSelect'
 import TimeRangePicker from '@/components/common/TimeRangePicker'
+import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 
 type DisplayStatus = 'submitted' | 'written_test' | 'interview' | 'offer' | 'terminated'
 
@@ -46,7 +48,7 @@ interface CreateFormState {
   department: string
   targetTitle: string
   jdText: string
-  source: string
+  preferredCity: string
   applicationUrl: string
   submittedAt: string
   writtenTestAt: string
@@ -81,7 +83,7 @@ const EMPTY_CREATE_FORM: CreateFormState = {
   department: '',
   targetTitle: '',
   jdText: '',
-  source: '手动录入',
+  preferredCity: '',
   applicationUrl: '',
   submittedAt: '',
   writtenTestAt: '',
@@ -281,6 +283,7 @@ const ApplicationsPage: React.FC = () => {
   const [createSnapshots, setCreateSnapshots] = useState<SnapshotListItem[]>([])
   const [interviewForm, setInterviewForm] = useState<CreateInterviewRequest>(emptyInterviewForm)
   const [flowEditorOpen, setFlowEditorOpen] = useState(false)
+  const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingInterviewId, setEditingInterviewId] = useState<string | null>(null)
 
@@ -415,7 +418,7 @@ const ApplicationsPage: React.FC = () => {
         department: app.department || '',
         targetTitle: app.targetTitle || '',
         jdText: app.jdText || '',
-        source: app.source || '手动录入',
+        preferredCity: app.preferredCity || app.source || '',
         applicationUrl: app.applicationUrl || '',
         submittedAt: app.submittedAt ? toDatePickerValue(app.submittedAt) : '',
         writtenTestAt: app.writtenTestAt ? toDatePickerValue(app.writtenTestAt) : '',
@@ -437,8 +440,13 @@ const ApplicationsPage: React.FC = () => {
   }
 
   const saveApplication = async () => {
-    if (!createForm.resumeId || !createForm.snapshotVersionId) {
-      toast('请选择关联简历和快照')
+    if (!createForm.resumeId) {
+      toast('请选择关联简历')
+      return
+    }
+    const hasSnapshots = createSnapshots.length > 0
+    if (hasSnapshots && !createForm.snapshotVersionId) {
+      toast('请选择关联快照')
       return
     }
     if (!createForm.targetTitle.trim() || !createForm.jdText.trim()) {
@@ -457,7 +465,7 @@ const ApplicationsPage: React.FC = () => {
           department: createForm.department.trim(),
           targetTitle: createForm.targetTitle.trim(),
           jdText: createForm.jdText.trim(),
-          source: createForm.source.trim() || '手动录入',
+          preferredCity: createForm.preferredCity || undefined,
           applicationUrl: createForm.applicationUrl.trim(),
           submittedAt: submittedAt ?? 0,
           writtenTestAt: writtenTestAt ?? 0,
@@ -477,7 +485,7 @@ const ApplicationsPage: React.FC = () => {
           department: createForm.department.trim(),
           targetTitle: createForm.targetTitle.trim(),
           jdText: createForm.jdText.trim(),
-          source: createForm.source.trim() || '手动录入',
+          preferredCity: createForm.preferredCity || undefined,
           applicationUrl: createForm.applicationUrl.trim(),
         })
         if (submittedAt) await applicationsApi.update(created.id, { submittedAt })
@@ -504,8 +512,21 @@ const ApplicationsPage: React.FC = () => {
   const changeApplicationStatus = async (id: string, status: JobApplicationStatus) => {
     const target = items.find((item) => item.id === id)
     if (target && finalStatuses.includes(target.status) && !finalStatuses.includes(status)) {
-      const confirmed = window.confirm('该投递当前为已offer或终止状态，切换到其他流程将清空原有的面试记录，是否继续？')
-      if (!confirmed) return
+      requestDelete({
+        title: '切换流程',
+        message: '该投递当前为已 offer 或终止状态，切换到其他流程将清空原有的面试记录，是否继续？',
+        onConfirm: async () => {
+          try {
+            await applicationsApi.updateStatus(id, status)
+            await loadList()
+            if (detail?.id === id) await loadDetail(id)
+            toast(`${target?.companyName || '投递记录'}状态已更新为${rowDisplayStatus(status)}`)
+          } catch (err) {
+            toast(cleanError(err, '更新状态失败'))
+          }
+        },
+      })
+      return
     }
     try {
       await applicationsApi.updateStatus(id, status)
@@ -517,22 +538,26 @@ const ApplicationsPage: React.FC = () => {
     }
   }
 
-  const deleteApplication = async (id: string) => {
+  const deleteApplication = (id: string) => {
     const target = items.find((item) => item.id === id)
-    const confirmed = window.confirm(`确定删除「${target?.companyName || '未填写公司'} · ${target?.targetTitle || '未填写岗位'}」吗？`)
-    if (!confirmed) return
-    try {
-      await applicationsApi.delete(id)
-      if (selectedId === id) {
-        setSelectedId(null)
-        setDetail(null)
-        setDetailOpen(false)
-      }
-      await loadList()
-      toast('投递记录已删除', 'success')
-    } catch (err) {
-      toast(cleanError(err, '删除投递记录失败'))
-    }
+    requestDelete({
+      title: '删除投递',
+      message: `确定删除「${target?.companyName || '未填写公司'} · ${target?.targetTitle || '未填写岗位'}」吗？`,
+      onConfirm: async () => {
+        try {
+          await applicationsApi.delete(id)
+          if (selectedId === id) {
+            setSelectedId(null)
+            setDetail(null)
+            setDetailOpen(false)
+          }
+          await loadList()
+          toast('投递记录已删除', 'success')
+        } catch (err) {
+          toast(cleanError(err, '删除投递记录失败'))
+        }
+      },
+    })
   }
 
   const openEditInterview = (item: { id: string; round: string; scheduledAt?: number; scheduledEnd?: number; notes?: string; result?: string }) => {
@@ -620,15 +645,23 @@ const ApplicationsPage: React.FC = () => {
     }
   }
 
-  const deleteInterview = async (interviewId: string) => {
+  const deleteInterview = (interviewId: string) => {
     if (!detail) return
-    try {
-      await applicationsApi.deleteInterview(detail.id, interviewId)
-      await loadDetail(detail.id)
-      await loadList()
-    } catch (err) {
-      toast(cleanError(err, '删除面试记录失败'))
-    }
+    const interview = detail.interviews?.find((i) => i.id === interviewId)
+    const label = interview?.round || '该面试记录'
+    requestDelete({
+      title: '删除面试记录',
+      message: `确定删除「${label}」吗？`,
+      onConfirm: async () => {
+        try {
+          await applicationsApi.deleteInterview(detail.id, interviewId)
+          await loadDetail(detail.id)
+          await loadList()
+        } catch (err) {
+          toast(cleanError(err, '删除面试记录失败'))
+        }
+      },
+    })
   }
 
   const updateInterviewResult = async (interviewId: string, result: string) => {
@@ -683,6 +716,7 @@ const ApplicationsPage: React.FC = () => {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_48%,#f8fafc_100%)] text-slate-900">
       <ToastContainer />
+      {deleteConfirmDialog}
       <div className="shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-[1680px] items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
@@ -717,27 +751,29 @@ const ApplicationsPage: React.FC = () => {
                   <th className="px-4 py-3">公司</th>
                   <th className="px-4 py-3">投递职位</th>
                   <th className="px-4 py-3">投递部门</th>
-                  <th className="px-4 py-3 text-center">投递状态</th>
+                  <th className="px-4 py-3">意向城市</th>
+                  <th className="px-4 py-3">投递状态</th>
                   {interviewRoundOptions.map((round) => (
-                    <th key={round} className="px-4 py-3 text-center whitespace-nowrap">{round}</th>
+                    <th key={round} className="px-4 py-3 whitespace-nowrap">{round}</th>
                   ))}
-                  <th className="px-4 py-3 text-center">投递时间</th>
-                  <th className="px-4 py-3 text-center">笔试时间</th>
-                  <th className="px-4 py-3 text-center">投递链接</th>
+                  <th className="px-4 py-3">投递时间</th>
+                  <th className="px-4 py-3">笔试时间</th>
+                  <th className="px-4 py-3">投递链接</th>
                   <th className={stickyActionHeadClass}>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">加载中...</td></tr>
+                  <tr><td colSpan={7 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">加载中...</td></tr>
                 ) : items.length === 0 ? (
-                  <tr><td colSpan={6 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">暂无投递记录</td></tr>
+                  <tr><td colSpan={7 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">暂无投递记录</td></tr>
                 ) : items.map((item) => (
                   <tr key={item.id} onClick={() => selectApplication(item.id)} className={`cursor-pointer border-t border-slate-100 transition hover:bg-blue-50/50 ${selectedId === item.id ? 'bg-blue-50/80' : ''}`}>
                     <td className="border-t border-slate-100 px-4 py-3 font-medium text-slate-800">{item.companyName || <span className="text-slate-400">无</span>}</td>
                     <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.targetTitle}</td>
                     <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.department || <span className="text-slate-400">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-center" onClick={(event) => event.stopPropagation()}>
+                    <td className="border-t border-slate-100 px-4 py-3 text-slate-600">{item.preferredCity || <span className="text-slate-400">无</span>}</td>
+                    <td className="border-t border-slate-100 px-4 py-3" onClick={(event) => event.stopPropagation()}>
                       <div className="w-24">
                         <StyledSelect
                           size="compact"
@@ -751,9 +787,9 @@ const ApplicationsPage: React.FC = () => {
                     {interviewRoundOptions.map((round) => {
                       const brief = item.interviews?.find((it) => it.round === round)
                       return (
-                        <td key={round} className="border-t border-slate-100 px-4 py-3 text-center">
+                        <td key={round} className="border-t border-slate-100 px-4 py-3">
                           {brief ? (
-                            <div className="flex flex-col items-center gap-0.5">
+                            <div className="flex flex-col gap-0.5">
                               {brief.result === '通过' ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-100">通过</span>
                                : brief.result === '终止' ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 ring-1 ring-red-100">终止</span>
                                : <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 ring-1 ring-blue-100">面试中</span>}
@@ -765,9 +801,9 @@ const ApplicationsPage: React.FC = () => {
                         </td>
                       )
                     })}
-                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.submittedAt ? displayDate(item.submittedAt) : <span className="text-slate-300">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-center text-slate-500">{item.writtenTestAt ? displayDate(item.writtenTestAt) : <span className="text-slate-300">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-center">
+                    <td className="border-t border-slate-100 px-4 py-3 text-slate-500">{item.submittedAt ? displayDate(item.submittedAt) : <span className="text-slate-300">无</span>}</td>
+                    <td className="border-t border-slate-100 px-4 py-3 text-slate-500">{item.writtenTestAt ? displayDate(item.writtenTestAt) : <span className="text-slate-300">无</span>}</td>
+                    <td className="border-t border-slate-100 px-4 py-3">
                       {item.applicationUrl ? <a href={item.applicationUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="text-blue-600 hover:underline">链接</a> : <span className="text-slate-400">无</span>}
                     </td>
                     <td className={stickyActionClass}>
@@ -1068,7 +1104,14 @@ const ApplicationsPage: React.FC = () => {
                       <label className={fieldLabelClass}>公司<input value={createForm.companyName} onChange={(event) => setCreateForm({ ...createForm, companyName: event.target.value })} className={fieldInputClass} placeholder="例如：OpenAI" /></label>
                       <label className={fieldLabelClass}>投递部门<input value={createForm.department} onChange={(event) => setCreateForm({ ...createForm, department: event.target.value })} className={fieldInputClass} placeholder="例如：基础架构部" /></label>
                       <label className={fieldLabelClass}>岗位<input value={createForm.targetTitle} onChange={(event) => setCreateForm({ ...createForm, targetTitle: event.target.value })} className={fieldInputClass} placeholder="例如：Frontend Engineer" /></label>
-                      <label className={fieldLabelClass}>来源<input value={createForm.source} onChange={(event) => setCreateForm({ ...createForm, source: event.target.value })} className={fieldInputClass} /></label>
+                      <label className={fieldLabelClass}>意向城市
+                        <CityCascadeSelect
+                          value={createForm.preferredCity}
+                          onChange={(v) => setCreateForm({ ...createForm, preferredCity: v })}
+                          placeholder="选择意向城市"
+                          className="mt-1"
+                        />
+                      </label>
                       <label className={fieldLabelClass}>投递时间
                         <div className="mt-1 [&_button]:!h-10 [&_button]:!rounded-xl [&_button]:!border-slate-200 [&_button]:!text-slate-800 [&_button]:focus:!border-blue-500 [&_button]:focus:!ring-4 [&_button]:focus:!ring-blue-500/10">
                           <YearMonthPicker value={createForm.submittedAt} onChange={(value) => setCreateForm({ ...createForm, submittedAt: value })} placeholder="选择投递日期" enableDay defaultStep="day" futureYears={3} />
@@ -1094,13 +1137,20 @@ const ApplicationsPage: React.FC = () => {
                         />
                       </label>
                       <label className={fieldLabelClass}>关联快照
-                        <StyledSelect
-                          value={createForm.snapshotVersionId}
-                          onChange={(v) => setCreateForm({ ...createForm, snapshotVersionId: v })}
-                          placeholder="请选择快照"
-                          options={createSnapshots.map((snapshot) => ({ label: snapshot.label || snapshot.snapshotType || snapshot.id.slice(0, 8), value: snapshot.id }))}
-                          className="mt-1"
-                        />
+                        {createForm.resumeId && createSnapshots.length === 0 ? (
+                          <div className="mt-1 rounded-xl border border-dashed border-amber-200 bg-amber-50/60 px-3 py-2.5">
+                            <p className="text-xs text-amber-700">该简历暂无快照版本</p>
+                            <p className="mt-1 text-[11px] text-amber-500">请先在编辑页为该简历创建快照，才能关联到此投递记录</p>
+                          </div>
+                        ) : (
+                          <StyledSelect
+                            value={createForm.snapshotVersionId}
+                            onChange={(v) => setCreateForm({ ...createForm, snapshotVersionId: v })}
+                            placeholder="请选择快照"
+                            options={createSnapshots.map((snapshot) => ({ label: snapshot.label || snapshot.snapshotType || snapshot.id.slice(0, 8), value: snapshot.id }))}
+                            className="mt-1"
+                          />
+                        )}
                       </label>
                     </div>
                   </section>

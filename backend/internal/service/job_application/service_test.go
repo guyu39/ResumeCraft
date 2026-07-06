@@ -124,7 +124,7 @@ func TestExportExcelUsesConciseFields(t *testing.T) {
 		t.Fatalf("expected header + 1 data row, got %d rows", len(rows))
 	}
 	header := rows[0]
-	wantHeader := []string{"公司", "岗位", "投递部门", "投递链接", "关联简历", "关联快照", "投递时间", "一面", "一面时间", "二面", "二面时间", "投递状态"}
+	wantHeader := []string{"公司", "岗位", "投递部门", "投递链接", "关联简历", "关联快照", "投递时间", "意向城市", "一面", "一面时间", "二面", "二面时间", "投递状态"}
 	if strings.Join(header, "|") != strings.Join(wantHeader, "|") {
 		t.Fatalf("header = %v, want %v", header, wantHeader)
 	}
@@ -145,7 +145,6 @@ func TestExportExcelUsesConciseFields(t *testing.T) {
 }
 
 func int64Ptr(v int64) *int64 { return &v }
-
 
 type mockRepo struct {
 	created                *model.JobApplication

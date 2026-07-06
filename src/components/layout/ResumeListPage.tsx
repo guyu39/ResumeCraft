@@ -20,7 +20,7 @@ import type { ResumeListItem } from '@/api'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
 import AccountDialog from '@/components/layout/AccountDialog'
 import ChangePasswordDialog from '@/components/layout/ChangePasswordDialog'
-import ToastContainer from '@/components/common/Toast'
+import ToastContainer, { toast } from '@/components/common/Toast'
 import { createPortal } from 'react-dom'
 
 const TEMPLATE_LABELS: Record<TemplateType, string> = {
@@ -221,12 +221,12 @@ setPendingCreateName(defaultTitle)
                     if (isAuthenticated) {
                         try {
                             await resumeApi.delete(id)
-                            // 通知父组件云端简历已删除
                             onCloudResumeDeleted?.(id)
                         } catch (err) {
                             console.error('[ResumeList] 云端删除失败:', err)
                         }
                     }
+                    toast('简历已删除', 'success')
                 },
             })
         },
@@ -264,9 +264,8 @@ setPendingCreateName(defaultTitle)
         if (!renamingResume) return null
 
         return createPortal(
-            <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-                <div className="absolute inset-0 bg-black/35" onClick={closeRename} />
-                <div className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-lg">
+            <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/40 backdrop-blur-sm" onClick={closeRename}>
+                <div className="relative w-full max-w-md rounded-2xl border border-slate-100 bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                     <h4 className="text-base font-semibold text-ink">重命名简历</h4>
                     <p className="mt-2 text-sm leading-relaxed text-muted">
                         为「{renamingResume.title || '未命名简历'}」设置新名称
@@ -325,9 +324,8 @@ setPendingCreateName(defaultTitle)
         if (!pendingCreateName) return null
 
         return createPortal(
-            <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-                <div className="absolute inset-0 bg-black/35" onClick={closeCreateNameDialog} />
-                <div className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-lg">
+            <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/40 backdrop-blur-sm" onClick={closeCreateNameDialog}>
+                <div className="relative w-full max-w-md rounded-2xl border border-slate-100 bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                     <h4 className="text-base font-semibold text-ink">新建简历</h4>
                     <p className="mt-2 text-sm leading-relaxed text-muted">
                         已有重名简历「{pendingCreateName}」，请输入新的简历名称
@@ -644,9 +642,8 @@ setPendingCreateName(defaultTitle)
 
             {/* 新建方式选择弹窗 */}
             {showCreateMode && createPortal(
-                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-                    <div className="absolute inset-0 bg-black/35" onClick={() => setShowCreateMode(false)} />
-                    <div className="relative w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-lg">
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/40 backdrop-blur-sm" onClick={() => setShowCreateMode(false)}>
+                    <div className="relative w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                         <h4 className="text-base font-semibold text-ink">新建简历</h4>
                         <p className="mt-1 text-sm text-muted">选择一种方式创建简历</p>
 
@@ -694,9 +691,8 @@ setPendingCreateName(defaultTitle)
 
             {/* 解析错误提示 */}
             {parseError && createPortal(
-                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-                    <div className="absolute inset-0 bg-black/35" onClick={() => setParseError(null)} />
-                    <div className="relative w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-lg text-center">
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/40 backdrop-blur-sm" onClick={() => setParseError(null)}>
+                    <div className="relative w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-red-50">
                             <AlertCircle className="h-5 w-5 text-red-500" />
                         </div>

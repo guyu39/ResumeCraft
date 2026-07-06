@@ -31,6 +31,7 @@ type JobApplication struct {
 	JDText            string                        `json:"jdText"`
 	JDHash            string                        `json:"jdHash"`
 	Source            string                        `json:"source"`
+	PreferredCity     string                        `json:"preferredCity,omitempty"`
 	ApplicationURL    string                        `json:"applicationUrl,omitempty"`
 	Status            JobApplicationStatus          `json:"status"`
 	MatchScore        *int                          `json:"matchScore,omitempty"`
@@ -59,6 +60,7 @@ type JobApplicationListItem struct {
 	Department        string                         `json:"department,omitempty"`
 	TargetTitle       string                         `json:"targetTitle"`
 	Source            string                         `json:"source"`
+	PreferredCity     string                         `json:"preferredCity,omitempty"`
 	ApplicationURL    string                         `json:"applicationUrl,omitempty"`
 	Status            JobApplicationStatus           `json:"status"`
 	MatchScore        *int                           `json:"matchScore,omitempty"`
@@ -174,6 +176,7 @@ type CreateJobApplicationRequest struct {
 	TargetTitle       string                             `json:"targetTitle" binding:"required,max=200"`
 	JDText            string                             `json:"jdText" binding:"required"`
 	Source            string                             `json:"source"`
+	PreferredCity     string                             `json:"preferredCity"`
 	ApplicationURL    string                             `json:"applicationUrl"`
 	NextAction        string                             `json:"nextAction"`
 	MatchResult       *JDMatchResponse                   `json:"matchResult,omitempty"`
@@ -189,6 +192,7 @@ type UpdateJobApplicationRequest struct {
 	TargetTitle       string               `json:"targetTitle"`
 	JDText            string               `json:"jdText"`
 	Source            string               `json:"source"`
+	PreferredCity     string               `json:"preferredCity"`
 	ApplicationURL    string               `json:"applicationUrl"`
 	NextAction        string               `json:"nextAction"`
 	SubmittedAt       *int64               `json:"submittedAt"`

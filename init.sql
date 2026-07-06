@@ -663,6 +663,7 @@ create table if not exists job_applications
     jd_text             text                                                               not null,
     jd_hash             varchar(64)                                                        not null,
     source              varchar(100)             default ''::character varying             not null,
+    preferred_city      varchar(100)             default ''::character varying             not null,
     application_url     text,
     status              varchar(32)              default 'pending_adaptation'::character varying not null
         constraint chk_job_application_status
