@@ -3,6 +3,12 @@
 // 类型定义文件
 // ============================================================
 
+import type { LucideIcon } from 'lucide-react'
+import {
+  User, GraduationCap, Briefcase, Rocket, Wrench, FileText,
+  Languages, Trophy, Award, Link2, Bot, Sparkles,
+} from 'lucide-react'
+
 // ---------- 基础枚举 & 常量 ----------
 
 /** 主题色预设 */
@@ -59,7 +65,7 @@ export type ModuleType =
 export interface ModuleMeta {
   type: ModuleType
   label: string
-  icon: string
+  icon: LucideIcon
   maxCount: number
   category: 'overview' | 'experience' | 'achievement' | 'ability' | 'link' | 'special'
   fixed?: boolean
@@ -71,18 +77,18 @@ export const FIXED_MODULE_TYPES: ModuleType[] = [
 ]
 
 export const MODULE_META_LIST: ModuleMeta[] = [
-  { type: 'personal', label: '个人信息', icon: '👤', maxCount: 1, category: 'overview', fixed: true },
-  { type: 'education', label: '教育经历', icon: '🎓', maxCount: 0, category: 'experience', fixed: true },
-  { type: 'work', label: '工作经历', icon: '💼', maxCount: 0, category: 'experience', fixed: true },
-  { type: 'project', label: '项目经历', icon: '🚀', maxCount: 0, category: 'experience', fixed: true },
-  { type: 'skills', label: '专业技能', icon: '🛠️', maxCount: 1, category: 'ability', fixed: true },
-  { type: 'summary', label: '自我评价', icon: '📝', maxCount: 1, category: 'overview', fixed: true },
-  { type: 'languages', label: '语言能力', icon: '🌐', maxCount: 1, category: 'ability' },
-  { type: 'awards', label: '荣誉奖项', icon: '🏆', maxCount: 1, category: 'achievement' },
-  { type: 'certificates', label: '证书资质', icon: '📜', maxCount: 1, category: 'achievement' },
-  { type: 'portfolio', label: '作品链接', icon: '🔗', maxCount: 1, category: 'link' },
-  { type: 'ai-engineering', label: 'AI 工程', icon: '🤖', maxCount: 1, category: 'special' },
-  { type: 'custom', label: '自定义模块', icon: '✨', maxCount: 0, category: 'special' },
+  { type: 'personal', label: '个人信息', icon: User, maxCount: 1, category: 'overview', fixed: true },
+  { type: 'education', label: '教育经历', icon: GraduationCap, maxCount: 0, category: 'experience', fixed: true },
+  { type: 'work', label: '工作经历', icon: Briefcase, maxCount: 0, category: 'experience', fixed: true },
+  { type: 'project', label: '项目经历', icon: Rocket, maxCount: 0, category: 'experience', fixed: true },
+  { type: 'skills', label: '专业技能', icon: Wrench, maxCount: 1, category: 'ability', fixed: true },
+  { type: 'summary', label: '自我评价', icon: FileText, maxCount: 1, category: 'overview', fixed: true },
+  { type: 'languages', label: '语言能力', icon: Languages, maxCount: 1, category: 'ability' },
+  { type: 'awards', label: '荣誉奖项', icon: Trophy, maxCount: 1, category: 'achievement' },
+  { type: 'certificates', label: '证书资质', icon: Award, maxCount: 1, category: 'achievement' },
+  { type: 'portfolio', label: '作品链接', icon: Link2, maxCount: 1, category: 'link' },
+  { type: 'ai-engineering', label: 'AI 工程', icon: Bot, maxCount: 1, category: 'special' },
+  { type: 'custom', label: '自定义模块', icon: Sparkles, maxCount: 0, category: 'special' },
 ]
 
 /** 模块标题多语言映射：根据 locale 获取模块默认标题 */

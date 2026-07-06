@@ -27,7 +27,6 @@ import { ArrowLeft, Plus, Trash2, Eye, EyeOff, FileText } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
 import { Module, MODULE_META_LIST, ModuleType, FIXED_MODULE_TYPES } from '@/types/resume'
 import DragHandle from '@/components/common/DragHandle'
-
 // ---------- 单个模块卡片 ----------
 interface ModuleCardProps {
   module: Module
@@ -35,7 +34,6 @@ interface ModuleCardProps {
   onSelect: (id: string) => void
   onToggleVisible: (id: string) => void
   onRemove: (id: string) => void
-  themeColor: string
 }
 
 const ModuleCard: React.FC<ModuleCardProps> = ({
@@ -44,7 +42,6 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
   onSelect,
   onToggleVisible,
   onRemove,
-  themeColor,
 }) => {
   const isFixed = FIXED_MODULE_TYPES.includes(module.type)
   const displayTitle =
@@ -71,21 +68,16 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
     <div
       ref={setNodeRef}
       className={`
-        group relative flex items-center gap-2 bg-white rounded-lg
+        group relative flex items-center gap-2 rounded-lg
         border cursor-pointer select-none
         transition-all duration-150
         ${isActive
-          ? 'shadow-sm'
-          : 'border-gray-200 hover:shadow-sm'
+          ? 'border-transparent bg-brand-soft'
+          : 'border-line bg-surface hover:bg-slate-50'
         }
-        ${isDragging ? 'opacity-50 shadow-lg' : ''}
+        ${isDragging ? 'opacity-50' : ''}
       `}
-      style={{
-        ...style,
-        borderLeftColor: isActive ? themeColor : 'transparent',
-        borderLeftWidth: '3px',
-        borderTopColor: isActive ? themeColor : undefined,
-      }}
+      style={style}
       onClick={() => onSelect(module.id)}
     >
       {/* 拖拽手柄 */}
@@ -99,14 +91,17 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
       </div>
 
       {/* 模块图标 */}
-      <span className="flex-shrink-0 text-base leading-none">
-        {MODULE_META_LIST.find((m) => m.type === module.type)?.icon ?? '📄'}
+      <span className="flex-shrink-0 flex items-center justify-center">
+        {(() => {
+          const Icon = MODULE_META_LIST.find((m) => m.type === module.type)?.icon ?? FileText
+          return <Icon className="h-4 w-4 text-slate-500" />
+        })()}
       </span>
 
       {/* 模块名称 */}
       <div className="flex-1 min-w-0 pr-1 py-3 flex items-center gap-1.5">
         <span
-          className={`text-sm font-medium truncate ${isActive ? 'text-primary' : 'text-gray-700'}`}
+          className={`text-sm truncate ${isActive ? 'text-primary font-semibold' : 'text-gray-700 font-medium'}`}
         >
           {displayTitle}
         </span>
@@ -223,25 +218,24 @@ const LeftPanel: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部：简历标题 */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-2 mb-2">
+      <div className="flex-shrink-0 px-3 py-2 border-b border-line bg-surface">
+        <div className="flex items-center gap-1.5">
           <a
             href="/"
-            className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
+            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
             title="回到首页"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
           </a>
-          <FileText className="w-4 h-4 text-primary flex-shrink-0" />
           <input
             type="text"
             value={resume.title}
             onChange={(e) => setResumeTitle(e.target.value)}
-            className="flex-1 text-sm font-semibold text-gray-800 bg-transparent border border-transparent rounded px-1 py-0.5 outline-none focus:border-primary/40 focus:bg-white transition-colors"
+            className="flex-1 min-w-0 text-sm font-semibold text-gray-800 bg-transparent border border-transparent rounded px-1.5 py-1 outline-none focus:border-primary/40 focus:bg-surface transition-colors"
             placeholder="简历标题"
           />
         </div>
-        <p className="text-xs text-gray-400">
+        <p className="text-[11px] text-gray-400 mt-1 px-1">
           {resume.modules.length} 个模块
           {' · '}
           {resume.template === 'classic' ? '经典单栏'
@@ -269,7 +263,6 @@ const LeftPanel: React.FC = () => {
                 onSelect={setActiveModule}
                 onToggleVisible={toggleModuleVisible}
                 onRemove={handleRemove}
-                themeColor={resume.themeColor}
               />
             ))}
           </SortableContext>
@@ -292,12 +285,12 @@ const LeftPanel: React.FC = () => {
                     flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs text-left
                     transition-all duration-150
                     ${disabled
-                      ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-primary hover:text-primary hover:shadow-sm'
+                      ? 'border-line bg-slate-50 text-slate-400 cursor-not-allowed'
+                      : 'border-line bg-surface text-slate-700 hover:border-primary hover:text-primary'
                     }
                   `}
                 >
-                  <span>{moduleMeta.icon}</span>
+                  <moduleMeta.icon className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{moduleMeta.label}</span>
                 </button>
               )
@@ -307,10 +300,10 @@ const LeftPanel: React.FC = () => {
       </div>
 
       {/* 底部：自定义模块入口 */}
-      <div className="flex-shrink-0 px-3 py-3 border-t border-gray-200 bg-white">
+      <div className="flex-shrink-0 px-3 py-3 border-t border-line bg-surface">
         <button
           onClick={openCustomModuleEditor}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-primary/30 bg-primary/5 text-sm text-primary hover:bg-primary/10 transition-all duration-150"
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-primary/30 bg-brand-soft text-sm text-primary hover:bg-primary/10 transition-all duration-150"
         >
           <Plus className="w-4 h-4" />
           自定义模块
@@ -323,16 +316,16 @@ const LeftPanel: React.FC = () => {
             className="absolute inset-0 bg-black/35"
             onClick={() => setPendingDeleteModuleId(null)}
           />
-          <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-gray-100 p-5">
-            <h4 className="text-base font-semibold text-gray-800">删除模块</h4>
-            <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+          <div className="relative w-full max-w-sm rounded-2xl bg-surface shadow-lg border border-line p-5">
+            <h4 className="text-base font-semibold text-ink">删除模块</h4>
+            <p className="mt-2 text-sm text-slate-500 leading-relaxed">
               确定删除「{pendingDeleteModule.title}」模块吗？删除后数据不可恢复。
             </p>
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPendingDeleteModuleId(null)}
-                className="px-3.5 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                className="px-3.5 py-2 text-sm rounded-lg border border-line text-slate-600 hover:bg-slate-50"
               >
                 取消
               </button>

@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BriefcaseBusiness, GitBranch, Settings, Sparkles, Link2, MessageSquare } from 'lucide-react'
+import { BriefcaseBusiness, GitBranch, Settings, Sparkles, Link2, MessageSquare, MousePointerClick } from 'lucide-react'
 import { useResumeStore, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { MODULE_META_LIST, ModuleType } from '@/types/resume'
@@ -504,13 +504,13 @@ const RightPanel: React.FC = () => {
         <>
         <div className="flex flex-col h-full">
             {/* 顶部操作栏 */}
-            <div className="flex-shrink-0 border-b border-slate-200/70 bg-white/80 px-3 py-2.5 backdrop-blur">
+            <div className="flex-shrink-0 border-b border-line bg-surface px-3 py-2.5">
                 <div className="flex items-center justify-end gap-1.5">
                     {/* 保存按钮 */}
                     {resume.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id) && (
                         <button
                             onClick={() => setShowSnapshotDialog(true)}
-                            className="flex-shrink-0 p-2 rounded-xl border border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
+                            className="flex-shrink-0 p-2 rounded-xl border border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink transition-colors"
                             title="新建简历版本 · 记录当前版本以便对比和回溯"
                         >
                             <GitBranch className="w-3.5 h-3.5" />
@@ -519,7 +519,7 @@ const RightPanel: React.FC = () => {
 
                     <button
                         onClick={() => { window.location.href = '/applications' }}
-                        className="flex-shrink-0 p-2 rounded-xl border border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
+                        className="flex-shrink-0 p-2 rounded-xl border border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink transition-colors"
                         title="投递管理 / 职位库"
                         aria-label="投递管理 / 职位库"
                     >
@@ -535,8 +535,8 @@ const RightPanel: React.FC = () => {
                         }}
                         className={`flex-shrink-0 p-2 rounded-xl border transition-colors ${
                             showSettings
-                                ? 'border-primary/30 bg-primary/10 text-primary'
-                                : 'border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                                ? 'border-primary/30 bg-brand-soft text-primary'
+                                : 'border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink'
                         }`}
                         title="简历设置"
                         aria-label="简历设置"
@@ -564,10 +564,10 @@ const RightPanel: React.FC = () => {
                         disabled={hasDateErrors}
                         title={hasDateErrors ? '请先修正日期范围错误' : showAIEvaluation ? '返回编辑' : evaluating ? 'AI 评估中...' : 'AI 评估'}
                         className={`flex-shrink-0 p-2 rounded-xl border transition-colors ${hasDateErrors
-                            ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                            ? 'cursor-not-allowed border-line bg-slate-100 text-slate-400'
                             : showAIEvaluation
-                                ? 'border-primary/30 bg-primary/10 text-primary'
-                                : 'border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                                ? 'border-primary/30 bg-brand-soft text-primary'
+                                : 'border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink'
                             }`}
                     >
                         <Sparkles className="w-3.5 h-3.5" />
@@ -575,7 +575,7 @@ const RightPanel: React.FC = () => {
 
                     <button
                         onClick={() => setShareOpen(true)}
-                        className="flex-shrink-0 p-2 rounded-xl border border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
+                        className="flex-shrink-0 p-2 rounded-xl border border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink transition-colors"
                         title="分享"
                     >
                         <Link2 className="w-3.5 h-3.5" />
@@ -589,8 +589,8 @@ const RightPanel: React.FC = () => {
                         }}
                         className={`flex-shrink-0 p-2 rounded-xl border transition-colors ${
                             showComments
-                                ? 'border-primary/30 bg-primary/10 text-primary'
-                                : 'border-slate-200 bg-white/85 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                                ? 'border-primary/30 bg-brand-soft text-primary'
+                                : 'border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink'
                         }`}
                         title="评论"
                     >
@@ -609,48 +609,48 @@ const RightPanel: React.FC = () => {
             </div>
 
             {showSettings ? (
-                <div className="flex-1 overflow-y-auto bg-gray-50/70 px-4 py-4 no-scrollbar">
+                <div className="flex-1 overflow-y-auto bg-canvas px-4 py-4 no-scrollbar">
                     <div className="max-w-[96%] mx-auto">
                         <SettingsPanel onClose={() => setShowSettings(false)} initialAIConfig={aiConfigFromServer ?? null} />
                     </div>
                 </div>
             ) : showAIEvaluation ? (
-                <div className="flex-1 overflow-hidden bg-white">
+                <div className="flex-1 overflow-hidden bg-surface">
                     <div className="flex h-full flex-col">
-                        <div className="flex-shrink-0 border-b border-gray-100 bg-white px-4 py-3">
-                            <div className="grid grid-cols-5 gap-1 rounded-xl bg-gray-100 p-1 text-xs">
+                        <div className="flex-shrink-0 border-b border-line bg-surface px-4 py-3">
+                            <div className="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 text-xs">
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('evaluate')}
-                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'evaluate' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'evaluate' ? 'bg-surface text-primary border border-line' : 'text-slate-500 hover:text-ink'}`}
                                 >
                                     简历评估
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('checkup')}
-                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'checkup' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'checkup' ? 'bg-surface text-primary border border-line' : 'text-slate-500 hover:text-ink'}`}
                                 >
                                     体检
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('jd_match')}
-                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'jd_match' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'jd_match' ? 'bg-surface text-primary border border-line' : 'text-slate-500 hover:text-ink'}`}
                                 >
                                     JD 匹配
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('module_rewrite')}
-                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'module_rewrite' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'module_rewrite' ? 'bg-surface text-primary border border-line' : 'text-slate-500 hover:text-ink'}`}
                                 >
                                     改写
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setActiveAITool('interview_prep')}
-                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'interview_prep' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-lg px-2 py-2 transition-colors ${activeAITool === 'interview_prep' ? 'bg-surface text-primary border border-line' : 'text-slate-500 hover:text-ink'}`}
                                 >
                                     面试
                                 </button>
@@ -735,15 +735,17 @@ const RightPanel: React.FC = () => {
             ) : (
                 <>
                     {/* 当前模块标题 */}
-                    <div className="flex-shrink-0 px-5 py-3 border-b border-gray-100 bg-white">
+                    <div className="flex-shrink-0 px-5 py-3 border-b border-line bg-surface">
                         {activeModule && moduleMeta ? (
-                            <div className="flex items-center gap-2">
-                                <span className="text-xl">{moduleMeta.icon}</span>
+                            <div className="flex items-center gap-2.5">
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-soft">
+                                    <moduleMeta.icon className="h-4 w-4 text-primary" />
+                                </span>
                                 <div>
-                                    <h3 className="text-sm font-semibold text-gray-800">
+                                    <h3 className="text-sm font-semibold text-ink">
                                         {activeModuleTitle}
                                     </h3>
-                                    <p className="text-xs text-gray-400 mt-0.5">
+                                    <p className="text-xs text-slate-400 mt-0.5">
                                         {activeModule.type === 'personal'
                                             ? '建议完善个人信息，提升简历完整度'
                                             : '填写完成后将实时显示在简历中'}
@@ -770,8 +772,8 @@ const RightPanel: React.FC = () => {
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
-                                <span className="text-5xl">👈</span>
-                                <p className="text-gray-400 text-sm">点击左侧模块开始编辑</p>
+                                <MousePointerClick className="h-10 w-10 text-slate-300" />
+                                <p className="text-slate-400 text-sm">点击左侧模块开始编辑</p>
                             </div>
                         )}
                     </div>
@@ -781,12 +783,12 @@ const RightPanel: React.FC = () => {
             {/* 保存对话框 */}
             {showSnapshotDialog && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel(''); setSnapshotError('') }}>
-                    <div className="bg-white rounded-xl shadow-2xl p-6 w-[380px]" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-base font-semibold text-slate-800 mb-4">新建简历版本</h3>
+                    <div className="bg-surface rounded-2xl shadow-lg border border-line p-6 w-[380px]" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-base font-semibold text-ink mb-4">新建简历版本</h3>
                         <label className="block text-sm text-slate-600 mb-2">快照标签</label>
                         <input
                             type="text"
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 bg-surface"
                             placeholder="如：投腾讯云版、定稿v1"
                             value={snapshotLabel}
                             onChange={(e) => {
@@ -806,14 +808,14 @@ const RightPanel: React.FC = () => {
                             <p className="mt-2 text-xs text-rose-600">{snapshotError}</p>
                         )}
                         <p className="mt-2 text-xs text-slate-400">
-                            💡 建议：为不同岗位投递的简历版本添加标签，方便后续快速切换和对比
+                            建议：为不同岗位投递的简历版本添加标签，方便后续快速切换和对比
                         </p>
                         <div className="flex justify-end gap-3 mt-5">
-                            <button className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                            <button className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg border border-line"
                                 onClick={() => { setShowSnapshotDialog(false); setSnapshotLabel(''); setSnapshotError('') }}>
                                 取消
                             </button>
-                            <button className="px-4 py-2 text-sm font-medium text-white bg-[#1A56DB] hover:bg-blue-700 rounded-lg disabled:opacity-50"
+                            <button className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-blue-700 rounded-lg disabled:opacity-50"
                                 disabled={!snapshotLabel.trim() || snapshotSaving}
                                 onClick={handleCreateSnapshot}
                             >

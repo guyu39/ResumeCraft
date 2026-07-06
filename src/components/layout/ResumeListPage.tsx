@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch, BriefcaseBusiness, ChevronDown, KeyRound } from 'lucide-react'
+import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch, BriefcaseBusiness, ChevronDown, KeyRound, AlertCircle } from 'lucide-react'
 import {
     createDefaultResume,
     getAllResumesFromStorage,
@@ -42,6 +42,13 @@ function formatDate(value: number): string {
 
 function isValidUUID(id: string): boolean {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
+
+// 模板对应的左侧色条颜色（用于简历卡片视觉区分）
+const TEMPLATE_ACCENT: Record<TemplateType, string> = {
+    classic: '#94A3B8',
+    modern: '#1A56DB',
+    minimal: '#0EA5E9',
 }
 
 interface ResumeListPageProps {
@@ -161,6 +168,9 @@ const ResumeListPage: React.FC<ResumeListPageProps> = ({
                 // 通知父组件云端简历已创建
                 onCloudResumeCreated?.(created.id, created.title, created.updatedAt)
 
+                // 跳过自动加载：本地已存新建内容，进 editor 走 loadFromStorage，
+                // 由 useCloudSync syncOnMount 拉云端对齐 version，避免误判多端冲突弹窗
+                sessionStorage.setItem('skip_auto_load', 'true')
                 // 导航到编辑器
                 goEditor()
                 return
@@ -256,9 +266,9 @@ setPendingCreateName(defaultTitle)
         return createPortal(
             <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
                 <div className="absolute inset-0 bg-black/35" onClick={closeRename} />
-                <div className="relative w-full max-w-md rounded-2xl border border-gray-100 bg-white p-5 shadow-2xl">
-                    <h4 className="text-base font-semibold text-gray-800">重命名简历</h4>
-                    <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                <div className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-lg">
+                    <h4 className="text-base font-semibold text-ink">重命名简历</h4>
+                    <p className="mt-2 text-sm leading-relaxed text-muted">
                         为「{renamingResume.title || '未命名简历'}」设置新名称
                     </p>
 
@@ -268,7 +278,7 @@ setPendingCreateName(defaultTitle)
                         onChange={(event) => setRenameTitle(event.target.value)}
                         maxLength={50}
                         autoFocus
-                        className="mt-4 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="mt-4 w-full rounded-lg border border-line px-3 py-2 text-sm text-ink outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15 bg-surface"
                         placeholder="请输入简历名称"
                         onKeyDown={(event) => {
                             if (event.key === 'Enter') {
@@ -286,7 +296,7 @@ setPendingCreateName(defaultTitle)
                         <button
                             type="button"
                             onClick={closeRename}
-                            className="rounded-lg border border-gray-200 px-3.5 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                            className="rounded-lg border border-line px-3.5 py-2 text-sm text-slate-600 hover:bg-slate-50"
                         >
                             取消
                         </button>
@@ -294,7 +304,7 @@ setPendingCreateName(defaultTitle)
                             type="button"
                             onClick={submitRename}
                             disabled={!renameTitle.trim()}
-                            className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-lg bg-primary px-3.5 py-2 text-sm text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             保存
                         </button>
@@ -317,9 +327,9 @@ setPendingCreateName(defaultTitle)
         return createPortal(
             <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
                 <div className="absolute inset-0 bg-black/35" onClick={closeCreateNameDialog} />
-                <div className="relative w-full max-w-md rounded-2xl border border-gray-100 bg-white p-5 shadow-2xl">
-                    <h4 className="text-base font-semibold text-gray-800">新建简历</h4>
-                    <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                <div className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-lg">
+                    <h4 className="text-base font-semibold text-ink">新建简历</h4>
+                    <p className="mt-2 text-sm leading-relaxed text-muted">
                         已有重名简历「{pendingCreateName}」，请输入新的简历名称
                     </p>
 
@@ -329,7 +339,7 @@ setPendingCreateName(defaultTitle)
                         onChange={(event) => setCreateName(event.target.value)}
                         maxLength={50}
                         autoFocus
-                        className="mt-4 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="mt-4 w-full rounded-lg border border-line px-3 py-2 text-sm text-ink outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15 bg-surface"
                         placeholder="请输入简历名称"
                         onKeyDown={(event) => {
                             if (event.key === 'Enter') {
@@ -347,14 +357,14 @@ setPendingCreateName(defaultTitle)
                         <button
                             type="button"
                             onClick={closeCreateNameDialog}
-                            className="rounded-lg border border-gray-200 px-3.5 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                            className="rounded-lg border border-line px-3.5 py-2 text-sm text-slate-600 hover:bg-slate-50"
                         >
                             取消
                         </button>
                         <button
                             type="button"
                             onClick={submitCreateName}
-                            className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm text-white hover:bg-slate-800"
+                            className="rounded-lg bg-primary px-3.5 py-2 text-sm text-white hover:bg-blue-700"
                         >
                             创建
                         </button>
@@ -434,6 +444,8 @@ setPendingCreateName(defaultTitle)
                     ;(window as any).__cloudSyncSetCloudId?.(created.id)
                     ;(window as any).__cloudSyncMarkSynced?.()
                     onCloudResumeCreated?.(created.id, created.title, created.updatedAt)
+                    // 跳过自动加载，避免误判多端冲突弹窗（同 doCreate）
+                    sessionStorage.setItem('skip_auto_load', 'true')
                     goEditor()
                     return
                 } catch (err) {
@@ -456,16 +468,16 @@ setPendingCreateName(defaultTitle)
     return (
         <>
             <ToastContainer />
-            <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-8">
+            <div className="min-h-screen bg-canvas px-4 py-10 sm:px-8">
                 <div className="mx-auto max-w-5xl space-y-6">
                     {/* 头部 */}
-                    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                    <div className="rounded-2xl border border-line bg-surface p-6 sm:p-8">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                                <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
                                     我的简历
                                 </h1>
-                                <p className="mt-2 text-sm text-slate-600">
+                                <p className="mt-2 text-sm text-muted">
                                     选择一份简历继续编辑，或创建新的简历版本。
                                 </p>
                             </div>
@@ -475,7 +487,7 @@ setPendingCreateName(defaultTitle)
                                         <button
                                             type="button"
                                             onClick={() => setShowAvatarMenu(!showAvatarMenu)}
-                                            className="flex items-center gap-2 text-sm text-slate-600 hover:text-primary transition-colors cursor-pointer rounded-lg hover:bg-white/60 px-2 py-1"
+                                            className="flex items-center gap-2 text-sm text-muted hover:text-primary transition-colors cursor-pointer rounded-lg hover:bg-slate-50 px-2 py-1"
                                         >
                                             <User className="h-4 w-4" />
                                             <span>{user.displayName || user.email}</span>
@@ -485,7 +497,7 @@ setPendingCreateName(defaultTitle)
                                         {showAvatarMenu && (
                                             <>
                                                 <div className="fixed inset-0 z-30" onClick={() => setShowAvatarMenu(false)} />
-                                                <div className="absolute right-0 top-full z-40 mt-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                                                <div className="absolute right-0 top-full z-40 mt-1 w-40 rounded-xl border border-line bg-surface py-1 shadow-lg">
                                                     <button
                                                         type="button"
                                                         onClick={() => { setShowAvatarMenu(false); setShowAccount(true) }}
@@ -510,7 +522,7 @@ setPendingCreateName(defaultTitle)
                                 <button
                                     type="button"
                                     onClick={() => { window.location.href = '/applications' }}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:bg-slate-50"
                                 >
                                     <BriefcaseBusiness className="h-4 w-4" />
                                     投递管理
@@ -518,7 +530,7 @@ setPendingCreateName(defaultTitle)
                                 <button
                                     type="button"
                                     onClick={onLogout}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:bg-slate-50"
                                 >
                                     <LogOut className="h-4 w-4" />
                                     退出登录
@@ -526,7 +538,7 @@ setPendingCreateName(defaultTitle)
                                 <button
                                     type="button"
                                     onClick={handleCreate}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-primary/30"
                                 >
                                     <Plus className="h-4 w-4" />
                                     新建简历
@@ -536,12 +548,13 @@ setPendingCreateName(defaultTitle)
                     </div>
 
                     {displayResumes.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
-                            <p className="text-base text-slate-600">还没有简历，先创建第一份吧。</p>
+                        <div className="rounded-2xl border border-dashed border-line bg-surface px-6 py-14 text-center">
+                            <FileText className="mx-auto h-10 w-10 text-slate-300" />
+                            <p className="mt-4 text-base text-muted">还没有简历，先创建第一份吧。</p>
                             <button
                                 type="button"
                                 onClick={handleCreate}
-                                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-primary/30"
                             >
                                 <Plus className="h-4 w-4" />
                                 立即创建
@@ -552,25 +565,27 @@ setPendingCreateName(defaultTitle)
                             {displayResumes.map((resume) => (
                                 <article
                                     key={resume.id}
-                                    className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                                    className="group relative rounded-2xl border border-line bg-surface p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg hover:shadow-primary/20"
                                 >
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
-                                            <h2 className="truncate text-base font-semibold text-slate-900">
+                                            <h2 className="truncate text-base font-semibold text-ink">
                                                 {resume.title || '未命名简历'}
                                             </h2>
-                                            <p className="mt-1 text-sm text-slate-500">
-                                                模板：{TEMPLATE_LABELS[resume.template] || '经典单栏'}
+                                            <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
+                                                <span>模板：</span>
+                                                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: TEMPLATE_ACCENT[resume.template] || '#94A3B8' }} />
+                                                <span>{TEMPLATE_LABELS[resume.template] || '经典单栏'}</span>
                                             </p>
                                         </div>
                                         <FileText className="h-5 w-5 shrink-0 text-slate-400" />
                                     </div>
 
-                                    <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+                                    <div className="mt-4 flex items-center gap-2 text-xs text-muted">
                                         <CalendarClock className="h-4 w-4" />
                                         <span>最近更新：{formatDate(resume.updatedAt)}</span>
                                         {isAuthenticated && (
-                                            <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
+                                            <span className="ml-2 rounded bg-brand-soft px-1.5 py-0.5 text-primary">
                                                 云端
                                             </span>
                                         )}
@@ -580,28 +595,28 @@ setPendingCreateName(defaultTitle)
                                         <button
                                             type="button"
                                             onClick={() => handleOpen(resume.id)}
-                                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
                                         >
                                             <PencilLine className="h-4 w-4" />
                                             打开编辑
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => handleDelete(resume.id)}
-                                            className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-slate-600 transition hover:border-red-300 hover:text-red-600"
-                                            aria-label="删除简历"
-                                            title="删除简历"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            type="button"
                                             onClick={() => openRename(resume)}
-                                            className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+                                            className="inline-flex items-center justify-center rounded-lg border border-line px-3 py-2 text-muted transition hover:border-slate-400 hover:text-ink"
                                             aria-label="重命名简历"
                                             title="重命名简历"
                                         >
                                             <SquarePen className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDelete(resume.id)}
+                                            className="inline-flex items-center justify-center rounded-lg border border-line px-3 py-2 text-muted transition hover:border-red-300 hover:text-red-600"
+                                            aria-label="删除简历"
+                                            title="删除简历"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
                                         </button>
                                     </div>
                                 </article>
@@ -631,36 +646,36 @@ setPendingCreateName(defaultTitle)
             {showCreateMode && createPortal(
                 <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
                     <div className="absolute inset-0 bg-black/35" onClick={() => setShowCreateMode(false)} />
-                    <div className="relative w-full max-w-sm rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl">
-                        <h4 className="text-base font-semibold text-gray-800">新建简历</h4>
-                        <p className="mt-1 text-sm text-gray-500">选择一种方式创建简历</p>
+                    <div className="relative w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-lg">
+                        <h4 className="text-base font-semibold text-ink">新建简历</h4>
+                        <p className="mt-1 text-sm text-muted">选择一种方式创建简历</p>
 
                         <div className="mt-5 space-y-3">
                             <button
                                 type="button"
                                 onClick={handleCreateBlank}
-                                className="flex w-full items-center gap-4 rounded-xl border border-gray-200 p-4 text-left transition hover:border-primary/40 hover:bg-primary/5"
+                                className="flex w-full items-center gap-4 rounded-xl border border-line p-4 text-left transition hover:border-primary/40 hover:bg-brand-soft"
                             >
                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100">
                                     <Plus className="h-5 w-5 text-slate-600" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-gray-800">新建空白简历</p>
-                                    <p className="text-xs text-gray-500">从零开始创建一份简历</p>
+                                    <p className="text-sm font-medium text-ink">新建空白简历</p>
+                                    <p className="text-xs text-muted">从零开始创建一份简历</p>
                                 </div>
                             </button>
 
                             <button
                                 type="button"
                                 onClick={handleChooseParse}
-                                className="flex w-full items-center gap-4 rounded-xl border border-gray-200 p-4 text-left transition hover:border-primary/40 hover:bg-primary/5"
+                                className="flex w-full items-center gap-4 rounded-xl border border-line p-4 text-left transition hover:border-primary/40 hover:bg-brand-soft"
                             >
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50">
-                                    <FileSearch className="h-5 w-5 text-blue-600" />
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-soft">
+                                    <FileSearch className="h-5 w-5 text-primary" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-gray-800">解析简历导入</p>
-                                    <p className="text-xs text-gray-500">上传 PDF / Word 文件，AI 自动识别填充</p>
+                                    <p className="text-sm font-medium text-ink">解析简历导入</p>
+                                    <p className="text-xs text-muted">上传 PDF / Word 文件，AI 自动识别填充</p>
                                 </div>
                             </button>
                         </div>
@@ -668,7 +683,7 @@ setPendingCreateName(defaultTitle)
                         <button
                             type="button"
                             onClick={() => setShowCreateMode(false)}
-                            className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-500 hover:bg-gray-50"
+                            className="mt-4 w-full rounded-lg border border-line py-2 text-sm text-muted hover:bg-slate-50"
                         >
                             取消
                         </button>
@@ -681,16 +696,16 @@ setPendingCreateName(defaultTitle)
             {parseError && createPortal(
                 <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
                     <div className="absolute inset-0 bg-black/35" onClick={() => setParseError(null)} />
-                    <div className="relative w-full max-w-sm rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl text-center">
+                    <div className="relative w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-lg text-center">
                         <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-red-50">
-                            <span className="text-xl">!</span>
+                            <AlertCircle className="h-5 w-5 text-red-500" />
                         </div>
-                        <p className="mt-4 text-sm font-medium text-gray-800">解析失败</p>
+                        <p className="mt-4 text-sm font-medium text-ink">解析失败</p>
                         <p className="mt-1 text-xs text-red-600">{parseError}</p>
                         <button
                             type="button"
                             onClick={() => setParseError(null)}
-                            className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-500 hover:bg-gray-50"
+                            className="mt-4 w-full rounded-lg border border-line py-2 text-sm text-muted hover:bg-slate-50"
                         >
                             确定
                         </button>

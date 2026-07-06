@@ -1,5 +1,5 @@
 // ============================================================
-// SnapshotTimeline — 版本快照时间轴组件
+// SnapshotTimeline — 版本快照时间轴组件（浮动胶囊式）
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react'
@@ -87,59 +87,60 @@ export default function SnapshotTimeline({
   }
 
   const getNodeStyle = (_s: SnapshotListItem, hovered: boolean, isActive: boolean): React.CSSProperties => ({
-    width: hovered ? 20 : 18, height: hovered ? 20 : 18,
+    width: isActive ? 10 : 8,
+    height: isActive ? 10 : 8,
     borderRadius: '50%',
-    background: isActive ? '#3B82F6' : '#1A56DB',
-    border: isActive ? '2px solid #3B82F6' : 'none',
-    boxShadow: isActive ? '0 0 0 3px rgba(59,130,246,0.3)' : 'none',
+    background: isActive ? '#1A56DB' : '#FFFFFF',
+    border: `2px solid ${isActive ? '#1A56DB' : (hovered ? '#1A56DB' : '#94A3B8')}`,
     cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s ease',
+    display: 'inline-block',
   })
 
-  const nodeSpacing = 80
+  // 仅当存在 2 个及以上快照时才显示时间轴，避免单快照时显示孤零零的胶囊
+  if (snapshots.length < 2) return null
 
   return (
-    <div className="w-full flex-shrink-0">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 pointer-events-auto">
       {error && snapshots.length === 0 && (
-        <div className="text-center py-1 text-xs text-red-500 bg-red-50">
+        <div className="text-center py-1 text-xs text-red-500 bg-red-50 rounded-full px-3">
           {error}<button className="ml-2 underline" onClick={() => setError(null)}>关闭</button>
         </div>
       )}
 
-      <div className="flex items-center justify-center px-4 py-5 relative">
-        <div className="absolute left-4 right-4 h-[3px] bg-gray-200 rounded" style={{ top: '50%', transform: 'translateY(-50%)' }} />
-
+      <div className="flex items-center gap-1 bg-surface/90 backdrop-blur border border-line rounded-full shadow-lg px-2.5 py-1.5">
         {loading && snapshots.length === 0 && (
-          <span className="text-xs text-gray-400">加载中...</span>
+          <span className="text-xs text-muted px-2">加载中...</span>
         )}
 
-        <div className="flex items-center justify-center gap-0">
-          {snapshots.map((snapshot) => {
-            const isHovered = tooltip?.snapshot.id === snapshot.id
-            const isActive = activeSnapshotId === snapshot.id
+        {snapshots.map((snapshot, i) => {
+          const isHovered = tooltip?.snapshot.id === snapshot.id
+          const isActive = activeSnapshotId === snapshot.id
 
-            return (
-              <div key={snapshot.id} className="relative flex flex-col items-center flex-shrink-0"
-                style={{ width: nodeSpacing }}
+          return (
+            <div key={snapshot.id} className="flex items-center gap-1">
+              {i > 0 && <div className="h-px w-2.5 bg-line" />}
+              <button
+                type="button"
+                className="relative flex items-center gap-1.5 rounded-full px-1 py-0.5 cursor-pointer transition-colors hover:bg-slate-50"
                 onMouseEnter={(e) => handleMouseEnter(snapshot, e.currentTarget)}
                 onMouseLeave={handleMouseLeave}
+                onClick={() => onSelectSnapshot?.(snapshot)}
               >
-                <div style={getNodeStyle(snapshot, isHovered, isActive)}
-                  onClick={() => onSelectSnapshot?.(snapshot)}
-                />
-                {snapshot.label && (
-                  <div className={`absolute top-full mt-1.5 text-[10px] font-semibold whitespace-nowrap max-w-[80px] truncate leading-tight text-center ${isActive ? 'text-[#3B82F6]' : 'text-[#1A56DB]'}`}>
+                <span style={getNodeStyle(snapshot, isHovered, isActive)} />
+                {isActive && snapshot.label && (
+                  <span className="text-[11px] text-primary font-medium whitespace-nowrap pr-0.5">
                     {snapshot.label}
-                  </div>
+                  </span>
                 )}
-              </div>
-            )
-          })}
-        </div>
+              </button>
+            </div>
+          )
+        })}
       </div>
 
       {/* Portal tooltip */}
       {tooltip && createPortal(
-        <div className="fixed bg-white border border-gray-200 rounded-lg shadow-xl p-2 z-[9999]"
+        <div className="fixed bg-surface border border-line rounded-xl shadow-lg p-2.5 z-[9999]"
           style={{
             left: Math.min(Math.max(tooltip.x - 95, 8), window.innerWidth - 200),
             bottom: window.innerHeight - tooltip.y + 14,
@@ -148,22 +149,22 @@ export default function SnapshotTimeline({
           onMouseEnter={handleTooltipEnter}
           onMouseLeave={handleTooltipLeave}
         >
-          <div className="flex items-center gap-1 text-xs font-semibold text-gray-800">
+          <div className="flex items-center gap-1 text-xs font-semibold text-ink">
             <span>{tooltip.snapshot.label || tooltip.snapshot.snapshotType}</span>
           </div>
-          <div className="text-[10px] text-gray-500 mt-1">
+          <div className="text-[10px] text-muted mt-1">
             {new Date(tooltip.snapshot.createdAt).toLocaleString('zh-CN')}
           </div>
-          <div className="flex gap-2 mt-2">
+          <div className="flex gap-1.5 mt-2">
             {activeSnapshotId && activeSnapshotId !== tooltip.snapshot.id && (
-              <button className="text-[10px] px-2 py-0.5 bg-purple-50 hover:bg-purple-100 rounded text-purple-600"
+              <button className="text-[10px] px-2 py-0.5 rounded border border-line bg-surface text-muted hover:text-ink hover:bg-slate-50"
                 onClick={() => { onCompareSnapshot?.(tooltip.snapshot.id); setTooltip(null) }}>
                 对比
               </button>
             )}
-            <button className="text-[10px] px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-600"
+            <button className="text-[10px] px-2 py-0.5 rounded border border-line bg-surface text-muted hover:text-ink hover:bg-slate-50"
               onClick={() => handleStartRename(tooltip.snapshot)}>改名</button>
-            <button className="text-[10px] px-2 py-0.5 bg-red-50 hover:bg-red-100 rounded text-red-500"
+            <button className="text-[10px] px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
               onClick={() => handleDelete(tooltip.snapshot.id)}>删除</button>
           </div>
         </div>,
@@ -172,18 +173,18 @@ export default function SnapshotTimeline({
 
       {/* Portal 改名气泡 */}
       {renameInfo && createPortal(
-        <div className="fixed bg-white border border-blue-300 rounded-lg shadow-xl p-3 z-[10000]"
+        <div className="fixed bg-surface border border-line rounded-xl shadow-lg p-3 z-[10000]"
           style={{
             left: Math.min(Math.max(renameInfo.x - 80, 8), window.innerWidth - 180),
             bottom: window.innerHeight - renameInfo.y + 14,
           }}>
-          <input className="w-36 px-2 py-1 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+          <input className="w-36 px-2 py-1 text-xs border border-line rounded focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 bg-surface"
             value={renameValue} onChange={(e) => setRenameValue(e.target.value)} maxLength={100} autoFocus
             onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmRename(); if (e.key === 'Escape') setRenameInfo(null) }} />
           <div className="flex justify-end gap-2 mt-2">
-            <button className="text-[10px] px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
+            <button className="text-[10px] px-2 py-1 rounded border border-line bg-surface text-muted hover:bg-slate-50"
               onClick={() => setRenameInfo(null)}>取消</button>
-            <button className="text-[10px] px-2 py-1 bg-[#1A56DB] text-white rounded hover:bg-blue-700"
+            <button className="text-[10px] px-2 py-1 rounded bg-primary text-white hover:bg-blue-700"
               onClick={handleConfirmRename}>确定</button>
           </div>
         </div>,

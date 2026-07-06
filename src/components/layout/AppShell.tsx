@@ -18,14 +18,14 @@ const STORAGE_KEY_LEFT = 'resumecraft_panel_left_width'
 const STORAGE_KEY_RIGHT = 'resumecraft_panel_right_width'
 
 const MIN_LEFT = 200; const MAX_LEFT = 320; const DEFAULT_LEFT = 300
-const MIN_RIGHT = 300; const MAX_RIGHT = 550; const DEFAULT_RIGHT = 600
+const MIN_RIGHT = 360; const MAX_RIGHT = 720; const DEFAULT_RIGHT = 680
 const MIDDLE_MIN = 550
 // 三栏之外的固定横向开销（必须与 JSX 中的 padding/gap/拖拽条实际像素一致，
 // 否则拖拽上限算多了会让总宽超出视口，被 overflow-hidden 裁掉最右侧右栏）：
-//   外层 p-3 左右各 12px = 24
-//   内层 gap-3 共 4 个间隙 × 12px = 48
+//   外层 p-2 左右各 8px = 16
+//   内层 gap-2 共 4 个间隙 × 8px = 32
 //   两个拖拽条 w-1.5 各 6px = 12
-const GUTTER_TOTAL = 24 + 48 + 12 // = 84
+const GUTTER_TOTAL = 16 + 32 + 12 // = 60
 
 /** 从 localStorage 读取并归一化面板宽度（适配当前视口） */
 function loadPanelWidths(): { left: number; right: number } {
@@ -204,13 +204,15 @@ const AppShell: React.FC = () => {
   }, [左栏宽度, 右栏宽度])
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.14),transparent_22%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_48%,#edf2f8_100%)] p-3">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas p-2">
       <ToastContainer />
       <ConflictDialog />
-      <div className="flex flex-1 w-full overflow-hidden gap-3">
+      <div className="flex flex-1 w-full overflow-hidden gap-2">
         {/* 左栏 — 模块管理面板 */}
         <aside
-          className={`flex-shrink-0 flex flex-col bg-white/80 border border-white/75 rounded-[24px] shadow-[0_18px_44px_rgba(15,23,42,0.08)] overflow-hidden backdrop-blur-xl ${拖拽中 === 'left' ? '' : 'transition-[width] duration-200'}`}
+          className={`flex-shrink-0 flex flex-col bg-surface border border-line rounded-2xl overflow-hidden ${
+            拖拽中 === 'left' ? '' : 'transition-[width] duration-200'
+          }`}
           style={{ width: `${左栏宽度}px` }}
         >
           <LeftPanel />
@@ -218,26 +220,26 @@ const AppShell: React.FC = () => {
 
         {/* 左拖拽条 */}
         <div
-          className="w-1.5 rounded-full flex-shrink-0 cursor-col-resize bg-transparent hover:bg-primary/20 active:bg-primary/30 transition-colors"
+          className="w-1.5 rounded-full flex-shrink-0 cursor-col-resize bg-transparent hover:bg-primary/30 active:bg-primary/40 transition-colors"
           onMouseDown={(event) => 开始拖拽('left', event)}
           title="拖拽调整左侧宽度"
         />
 
         {/* 中栏 flex:1 — 简历实时预览 */}
-        <main className="flex-1 flex flex-col overflow-hidden rounded-[28px] border border-white/75 bg-white/68 shadow-[0_20px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl" style={{ minWidth: `${MIDDLE_MIN}px` }}>
+        <main className="flex-1 flex flex-col overflow-hidden rounded-2xl border border-line bg-surface" style={{ minWidth: `${MIDDLE_MIN}px` }}>
           <CenterPanel workspaceNotices={工作区通知} />
         </main>
 
         {/* 右拖拽条 */}
         <div
-          className="w-1.5 rounded-full flex-shrink-0 cursor-col-resize bg-transparent hover:bg-primary/20 active:bg-primary/30 transition-colors"
+          className="w-1.5 rounded-full flex-shrink-0 cursor-col-resize bg-transparent hover:bg-primary/30 active:bg-primary/40 transition-colors"
           onMouseDown={(event) => 开始拖拽('right', event)}
           title="拖拽调整右侧宽度"
         />
 
         {/* 右栏 — 编辑表单 */}
         <aside
-          className="flex-shrink-0 flex flex-col bg-white/84 border border-white/75 rounded-[24px] shadow-[0_18px_44px_rgba(15,23,42,0.08)] overflow-hidden backdrop-blur-xl"
+          className="flex-shrink-0 flex flex-col bg-surface border border-line rounded-2xl overflow-hidden"
           style={{ width: `${右栏宽度}px` }}
         >
           <RightPanel />

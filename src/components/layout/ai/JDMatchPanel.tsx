@@ -306,7 +306,7 @@ const JDMatchPanel: React.FC<JDMatchPanelProps> = ({
                             onClick={handleOptimize}
                             className="w-full rounded-xl bg-gradient-to-r from-primary to-indigo-500 px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {optimizing ? '生成优化版中...' : '✨ 生成优化版简历'}
+                            {optimizing ? '生成优化版中...' : '生成优化版简历'}
                         </button>
                         {optimizeResult && (
                             <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">

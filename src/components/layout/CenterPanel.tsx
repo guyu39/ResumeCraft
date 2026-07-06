@@ -4,9 +4,9 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Info, X, XCircle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 import { useResumeStore } from '@/store/resumeStore'
-import PagedResumePaper, { A4_HEIGHT_PX, A4_WIDTH_PX } from '@/components/resume/PagedResumePaper'
+import PagedResumePaper, { A4_WIDTH_PX } from '@/components/resume/PagedResumePaper'
 import SnapshotTimeline from '@/components/common/SnapshotTimeline'
 import type { NoticeItem } from '@/components/common/NoticeCenter'
 import { resumeApi, type SnapshotListItem, type DiffResult, type AdminCommentItem } from '@/api/resume'
@@ -15,9 +15,10 @@ import DiffView from '@/components/common/DiffView'
 import type { Resume } from '@/types/resume'
 
 const FIT_PADDING_PX = 24
-const FIT_BOOST_RATIO = 1.3
-const MAX_PREVIEW_SCALE = 1.3
-const MIN_READABLE_SCALE = 0.6 // 低于此阈值提示用户折叠侧栏
+const MIN_SCALE = 0.3
+const MAX_SCALE = 1.5
+const SCALE_STEP = 0.1
+const MIN_READABLE_SCALE = 0.5 // 低于此阈值提示用户收窄侧栏
 
 interface CenterPanelProps {
   workspaceNotices?: NoticeItem[]
@@ -32,6 +33,8 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
   const [, setSnapshotsLoaded] = useState(false)
   const [adminComments, setAdminComments] = useState<AdminCommentItem[]>([])
   const [, setAdminCommentsLoading] = useState(false)
+  // 手动缩放：null 表示跟随容器宽度自动铺满
+  const [manualScale, setManualScale] = useState<number | null>(null)
   const isServerResume = resume?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resume.id)
 
   const displayResume = resume
@@ -51,15 +54,32 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
     return () => observer.disconnect()
   }, [])
 
+  // 按容器宽度铺满（不限制高度，纵向可滚动；不超过 MAX_SCALE）
   const autoFitScale = useMemo(() => {
-    const { width, height } = viewportSize
-    if (!width || !height) return 1
+    const { width } = viewportSize
+    if (!width) return 1
     const fitWidth = (width - FIT_PADDING_PX * 2) / A4_WIDTH_PX
-    const fitHeight = (height - FIT_PADDING_PX * 2) / A4_HEIGHT_PX
-    return Math.max(0.2, Math.min(fitWidth, fitHeight, 1))
+    return Math.max(MIN_SCALE, Math.min(fitWidth, MAX_SCALE))
   }, [viewportSize])
 
-  const finalScale = Math.min(autoFitScale * FIT_BOOST_RATIO, MAX_PREVIEW_SCALE)
+  const finalScale = manualScale ?? autoFitScale
+
+  const handleZoomOut = useCallback(() => {
+    setManualScale((prev) => {
+      const cur = prev ?? autoFitScale
+      return Math.max(MIN_SCALE, Math.round((cur - SCALE_STEP) * 100) / 100)
+    })
+  }, [autoFitScale])
+
+  const handleZoomIn = useCallback(() => {
+    setManualScale((prev) => {
+      const cur = prev ?? autoFitScale
+      return Math.min(MAX_SCALE, Math.round((cur + SCALE_STEP) * 100) / 100)
+    })
+  }, [autoFitScale])
+
+  const handleFitWidth = useCallback(() => setManualScale(null), [])
+
   const headerNotices = useMemo(() => {
     const list = [...workspaceNotices]
     if (list.length === 0 && finalScale < MIN_READABLE_SCALE) {
@@ -67,7 +87,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
         id: 'preview-scale-warning',
         tone: 'warning' as const,
         title: `预览区偏窄（${Math.round(finalScale * 100)}%）`,
-        description: '建议折叠一侧边栏',
+        description: '建议收窄一侧边栏',
       })
     }
     return list
@@ -247,13 +267,13 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
   }, [activeSnapshotId, basedOnSnapshotId, setActiveSnapshotId, setBasedOnSnapshotId, setStoreSnapshots])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       {/* 顶部工具栏 */}
-      <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200">
+      <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-surface border-b border-line">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-medium text-gray-600">简历预览</h2>
+          <h2 className="text-sm font-medium text-muted">简历预览</h2>
           {activeSnapshotLabel && (
-            <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded">{activeSnapshotLabel}</span>
+            <span className="text-xs text-primary bg-brand-soft px-2 py-0.5 rounded">{activeSnapshotLabel}</span>
           )}
         </div>
         {headerNotices.length > 0 && (
@@ -279,8 +299,43 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
             ))}
           </div>
         )}
-        <div className="text-xs text-gray-500">
-          实际 {Math.round(finalScale * 100)}% · A4 纸张
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            disabled={finalScale <= MIN_SCALE + 0.001}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            title="缩小"
+            aria-label="缩小"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <span className="min-w-[3rem] text-center text-xs tabular-nums text-muted">
+            {Math.round(finalScale * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            disabled={finalScale >= MAX_SCALE - 0.001}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            title="放大"
+            aria-label="放大"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleFitWidth}
+            className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs transition-colors ${
+              manualScale === null
+                ? 'border-primary/30 bg-brand-soft text-primary'
+                : 'border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink'
+            }`}
+            title="适应宽度"
+            aria-label="适应宽度"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
@@ -298,18 +353,16 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
         </div>
       </div>
 
-      {/* 版本快照时间轴 */}
+      {/* 版本快照时间轴（浮动胶囊，悬浮于预览区底部中央） */}
       {isServerResume && (
-        <div className="flex-shrink-0 border-t border-gray-100">
-          <SnapshotTimeline
-            key={snapshotVersion}
-            resumeId={resume.id}
-            activeSnapshotId={activeSnapshotId}
-            onSelectSnapshot={handleSelectSnapshot}
-            onCompareSnapshot={handleCompareSnapshot}
-            onSnapshotsLoaded={handleSnapshotsLoaded}
-          />
-        </div>
+        <SnapshotTimeline
+          key={snapshotVersion}
+          resumeId={resume.id}
+          activeSnapshotId={activeSnapshotId}
+          onSelectSnapshot={handleSelectSnapshot}
+          onCompareSnapshot={handleCompareSnapshot}
+          onSnapshotsLoaded={handleSnapshotsLoaded}
+        />
       )}
 
       {/* 差异对比弹窗 */}
@@ -322,10 +375,10 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
           : (diffResult.snapshotA.label || diffResult.snapshotA.id.slice(0, 8))
         return createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => setDiffResult(null)}>
-            <div className="bg-white rounded-xl shadow-2xl w-[640px] max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-surface rounded-2xl shadow-lg border border-line w-[640px] max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
-              <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <h3 className="text-base font-medium text-gray-800">
+              <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-line">
+                <h3 className="text-base font-medium text-ink">
                   对比：<span className="text-green-600">{labelA}</span> vs <span className="text-red-600">{labelB}</span>
                 </h3>
                 <button
