@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { aiApi } from '@/api'
 import type { WritingDiagnosis } from '@/api/ai'
 
 const STORAGE_KEY = 'resumecraft_writing_assistant_enabled'
+const CHANGE_EVENT = 'resumecraft:writing-assistant-change'
 const DEBOUNCE_MS = 1500
 const MIN_CONTENT_LENGTH = 5
 const REPEAT_COOLDOWN_MS = 10000 // 同内容 10s 内不重复请求
@@ -21,6 +22,21 @@ const readEnabled = (): boolean => {
     }
 }
 
+/** 读取实时写作建议开关（供设置面板等外部使用） */
+export function getWritingAssistantEnabled(): boolean {
+    return readEnabled()
+}
+
+/** 设置实时写作建议开关：写 localStorage 并广播事件，让所有 useWritingAssistant 实例同步 */
+export function setWritingAssistantEnabled(next: boolean): void {
+    try {
+        localStorage.setItem(STORAGE_KEY, String(next))
+    } catch {
+        /* ignore */
+    }
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { enabled: next } }))
+}
+
 interface DiagnoseContext {
     resumeId?: string
     moduleType?: string
@@ -31,7 +47,7 @@ interface DiagnoseContext {
 /**
  * 实时写作助手：编辑停顿后对当前要点做快速诊断。
  * - 防抖 + 同内容去重 + 竞态守卫，控制请求成本
- * - 开关状态持久化到 localStorage
+ * - 开关状态持久化到 localStorage，跨组件同步（设置面板切换后实时生效）
  */
 export const useWritingAssistant = () => {
     const [state, setState] = useState<WritingAssistantState>({
@@ -46,18 +62,27 @@ export const useWritingAssistant = () => {
     const lastContentRef = useRef<string>('')
     const lastRequestAtRef = useRef<number>(0)
 
+    // 监听设置面板等外部对开关的修改，实时同步本实例状态
+    useEffect(() => {
+        const sync = () => {
+            const next = readEnabled()
+            setEnabledState((prev) => (prev !== next ? next : prev))
+            if (!next) {
+                requestIdRef.current += 1
+                if (debounceRef.current) window.clearTimeout(debounceRef.current)
+                setState({ loading: false, diagnoses: [], dismissed: new Set() })
+            }
+        }
+        window.addEventListener(CHANGE_EVENT, sync)
+        window.addEventListener('storage', sync)
+        return () => {
+            window.removeEventListener(CHANGE_EVENT, sync)
+            window.removeEventListener('storage', sync)
+        }
+    }, [])
+
     const setEnabled = useCallback((next: boolean) => {
-        try {
-            localStorage.setItem(STORAGE_KEY, String(next))
-        } catch {
-            /* ignore */
-        }
-        setEnabledState(next)
-        if (!next) {
-            requestIdRef.current += 1
-            if (debounceRef.current) window.clearTimeout(debounceRef.current)
-            setState({ loading: false, diagnoses: [], dismissed: new Set() })
-        }
+        setWritingAssistantEnabled(next)
     }, [])
 
     const runDiagnose = useCallback(async (content: string, ctx: DiagnoseContext) => {

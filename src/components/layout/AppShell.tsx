@@ -18,7 +18,7 @@ const STORAGE_KEY_LEFT = 'resumecraft_panel_left_width'
 const STORAGE_KEY_RIGHT = 'resumecraft_panel_right_width'
 
 const MIN_LEFT = 200; const MAX_LEFT = 320; const DEFAULT_LEFT = 300
-const MIN_RIGHT = 360; const MAX_RIGHT = 720; const DEFAULT_RIGHT = 680
+const MIN_RIGHT = 360; const MAX_RIGHT = 720; const DEFAULT_RIGHT = 600
 const MIDDLE_MIN = 550
 // 三栏之外的固定横向开销（必须与 JSX 中的 padding/gap/拖拽条实际像素一致，
 // 否则拖拽上限算多了会让总宽超出视口，被 overflow-hidden 裁掉最右侧右栏）：

@@ -218,11 +218,11 @@ const LeftPanel: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部：简历标题 */}
-      <div className="flex-shrink-0 px-3 py-2 border-b border-line bg-surface">
+      <div className="flex-shrink-0 px-3 py-2.5 border-b border-line bg-surface">
         <div className="flex items-center gap-1.5">
           <a
             href="/"
-            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
+            className="inline-flex items-center justify-center h-7 w-7 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
             title="回到首页"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -235,13 +235,13 @@ const LeftPanel: React.FC = () => {
             placeholder="简历标题"
           />
         </div>
-        <p className="text-[11px] text-gray-400 mt-1 px-1">
+        {/* <p className="text-[11px] text-gray-400 mt-1 px-1">
           {resume.modules.length} 个模块
           {' · '}
           {resume.template === 'classic' ? '经典单栏'
             : resume.template === 'modern' ? '现代双栏'
               : '简约极简'}
-        </p>
+        </p> */}
       </div>
 
       {/* 模块列表（可滚动） */}

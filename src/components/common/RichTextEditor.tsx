@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Wand2, Lightbulb } from 'lucide-react'
+import { Bold, Italic, Sparkles, Underline as UnderlineIcon, Link2, List, ListOrdered, Wand2 } from 'lucide-react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useResumeStore } from '@/store/resumeStore'
@@ -109,7 +109,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     } = useStarRewrite()
     const {
         enabled: 写作助手开启,
-        setEnabled: set写作助手开启,
         loading: 写作诊断中,
         diagnoses: 写作诊断结果,
         trigger: 触发写作诊断,
@@ -473,14 +472,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                         active: STAR面板显示,
                         onClick: 打开STAR改写,
                         disabled: STAR分析中 || STAR生成中,
-                    },
-                    {
-                        key: 'writing-assistant',
-                        title: 写作助手开启 ? '实时建议：开（点击关闭）' : '实时建议：关（点击开启）',
-                        label: 写作助手开启 ? '实时建议' : '实时建议',
-                        icon: Lightbulb,
-                        active: 写作助手开启,
-                        onClick: () => set写作助手开启(!写作助手开启),
                     },
                 ]
                 : []),

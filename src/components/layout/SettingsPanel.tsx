@@ -9,6 +9,7 @@ import StyledSelect from '@/components/common/StyledSelect'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { getAutoFixEnabled, setAutoFixEnabled } from '@/utils/textGuard'
+import { getWritingAssistantEnabled, setWritingAssistantEnabled } from '@/hooks/useWritingAssistant'
 import {
     AIProviderPreset,
     AI_PROVIDER_PRESETS,
@@ -128,6 +129,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
     const { styleSettings } = resume
     const { isAuthenticated } = useAuthStore()
     const [autoFixEnabled, setAutoFixEnabledState] = useState(getAutoFixEnabled())
+    const [writingAssistantEnabled, setWritingAssistantEnabledState] = useState(getWritingAssistantEnabled())
 
     // 优先使用后端配置，否则使用本地配置
     const getInitialAIForm = (): AIConfigForm => {
@@ -512,7 +514,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     <button
                         type="button"
                         onClick={() => {
-                            const next = !autoFixEnabled
+                            const next = autoFixEnabled
                             setAutoFixEnabledState(next)
                             setAutoFixEnabled(next)
                         }}
@@ -528,6 +530,30 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     </button>
                     <p className="text-[12px] text-gray-400">
                         粘贴时检测康熙部首等异常字符，开启后会尝试标准化替换。
+                    </p>
+                </div>
+
+                <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                    <label className="text-xs font-medium text-gray-700">实时写作建议</label>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const next = !writingAssistantEnabled
+                            setWritingAssistantEnabledState(next)
+                            setWritingAssistantEnabled(next)
+                        }}
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs border rounded-lg transition ${writingAssistantEnabled
+                            ? 'border-primary/40 bg-primary/5 text-primary'
+                            : 'border-gray-200 bg-white text-gray-600'
+                            }`}
+                    >
+                        <span>{writingAssistantEnabled ? '已开启' : '已关闭'}</span>
+                        <span className={`inline-flex h-4 w-8 items-center rounded-full p-0.5 ${writingAssistantEnabled ? 'bg-primary' : 'bg-gray-300'}`}>
+                            <span className={`h-3 w-3 rounded-full bg-white transition ${writingAssistantEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </span>
+                    </button>
+                    <p className="text-[12px] text-gray-400">
+                        编辑经历要点时实时诊断用词与表达，给出改进建议。关闭后富文本工具栏不再显示该入口。
                     </p>
                 </div>
             </CollapsibleSection>

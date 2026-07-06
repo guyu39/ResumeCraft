@@ -269,7 +269,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
   return (
     <div className="flex flex-col h-full relative">
       {/* 顶部工具栏 */}
-      <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-surface border-b border-line">
+      <div className="flex-shrink-0 flex items-center justify-between px-5 py-2.5 bg-surface border-b border-line">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-muted">简历预览</h2>
           {activeSnapshotLabel && (
