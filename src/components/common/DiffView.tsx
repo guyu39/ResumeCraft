@@ -5,6 +5,7 @@
 // ============================================================
 
 import React from 'react'
+import { CheckCircle2 } from 'lucide-react'
 import type { FieldDiff, DiffStats } from '@/api/resume'
 
 interface DiffViewProps {
@@ -103,26 +104,41 @@ const DiffView: React.FC<DiffViewProps> = ({ diffs, stats, emptyHint = '两个�
   return (
     <div className={className}>
       {stats && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-          <span className="font-medium text-red-600">− 删除 {stats.modulesRemoved}</span>
-          <span className="font-medium text-green-600">+ 新增 {stats.modulesAdded}</span>
-          <span className="font-medium">修改 {stats.modulesModified}</span>
-          <span className="text-gray-400">字段 {stats.fieldsChanged}</span>
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+          {stats.modulesRemoved > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-600">
+              − 删除 {stats.modulesRemoved} 个模块
+            </span>
+          )}
+          {stats.modulesAdded > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 font-medium text-green-600">
+              + 新增 {stats.modulesAdded} 个模块
+            </span>
+          )}
+          <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-600">
+            修改 {stats.modulesModified} 个模块
+          </span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">
+            {stats.fieldsChanged} 处字段
+          </span>
         </div>
       )}
       {diffs.length === 0 ? (
-        <p className="py-12 text-center text-sm text-gray-400">{emptyHint}</p>
+        <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+          <CheckCircle2 className="mb-3 h-10 w-10 text-green-400" />
+          <p className="text-sm">{emptyHint}</p>
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {diffs.map((d, i) => (
-            <div key={i} className="rounded-lg border border-gray-100 p-3">
-              <div className="mb-2 flex items-center gap-1.5 text-xs">
-                <span className="font-medium text-gray-700">{d.moduleType}</span>
-                <span className="text-gray-300">·</span>
-                <span className="text-gray-500">{d.field}</span>
+            <div key={i} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/50 px-4 py-2.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{d.moduleType}</span>
+                <span className="text-slate-300">·</span>
+                <span className="text-xs text-slate-500">{d.field}</span>
               </div>
               <div
-                className="diff-content text-xs"
+                className="diff-content px-4 py-3 text-xs leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: renderUnifiedDiffHtml(String(d.before ?? ''), String(d.after ?? '')) }}
               />
             </div>

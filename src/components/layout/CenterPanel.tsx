@@ -374,33 +374,49 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
           ? (diffResult.snapshotB.label || diffResult.snapshotB.id.slice(0, 8))
           : (diffResult.snapshotA.label || diffResult.snapshotA.id.slice(0, 8))
         return createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={() => setDiffResult(null)}>
-            <div className="bg-surface rounded-2xl shadow-lg border border-line w-[640px] max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-line">
-                <h3 className="text-base font-medium text-ink">
-                  对比：<span className="text-green-600">{labelA}</span> vs <span className="text-red-600">{labelB}</span>
-                </h3>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm" onClick={() => setDiffResult(null)}>
+            <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+              {/* Header — 固定 */}
+              <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800">版本差异对比</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    <span className="text-red-500 font-medium">{labelA}</span>
+                    {' → '}
+                    <span className="text-green-500 font-medium">{labelB}</span>
+                  </p>
+                </div>
                 <button
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                  className="h-8 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                   onClick={() => setDiffResult(null)}
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto no-scrollbar px-6 py-4">
-                {/* Stats */}
-                <div className="flex gap-4 mb-4 text-xs text-gray-500">
-                  <span className="text-red-600 font-medium">− 删除 {diffResult.stats.modulesRemoved}</span>
-                  <span className="text-green-600 font-medium">+ 新增 {diffResult.stats.modulesAdded}</span>
-                  <span className="font-medium">修改 {diffResult.stats.modulesModified}</span>
-                  <span className="text-gray-400">字段 {diffResult.stats.fieldsChanged}</span>
+              {/* Body — 可滚动 */}
+              <div className="flex-1 overflow-y-auto no-scrollbar px-5 py-4">
+                {/* Stats pills */}
+                <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+                  {diffResult.stats.modulesRemoved > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-600">
+                      − 删除 {diffResult.stats.modulesRemoved} 个模块
+                    </span>
+                  )}
+                  {diffResult.stats.modulesAdded > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 font-medium text-green-600">
+                      + 新增 {diffResult.stats.modulesAdded} 个模块
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-600">
+                    修改 {diffResult.stats.modulesModified} 个模块
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-500">
+                    {diffResult.stats.fieldsChanged} 处字段
+                  </span>
                 </div>
 
                 {(() => {
-                  // 按当前激活快照决定 before/after 方向，预定向后交给 DiffView 渲染
                   const directed = diffResult.diffs.map((d) => {
                     const flip = activeSnapshotId === diffResult.snapshotA.id
                     return {
