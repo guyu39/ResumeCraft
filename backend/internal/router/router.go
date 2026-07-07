@@ -166,6 +166,7 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 				applicationGroup.POST("", h.CreateApplication)
 				applicationGroup.GET("/export", h.ExportApplications)
 				applicationGroup.POST("/duplicates", h.CheckApplicationDuplicates)
+				applicationGroup.GET("/stats", h.GetApplicationStats)
 				applicationGroup.GET("/:id", h.GetApplication)
 				applicationGroup.PUT("/:id", h.UpdateApplication)
 				applicationGroup.DELETE("/:id", h.DeleteApplication)

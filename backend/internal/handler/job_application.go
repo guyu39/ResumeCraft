@@ -38,6 +38,22 @@ func (h *Handler) ListApplications(c *gin.Context) {
 	response.JSONSuccess(c, result)
 }
 
+// GetApplicationStats 求职漏斗 + 简历版本 A/B 对比
+// GET /api/applications/stats
+func (h *Handler) GetApplicationStats(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	result, err := h.applicationService.GetFunnelStats(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("[application] GetApplicationStats error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "统计加载失败")
+		return
+	}
+	response.JSONSuccess(c, result)
+}
+
 // GetApplication 获取投递记录详情
 // GET /api/applications/:id
 func (h *Handler) GetApplication(c *gin.Context) {

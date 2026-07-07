@@ -102,6 +102,11 @@ type Repository interface {
 	DeleteInterviewAttachment(ctx context.Context, userID, applicationID, interviewID string) error
 
 	GetStatus(ctx context.Context, userID, applicationID string) (model.JobApplicationStatus, error)
+
+	// 漏斗分析：各阶段计数（单条聚合 SQL）
+	GetFunnelStats(ctx context.Context, userID string) (model.FunnelStats, error)
+	// 按简历版本分组的转化数据（A/B 对比）
+	GetConversionBySnapshot(ctx context.Context, userID string) ([]model.SnapshotConversion, error)
 }
 
 type repository struct {
@@ -1012,6 +1017,65 @@ func (r *repository) GetStatus(ctx context.Context, userID, applicationID string
 		return "", fmt.Errorf("get application status: %w", err)
 	}
 	return status, nil
+}
+
+// GetFunnelStats 求职漏斗各阶段计数（投递/笔试/面试/Offer）
+func (r *repository) GetFunnelStats(ctx context.Context, userID string) (model.FunnelStats, error) {
+	var fs model.FunnelStats
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE submitted_at IS NOT NULL) AS submitted,
+			COUNT(*) FILTER (WHERE written_test_at IS NOT NULL) AS written_test,
+			COUNT(*) FILTER (WHERE id IN (SELECT application_id FROM job_application_interviews)) AS interview,
+			COUNT(*) FILTER (WHERE status = $2) AS offer,
+			COUNT(*) AS total
+		FROM job_applications
+		WHERE user_id = $1 AND deleted_at IS NULL
+	`, userID, model.JobApplicationStatusOffer).Scan(&fs.Submitted, &fs.WrittenTest, &fs.Interview, &fs.Offer, &fs.Total)
+	if err != nil {
+		return fs, fmt.Errorf("get funnel stats: %w", err)
+	}
+	return fs, nil
+}
+
+// GetConversionBySnapshot 按简历版本分组的转化数据（A/B 对比）
+func (r *repository) GetConversionBySnapshot(ctx context.Context, userID string) ([]model.SnapshotConversion, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			ja.snapshot_version_id,
+			COALESCE(rv.label, ''),
+			ja.resume_id,
+			COALESCE(r.title, ''),
+			COUNT(*) FILTER (WHERE ja.submitted_at IS NOT NULL) AS submitted,
+			COUNT(*) FILTER (WHERE ja.id IN (SELECT application_id FROM job_application_interviews)) AS interview,
+			COUNT(*) FILTER (WHERE ja.status = $2) AS offer
+		FROM job_applications ja
+		LEFT JOIN resume_versions rv ON rv.id = ja.snapshot_version_id
+		LEFT JOIN resumes r ON r.id = ja.resume_id
+		WHERE ja.user_id = $1 AND ja.deleted_at IS NULL
+		GROUP BY ja.snapshot_version_id, ja.resume_id, rv.label, r.title
+		ORDER BY submitted DESC
+	`, userID, model.JobApplicationStatusOffer)
+	if err != nil {
+		return nil, fmt.Errorf("get conversion by snapshot: %w", err)
+	}
+	defer rows.Close()
+
+	var items []model.SnapshotConversion
+	for rows.Next() {
+		var it model.SnapshotConversion
+		if err := rows.Scan(&it.SnapshotVersionID, &it.SnapshotLabel, &it.ResumeID, &it.ResumeTitle, &it.Submitted, &it.Interview, &it.Offer); err != nil {
+			return nil, fmt.Errorf("scan conversion row: %w", err)
+		}
+		if it.Submitted > 0 {
+			it.ReplyRate = float64(it.Interview) / float64(it.Submitted)
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate conversion rows: %w", err)
+	}
+	return items, nil
 }
 
 func (r *repository) getBaseByID(ctx context.Context, userID, applicationID string) (*model.JobApplication, error) {

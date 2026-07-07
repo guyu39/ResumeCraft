@@ -274,3 +274,30 @@ type GetInterviewRecordingResponse struct {
 	Attachment *JobApplicationAttachment `json:"attachment,omitempty"`
 	Content    string                    `json:"content,omitempty"`
 }
+
+// FunnelStats 求职漏斗各阶段计数
+type FunnelStats struct {
+	Submitted   int `json:"submitted"`   // 已投递（submitted_at 非空）
+	WrittenTest int `json:"writtenTest"` // 笔试（written_test_at 非空）
+	Interview   int `json:"interview"`   // 面试（有面试记录）
+	Offer       int `json:"offer"`       // Offer（status=offer）
+	Total       int `json:"total"`       // 全部投递记录数（参考）
+}
+
+// SnapshotConversion 单个简历版本的转化数据（A/B 对比用）
+type SnapshotConversion struct {
+	SnapshotVersionID string  `json:"snapshotVersionId"`
+	SnapshotLabel     string  `json:"snapshotLabel"`
+	ResumeID          string  `json:"resumeId"`
+	ResumeTitle       string  `json:"resumeTitle"`
+	Submitted         int     `json:"submitted"`
+	Interview         int     `json:"interview"`
+	Offer             int     `json:"offer"`
+	ReplyRate         float64 `json:"replyRate"` // 面试/投递
+}
+
+// FunnelStatsResponse 漏斗分析 + 版本对比响应
+type FunnelStatsResponse struct {
+	Funnel     FunnelStats          `json:"funnel"`
+	BySnapshot []SnapshotConversion `json:"bySnapshot"`
+}

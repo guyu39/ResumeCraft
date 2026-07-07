@@ -20,8 +20,11 @@ import {
   Trash2,
   UploadCloud,
   X,
+  BarChart3,
+  List as ListIcon,
 } from 'lucide-react'
 import { applicationsApi, resumeApi } from '@/api'
+import FunnelAnalytics from '@/components/applications/FunnelAnalytics'
 import type {
   CreateInterviewRequest,
   JobApplication,
@@ -266,6 +269,8 @@ const STATUS_COLOR_CLASS: Record<string, string> = {
 const ApplicationsPage: React.FC = () => {
   const [items, setItems] = useState<JobApplicationListItem[]>([])
   const [loading, setLoading] = useState(false)
+  // 视图：投递列表 / 数据分析
+  const [view, setView] = useState<'list' | 'analytics'>(() => (new URLSearchParams(window.location.search).get('view') === 'analytics' ? 'analytics' : 'list'))
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
   const [totalPages, setTotalPages] = useState(1)
@@ -734,8 +739,34 @@ const ApplicationsPage: React.FC = () => {
             <button type="button" onClick={exportExcel} className={toolbarSecondaryButtonClass}><Download className="h-4 w-4" />导出 Excel</button>
           </div>
         </div>
+        {/* 视图切换 tab */}
+        <div className="mx-auto max-w-[1680px] px-6 pb-3">
+          <div className="inline-flex items-center gap-1 rounded-xl border border-line bg-slate-100 p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${view === 'list' ? 'border border-line bg-surface text-primary shadow-sm' : 'border border-transparent text-muted hover:text-ink'}`}
+            >
+              <ListIcon className="h-3.5 w-3.5" /> 投递列表
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('analytics')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${view === 'analytics' ? 'border border-line bg-surface text-primary shadow-sm' : 'border border-transparent text-muted hover:text-ink'}`}
+            >
+              <BarChart3 className="h-3.5 w-3.5" /> 数据分析
+            </button>
+          </div>
+        </div>
       </div>
 
+      {view === 'analytics' ? (
+        <main className="mx-auto min-h-0 w-full max-w-[1680px] flex-1 overflow-hidden px-6 py-6">
+          <section className="h-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <FunnelAnalytics />
+          </section>
+        </main>
+      ) : (
       <main className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 grid-cols-1 gap-4 overflow-hidden px-6 py-6 transition-all">
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
@@ -1068,6 +1099,7 @@ const ApplicationsPage: React.FC = () => {
           </aside>
         )}
       </main>
+      )}
 
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">

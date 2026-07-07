@@ -199,12 +199,41 @@ function buildQuery(params?: ListApplicationsParams): string {
   return query ? `?${query}` : ''
 }
 
+// 漏斗各阶段计数
+export interface FunnelStats {
+  submitted: number
+  writtenTest: number
+  interview: number
+  offer: number
+  total: number
+}
+
+// 单个简历版本的转化数据（A/B 对比）
+export interface SnapshotConversion {
+  snapshotVersionId: string
+  snapshotLabel: string
+  resumeId: string
+  resumeTitle: string
+  submitted: number
+  interview: number
+  offer: number
+  replyRate: number
+}
+
+export interface FunnelStatsResponse {
+  funnel: FunnelStats
+  bySnapshot: SnapshotConversion[]
+}
+
 export const applicationsApi = {
   list: (params?: ListApplicationsParams) =>
     apiClient.get<JobApplicationListResponse>(`/applications${buildQuery(params)}`),
 
   get: (id: string) =>
     apiClient.get<JobApplication>(`/applications/${id}`),
+
+  getStats: () =>
+    apiClient.get<FunnelStatsResponse>('/applications/stats'),
 
   create: (data: CreateApplicationRequest) =>
     apiClient.post<JobApplication>('/applications', data),

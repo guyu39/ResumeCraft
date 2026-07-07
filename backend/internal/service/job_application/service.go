@@ -64,6 +64,8 @@ type Service interface {
 	UploadInterviewRecording(ctx context.Context, userID, applicationID string, params UploadInterviewRecordingParams) (*model.JobApplicationAttachment, error)
 	GetInterviewRecording(ctx context.Context, userID, applicationID, interviewID string) (*model.JobApplicationAttachment, error)
 	ExportExcel(ctx context.Context, userID string, filters model.JobApplicationFilters) ([]byte, error)
+	// GetFunnelStats 漏斗分析 + 简历版本 A/B 对比
+	GetFunnelStats(ctx context.Context, userID string) (*model.FunnelStatsResponse, error)
 }
 
 type UploadInterviewRecordingParams struct {
@@ -462,6 +464,22 @@ func (s *service) ExportExcel(ctx context.Context, userID string, filters model.
 		return nil, fmt.Errorf("write excel: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// GetFunnelStats 汇总漏斗各阶段计数 + 按简历版本分组的转化数据
+func (s *service) GetFunnelStats(ctx context.Context, userID string) (*model.FunnelStatsResponse, error) {
+	funnel, err := s.repo.GetFunnelStats(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	bySnapshot, err := s.repo.GetConversionBySnapshot(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return &model.FunnelStatsResponse{
+		Funnel:     funnel,
+		BySnapshot: bySnapshot,
+	}, nil
 }
 
 // interviewResultCell 有结果则拼接为「通过」「终止」，否则留空表示进行中/待反馈
