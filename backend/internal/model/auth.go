@@ -49,4 +49,7 @@ type AuthUser struct {
 type AuthPayload struct {
 	User   AuthUser   `json:"user"`
 	Tokens AuthTokens `json:"tokens"`
+	// PreviousSessionKicked 表示本次登录是否挤掉了该账号在其他设备上的会话（单设备登录）。
+	// 前端据此提示「已在其他设备登录，已将其挤下线」。
+	PreviousSessionKicked bool `json:"previousSessionKicked,omitempty"`
 }

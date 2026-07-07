@@ -59,6 +59,8 @@ export interface AuthTokens {
 export interface AuthPayload {
   user: AuthUser
   tokens: AuthTokens
+  /** 本次登录是否挤掉了该账号在其他设备上的会话（单设备登录） */
+  previousSessionKicked?: boolean
 }
 
 // 简历相关

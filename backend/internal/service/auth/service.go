@@ -36,6 +36,7 @@ var (
 	ErrEmailNotRegistered = errors.New("email not registered")
 	ErrSMTPNotConfigured  = errors.New("email service not configured")
 	ErrCodeUnavailable    = errors.New("verification code service unavailable")
+	ErrSessionKicked      = errors.New("session kicked by new login")
 )
 
 type Service interface {
@@ -53,10 +54,11 @@ type Service interface {
 
 // sessionData 存储在 Redis 中的会话数据
 type sessionData struct {
-	UserID    string `json:"uid"`
-	TokenHash string `json:"th"`
-	IP        string `json:"ip,omitempty"`
-	UA        string `json:"ua,omitempty"`
+	UserID          string `json:"uid"`
+	TokenHash       string `json:"th"`            // refresh token hash
+	AccessTokenHash string `json:"ath,omitempty"` // access token hash（用于单设备登录时同步清理旧 AT）
+	IP              string `json:"ip,omitempty"`
+	UA              string `json:"ua,omitempty"`
 }
 
 type service struct {
@@ -428,8 +430,24 @@ func (s *service) ParseAccessToken(token string) (string, error) {
 
 	// 检查 Redis 中 access token 是否仍然有效（支持即时撤销）
 	if s.rdb != nil {
-		atKey := fmt.Sprintf(keyAccessToken, hashToken(token))
 		ctx := context.Background()
+
+		// 单设备登录：会话 key 被驱逐即代表被其他设备顶号，优先于 access token 校验返回专用错误
+		if claims.SessionID != "" {
+			sessKey := fmt.Sprintf(keySession, claims.SessionID)
+			exists, err := s.rdb.Exists(ctx, sessKey).Result()
+			if err != nil {
+				// Redis 故障沿用 fail-open：仅日志警告，不阻断请求
+				log.Printf("[auth] redis check session error: %v (fail-open)", err)
+			} else if exists == 0 {
+				log.Printf("[auth] SESSION_KICKED user=%s session=%s (session key absent)", claims.UserID, claims.SessionID)
+				return "", ErrSessionKicked
+			} else {
+				log.Printf("[auth] session ok user=%s session=%s", claims.UserID, claims.SessionID)
+			}
+		}
+
+		atKey := fmt.Sprintf(keyAccessToken, hashToken(token))
 		exists, err := s.rdb.Exists(ctx, atKey).Result()
 		if err != nil {
 			// Redis 故障时 fail-open：仅日志警告，不阻断请求
@@ -509,10 +527,13 @@ func (s *service) ChangePassword(ctx context.Context, userID string, req model.C
 func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua string) (*model.AuthPayload, error) {
 	now := time.Now()
 
-	// 1. 生成 access token
+	// 1. 生成 access token（携带 SessionID 以支持单设备登录时的会话存在性校验）
+	sessionID := generateSessionID()
+	log.Printf("[auth] createSession user=%s session=%s (single-session=on)", u.ID, sessionID)
 	accessClaims := tokenClaims{
-		UserID: u.ID,
-		Type:   "access",
+		UserID:    u.ID,
+		SessionID: sessionID,
+		Type:      "access",
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessTokenTTL)),
@@ -524,10 +545,7 @@ func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua 
 		return nil, fmt.Errorf("sign access token: %w", err)
 	}
 
-	// 2. 生成 session ID
-	sessionID := generateSessionID()
-
-	// 3. 生成 refresh token
+	// 2. 生成 refresh token
 	refreshClaims := tokenClaims{
 		UserID:    u.ID,
 		SessionID: sessionID,
@@ -544,21 +562,25 @@ func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua 
 		return nil, fmt.Errorf("sign refresh token: %w", err)
 	}
 
-	// 4. 存储到 Redis
+	// 4. 单设备登录：建立新会话前，踢掉该用户的其他在线会话，并返回被踢数量用于前端提示
+	evicted := s.evictOtherSessions(ctx, u.ID, sessionID)
+
+	// 5. 存储到 Redis
 	if s.rdb != nil {
-		// 4a. 存储 access token → userID（用于验证 + 即时撤销）
+		// 5a. 存储 access token → userID（用于验证 + 即时撤销）
 		atKey := fmt.Sprintf(keyAccessToken, hashToken(accessToken))
 		if err := s.rdb.Set(ctx, atKey, u.ID, s.accessTokenTTL).Err(); err != nil {
 			log.Printf("[auth] redis set access token error: %v", err)
 			// 不中断流程，access token 仍可通过 JWT 签名验证
 		}
 
-		// 4b. 存储会话数据（用于 refresh token 验证）
+		// 5b. 存储会话数据（用于 refresh token 验证 + 单设备登录时清理旧 AT）
 		sess := sessionData{
-			UserID:    u.ID,
-			TokenHash: hashToken(refreshToken),
-			IP:        ip,
-			UA:        ua,
+			UserID:          u.ID,
+			TokenHash:       hashToken(refreshToken),
+			AccessTokenHash: hashToken(accessToken),
+			IP:              ip,
+			UA:              ua,
 		}
 		sessBytes, _ := json.Marshal(sess)
 		sessKey := fmt.Sprintf(keySession, sessionID)
@@ -566,7 +588,7 @@ func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua 
 			log.Printf("[auth] redis set session error: %v", err)
 		}
 
-		// 4c. 用户会话索引（便于管理用户所有会话）
+		// 5c. 用户会话索引（便于管理用户所有会话）
 		usKey := fmt.Sprintf(keyUserSessions, u.ID)
 		s.rdb.SAdd(ctx, usKey, sessionID)
 		s.rdb.Expire(ctx, usKey, s.refreshTokenTTL)
@@ -593,6 +615,7 @@ func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua 
 			RefreshToken: refreshToken,
 			ExpiresIn:    int64(s.accessTokenTTL.Seconds()),
 		},
+		PreviousSessionKicked: evicted > 0,
 	}, nil
 }
 
@@ -603,6 +626,53 @@ func (s *service) deleteSessionFromRedis(ctx context.Context, sessionID, userID 
 
 	usKey := fmt.Sprintf(keyUserSessions, userID)
 	s.rdb.SRem(ctx, usKey, sessionID)
+}
+
+// evictOtherSessions 单设备登录核心：撤销该用户除 exceptSessionID 之外的所有会话。
+// 被驱逐会话的 auth:session:{sid} 被删除后，旧设备后续请求经 ParseAccessToken 会话校验即被拒。
+// 返回被踢掉的会话数量，供 createSessionAndTokens 写入 AuthPayload 以提示前端。
+func (s *service) evictOtherSessions(ctx context.Context, userID, exceptSessionID string) int {
+	if s.rdb == nil {
+		// Redis 不可用：回退 PostgreSQL，撤销其他未撤销的会话行
+		res, err := s.pool.Exec(ctx,
+			`UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND id != $2 AND revoked_at IS NULL`,
+			userID, exceptSessionID,
+		)
+		if err != nil {
+			log.Printf("[auth] evict other sessions (postgres) error: %v", err)
+			return 0
+		}
+		return int(res.RowsAffected())
+	}
+
+	usKey := fmt.Sprintf(keyUserSessions, userID)
+	members, err := s.rdb.SMembers(ctx, usKey).Result()
+	if err != nil {
+		log.Printf("[auth] evict: smembers error: %v", err)
+		return 0
+	}
+	evicted := 0
+	for _, sid := range members {
+		if sid == exceptSessionID {
+			continue
+		}
+		// 先读取旧会话数据，拿到 access token hash 用于清理
+		oldSessKey := fmt.Sprintf(keySession, sid)
+		if val, err := s.rdb.Get(ctx, oldSessKey).Result(); err == nil && val != "" {
+			var oldSess sessionData
+			if json.Unmarshal([]byte(val), &oldSess) == nil && oldSess.AccessTokenHash != "" {
+				atKey := fmt.Sprintf(keyAccessToken, oldSess.AccessTokenHash)
+				s.rdb.Del(ctx, atKey)
+				log.Printf("[auth] evict access-token for session=%s", sid)
+			}
+		}
+		s.rdb.Del(ctx, oldSessKey)
+		log.Printf("[auth] evict session=%s for user=%s (new session=%s)", sid, userID, exceptSessionID)
+		evicted++
+	}
+	// 清空集合，新建会话时由 createSessionAndTokens 的 SAdd 写回（仅保留新会话）
+	s.rdb.Del(ctx, usKey)
+	return evicted
 }
 
 // refreshFromPostgres 当 Redis 不可用时回退到 PostgreSQL 验证 refresh

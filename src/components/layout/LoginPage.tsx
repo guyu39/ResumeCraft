@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import {
   LogIn, UserPlus, FileText, Sparkles, LayoutTemplate, GitCompare,
-  MessagesSquare, ShieldCheck, Languages, Share2, ChevronDown,
+  MessagesSquare, ShieldCheck, Languages, Share2, ChevronDown, AlertTriangle,
 } from 'lucide-react'
 import ToastContainer, { toast } from '@/components/common/Toast'
 import { ApiError } from '@/api'
@@ -32,7 +32,7 @@ const FEATURES: Array<{ icon: React.ComponentType<{ className?: string }>; title
 ]
 
 const LoginPage: React.FC = () => {
-  const { loginWithPassword, loginWithCode, register, sendCode, isLoading, clearError } = useAuthStore()
+  const { loginWithPassword, loginWithCode, register, sendCode, showKickConfirm, isLoading, clearError } = useAuthStore()
   const [mode, setMode] = useState<Mode>('login')
   const [loginTab, setLoginTab] = useState<LoginTab>('password')
 
@@ -48,6 +48,20 @@ const LoginPage: React.FC = () => {
   const [countdown, setCountdown] = useState(0)
   const [sending, setSending] = useState(false)
   const timerRef = useRef<number | null>(null)
+
+  // 被其他设备顶号后跳转而来（client.ts 注入 ?reason=kicked），展示常驻提示横幅
+  const [kickedNotice, setKickedNotice] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('reason') === 'kicked') {
+      setKickedNotice(true)
+      // 清理 URL 参数，避免刷新后重复提示
+      const newUrl = new URL(window.location.href)
+      newUrl.searchParams.delete('reason')
+      window.history.replaceState({}, '', newUrl.pathname + newUrl.search)
+    }
+  }, [])
 
   useEffect(() => {
     return () => { if (timerRef.current) window.clearInterval(timerRef.current) }
@@ -114,17 +128,22 @@ const LoginPage: React.FC = () => {
       if (mode === 'register') {
         await register(email, password, code, displayName || undefined)
         toast('注册成功', 'success')
-      } else if (loginTab === 'password') {
-        await loginWithPassword(email, password)
-        toast('登录成功', 'success')
       } else {
-        await loginWithCode(email, code)
-        toast('登录成功', 'success')
+        const result = loginTab === 'password'
+          ? await loginWithPassword(email, password)
+          : await loginWithCode(email, code)
+        const params = new URLSearchParams(window.location.search)
+        const returnUrl = params.get('return') || '/'
+        // 新登录若挤掉了其他设备的会话：弹全局二次确认框（挂在 App 层，避免 LoginPage 卸载丢失），
+        // 由用户手动确认后才进入应用；否则走普通「登录成功」并自动跳转。
+        if (result.previousSessionKicked) {
+          showKickConfirm(returnUrl)
+        } else {
+          toast('登录成功', 'success')
+          // 稍延迟让 toast 可见
+          setTimeout(() => { window.location.href = returnUrl }, 400)
+        }
       }
-      const params = new URLSearchParams(window.location.search)
-      const returnUrl = params.get('return') || '/'
-      // 稍延迟让 toast 可见
-      setTimeout(() => { window.location.href = returnUrl }, 400)
     } catch (err) {
       toast(err instanceof ApiError ? err.message : (mode === 'register' ? '注册失败' : '登录失败'))
     }
@@ -222,6 +241,14 @@ const LoginPage: React.FC = () => {
                 {mode === 'register' ? '创建新账号，开始云端管理简历' : '登录以同步您的简历数据'}
               </p>
             </div>
+
+            {/* 被其他设备顶号后跳回登录页的常驻提示 */}
+            {kickedNotice && (
+              <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>您的账号已在其他设备登录，当前会话已失效，请重新登录。</span>
+              </div>
+            )}
 
             {/* 登录方式 Tab（仅登录态显示） */}
             {mode === 'login' && (

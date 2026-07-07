@@ -5,6 +5,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { authApi, getAccessToken, isAuthenticated, ApiError } from '@/api'
+import type { AuthPayload } from '@/api/types'
 
 interface AuthUser {
   id: string
@@ -18,16 +19,21 @@ interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
+  // 单设备登录：本端登录挤掉其他设备会话后，需用户二次确认才进入应用。
+  // 存 returnUrl，由全局 KickConfirmModal 渲染（避免 LoginPage 卸载后弹窗丢失）。
+  kickConfirmReturnUrl: string | null
 }
 
 interface AuthActions {
-  loginWithPassword: (email: string, password: string) => Promise<void>
-  loginWithCode: (email: string, code: string) => Promise<void>
+  loginWithPassword: (email: string, password: string) => Promise<AuthPayload>
+  loginWithCode: (email: string, code: string) => Promise<AuthPayload>
   register: (email: string, password: string, code: string, displayName?: string) => Promise<void>
   sendCode: (email: string, purpose: 'register' | 'login') => Promise<void>
   logout: () => Promise<void>
   checkAuth: () => Promise<void>
   clearError: () => void
+  showKickConfirm: (returnUrl: string) => void
+  clearKickConfirm: () => void
 }
 
 export const useAuthStore = create<AuthState & AuthActions>()(
@@ -37,12 +43,14 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       isAuthenticated: !!getAccessToken(),
       isLoading: false,
       error: null,
+      kickConfirmReturnUrl: null,
 
       loginWithPassword: async (email: string, password: string) => {
         set({ isLoading: true, error: null })
         try {
           const result = await authApi.login({ email, password, loginType: 'password' })
           set({ user: result.user, isAuthenticated: true, isLoading: false })
+          return result
         } catch (err) {
           const message = err instanceof ApiError ? err.message : '登录失败'
           set({ error: message, isLoading: false })
@@ -55,6 +63,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         try {
           const result = await authApi.login({ email, code, loginType: 'code' })
           set({ user: result.user, isAuthenticated: true, isLoading: false })
+          return result
         } catch (err) {
           const message = err instanceof ApiError ? err.message : '登录失败'
           set({ error: message, isLoading: false })
@@ -117,6 +126,9 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       },
 
       clearError: () => set({ error: null }),
+
+      showKickConfirm: (returnUrl: string) => set({ kickConfirmReturnUrl: returnUrl }),
+      clearKickConfirm: () => set({ kickConfirmReturnUrl: null }),
     }),
     {
       name: 'resumecraft_auth',

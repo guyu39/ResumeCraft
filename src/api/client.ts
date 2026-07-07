@@ -3,6 +3,7 @@
 // ============================================================
 
 import type { ApiResponse } from './types'
+import { toast } from '@/components/common/Toast'
 
 const API_BASE = '/api'
 
@@ -51,6 +52,21 @@ function clearTokens() {
 
 // 并发 401 时共享同一次刷新，避免多个请求各自刷新导致 refresh token 互相失效
 let refreshPromise: Promise<string | null> | null = null
+
+// 单设备登录：被其他设备顶号时，清空本地会话并跳转到登录页（仅执行一次，避免并发请求重复跳转）
+let kickedHandled = false
+function handleKicked() {
+  clearTokens()
+  if (kickedHandled) return
+  kickedHandled = true
+  toast('账号已在其他设备登录，您已退出', 'error')
+  setTimeout(() => {
+    // 带上 reason=kicked，让登录页展示常驻提示横幅
+    const url = new URL(window.location.href)
+    url.searchParams.set('reason', 'kicked')
+    window.location.href = url.pathname + url.search
+  }, 1200)
+}
 
 async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = localStorage.getItem('refreshToken')
@@ -122,6 +138,11 @@ async function request<T>(
   try {
     return await doRequest()
   } catch (err) {
+    // 被其他设备顶号：直接清理并跳转，不再尝试刷新（刷新必然失败）
+    if (err instanceof ApiError && err.code === 'SESSION_KICKED') {
+      handleKicked()
+      throw err
+    }
     // 401 且是认证请求，尝试刷新 token 后重试一次
     if (err instanceof ApiError && err.status === 401 && options.auth !== false) {
       const accessToken = await refreshAccessToken()

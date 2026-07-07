@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -30,7 +31,12 @@ func AuthRequired(authService auth.Service) gin.HandlerFunc {
 
 		userID, err := authService.ParseAccessToken(token)
 		if err != nil {
-			response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录或登录已过期")
+			if errors.Is(err, auth.ErrSessionKicked) {
+				// 单设备登录：当前账号已在其他设备登录，本端会话被顶号
+				response.JSONError(c, http.StatusUnauthorized, "SESSION_KICKED", "账号已在其他设备登录")
+			} else {
+				response.JSONError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未登录或登录已过期")
+			}
 			c.Abort()
 			return
 		}

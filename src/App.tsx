@@ -10,7 +10,8 @@ import ShareViewPage from '@/pages/ShareViewPage'
 import ApplicationsPage from '@/pages/ApplicationsPage'
 import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
-import { resumeApi } from '@/api'
+import KickConfirmModal from '@/components/common/KickConfirmModal'
+import { resumeApi, authApi } from '@/api'
 import { requestConflictResolve } from '@/components/common/ConflictDialog'
 import type { ResumeLocale, TemplateType, Module, ResumeStyleSettings, Resume } from '@/types/resume'
 
@@ -167,6 +168,28 @@ const App: React.FC = () => {
     init()
   }, [checkAuth])
 
+  // 单设备登录：已登录设备定期探测会话有效性。被其他设备顶号后，旧会话在 Redis 中已删除，
+  // 下一次 /auth/me 会返回 401 SESSION_KICKED，由 client.ts 拦截器统一处理（清 token + 跳登录页）。
+  // 这样即便旧设备空闲、不发业务请求，也能在轮询间隔内主动感知被踢，避免「偶尔没提示」。
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated) return
+    let cancelled = false
+    const HEARTBEAT_MS = 30_000
+    const tick = async () => {
+      if (cancelled) return
+      try {
+        await authApi.me()
+      } catch {
+        // 被踢时拦截器已处理跳转；其它错误忽略，等待下次探测
+      }
+    }
+    const timer = window.setInterval(tick, HEARTBEAT_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [authChecked, isAuthenticated])
+
   // 已登录时加载云端简历列表
   useEffect(() => {
     if (!authChecked) return
@@ -236,39 +259,47 @@ const App: React.FC = () => {
 
   // 未登录时强制显示登录页
   if (!isAuthenticated || showLogin) {
-    return <LoginPage />
+    return (
+      <>
+        <LoginPage />
+        <KickConfirmModal />
+      </>
+    )
   }
 
-  if (isApplicationsPage) return <ApplicationsPage />
+  if (isApplicationsPage) return <><ApplicationsPage /><KickConfirmModal /></>
 
-  if (isEditorPage) return <AppShell />
+  if (isEditorPage) return <><AppShell /><KickConfirmModal /></>
 
   // 简历列表页
   return (
-    <ResumeListPage
-      cloudResumes={cloudResumes}
-      isAuthenticated={isAuthenticated}
-      onLogout={async () => {
-        await logout()
-        setCloudResumes([])
-        localStorage.removeItem('resumecraft_current_resume_id')
-        window.location.reload()
-      }}
-      onCloudResumeDeleted={(id) => {
-        setCloudResumes((prev) => prev.filter((r) => r.id !== id))
-      }}
-      onCloudResumeUpdated={(id, title, updatedAt) => {
-        setCloudResumes((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, title, updatedAt } : r))
-        )
-      }}
-      onCloudResumeCreated={(id, title, updatedAt) => {
-        setCloudResumes((prev) => [
-          { id, title, template: 'classic', updatedAt, createdAt: updatedAt },
-          ...prev,
-        ])
-      }}
-    />
+    <>
+      <ResumeListPage
+        cloudResumes={cloudResumes}
+        isAuthenticated={isAuthenticated}
+        onLogout={async () => {
+          await logout()
+          setCloudResumes([])
+          localStorage.removeItem('resumecraft_current_resume_id')
+          window.location.reload()
+        }}
+        onCloudResumeDeleted={(id) => {
+          setCloudResumes((prev) => prev.filter((r) => r.id !== id))
+        }}
+        onCloudResumeUpdated={(id, title, updatedAt) => {
+          setCloudResumes((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, title, updatedAt } : r))
+          )
+        }}
+        onCloudResumeCreated={(id, title, updatedAt) => {
+          setCloudResumes((prev) => [
+            { id, title, template: 'classic', updatedAt, createdAt: updatedAt },
+            ...prev,
+          ])
+        }}
+      />
+      <KickConfirmModal />
+    </>
   )
 }
 
