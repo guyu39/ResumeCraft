@@ -853,7 +853,7 @@ const ApplicationsPage: React.FC = () => {
           <div className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">第 {page} / {totalPages} 页</span>
-              <div className="w-24"><StyledSelect size="compact" value={String(pageSize)} onChange={(v) => setPageSize(Number(v))} options={PAGE_SIZE_OPTIONS.map((size) => ({ label: `${size} 条/页`, value: String(size) }))} /></div>
+              <div className="w-24"><StyledSelect size="compact" direction="top" value={String(pageSize)} onChange={(v) => setPageSize(Number(v))} options={PAGE_SIZE_OPTIONS.map((size) => ({ label: `${size} 条/页`, value: String(size) }))} /></div>
             </div>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" />上一页</button>

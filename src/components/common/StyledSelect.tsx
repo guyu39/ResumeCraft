@@ -25,6 +25,8 @@ interface StyledSelectProps {
   buttonClassName?: string
   /** 面板对齐方向，默认与按钮同宽 */
   className?: string
+  /** 下拉展开方向：bottom（默认，向下）/ top（向上，避免被 overflow-hidden 容器裁切） */
+  direction?: 'bottom' | 'top'
 }
 
 const SIZE_BUTTON: Record<string, string> = {
@@ -46,8 +48,11 @@ const StyledSelect: React.FC<StyledSelectProps> = ({
   size = 'default',
   buttonClassName = '',
   className = '',
+  direction = 'bottom',
 }) => {
   const selected = options.find((o) => o.value === value) ?? null
+  // 展开方向：bottom 向下（mt-1）；top 向上（bottom-full mb-1），用于靠近容器底部时避免被裁切
+  const panelPosition = direction === 'top' ? 'bottom-full mb-1' : 'mt-1'
 
   return (
     <Listbox value={value} onChange={onChange} disabled={disabled}>
@@ -71,7 +76,7 @@ const StyledSelect: React.FC<StyledSelectProps> = ({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <Listbox.Options className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-950/8 outline-none thin-scrollbar">
+          <Listbox.Options className={`absolute z-50 ${panelPosition} max-h-60 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-950/8 outline-none thin-scrollbar`}>
             {options.map((opt) => (
               <Listbox.Option
                 key={opt.value}
