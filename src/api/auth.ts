@@ -28,8 +28,24 @@ export const authApi = {
     const result = await apiClient.post<AuthPayload>('/auth/login', data, {
       auth: false,
     })
-    // 登录成功后保存 tokens
-    setTokens(result.tokens.accessToken, result.tokens.refreshToken)
+    // 单设备登录：requiresKickConfirm=true 时后端未签发 token，不能 setTokens；
+    // 由前端二次确认后用 confirmLogin 换取真正的 token。
+    if (!result.requiresKickConfirm && result.tokens) {
+      setTokens(result.tokens.accessToken, result.tokens.refreshToken)
+    }
+    return result
+  },
+
+  // 单设备登录两阶段流程第二步：用户确认后用 ticket 完成登录，此时才签发 token 并踢旧设备
+  confirmLogin: async (ticket: string) => {
+    const result = await apiClient.post<AuthPayload>(
+      '/auth/login/confirm',
+      { ticket },
+      { auth: false }
+    )
+    if (result.tokens) {
+      setTokens(result.tokens.accessToken, result.tokens.refreshToken)
+    }
     return result
   },
 

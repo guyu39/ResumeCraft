@@ -138,6 +138,30 @@ func (h *Handler) Refresh(c *gin.Context) {
 	response.JSONSuccess(c, payload)
 }
 
+// ConfirmLogin 单设备登录两阶段流程第二步：用户在前端确认「是我，继续」后，
+// 用 Login 返回的 ticket 完成登录（此时才创建会话并踢掉他设备）。
+func (h *Handler) ConfirmLogin(c *gin.Context) {
+	if h.authService == nil {
+		response.JSONError(c, http.StatusServiceUnavailable, "AUTH_DISABLED", "登录功能未启用")
+		return
+	}
+
+	var req model.ConfirmLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.JSONError(c, http.StatusBadRequest, "INVALID_PARAMS", "参数格式错误")
+		return
+	}
+
+	payload, err := h.authService.ConfirmLogin(c.Request.Context(), req.Ticket, clientIP(c), c.GetHeader("User-Agent"))
+	if err != nil {
+		log.Printf("[auth] ConfirmLogin failed: %v", err)
+		response.JSONError(c, http.StatusUnauthorized, "INVALID_TICKET", "确认凭证无效或已过期，请重新登录")
+		return
+	}
+
+	response.JSONSuccess(c, payload)
+}
+
 func (h *Handler) Logout(c *gin.Context) {
 	if h.authService == nil {
 		response.JSONError(c, http.StatusServiceUnavailable, "AUTH_DISABLED", "登录功能未启用")

@@ -134,10 +134,10 @@ const LoginPage: React.FC = () => {
           : await loginWithCode(email, code)
         const params = new URLSearchParams(window.location.search)
         const returnUrl = params.get('return') || '/'
-        // 新登录若挤掉了其他设备的会话：弹全局二次确认框（挂在 App 层，避免 LoginPage 卸载丢失），
-        // 由用户手动确认后才进入应用；否则走普通「登录成功」并自动跳转。
-        if (result.previousSessionKicked) {
-          showKickConfirm(returnUrl)
+        // 单设备登录两阶段：检测到他设备 → 后端未签发 token、未踢旧设备，只返回 loginTicket。
+        // 暂存 ticket 弹二次确认；用户「是我，继续」才用 ticket 完成登录（此时踢旧设备）。
+        if (result.requiresKickConfirm && result.loginTicket) {
+          showKickConfirm(result.loginTicket, returnUrl)
         } else {
           toast('登录成功', 'success')
           // 稍延迟让 toast 可见

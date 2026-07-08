@@ -22,11 +22,13 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 				authGroup.POST("/send-code", authLimiter, h.SendCode)
 				authGroup.POST("/register", authLimiter, h.Register)
 				authGroup.POST("/login", authLimiter, h.Login)
+				authGroup.POST("/login/confirm", authLimiter, h.ConfirmLogin)
 				authGroup.POST("/refresh", authLimiter, h.Refresh)
 			} else {
 				authGroup.POST("/send-code", h.SendCode)
 				authGroup.POST("/register", h.Register)
 				authGroup.POST("/login", h.Login)
+				authGroup.POST("/login/confirm", h.ConfirmLogin)
 				authGroup.POST("/refresh", h.Refresh)
 			}
 			authGroup.POST("/logout", h.Logout)

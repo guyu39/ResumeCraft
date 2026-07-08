@@ -65,3 +65,53 @@ func TestSingleSessionKicksPrevious(t *testing.T) {
 		t.Fatalf("expected 1 online session, got %d: %v", len(members), members)
 	}
 }
+
+// TestSessionPointerAbsentFailOpen Redis 丢失「当前生效会话」指针时不应误判为被顶号。
+// 场景：Redis 重启 / flushall / LRU 驱逐导致指针缺失 → 此时状态歧义，应 fail-open 放行，
+// 而不是误导用户「账号已在其他设备登录」。这是单设备登录健壮性的核心保障。
+func TestSessionPointerAbsentFailOpen(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	u := userRow{ID: "user-2", Email: "b@c.com", DisplayName: "B"}
+	p, err := svc.createSessionAndTokens(ctx, u, "1.1.1.1", "ua1")
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	// 模拟 Redis 丢失指针（重启 / 驱逐）
+	if err := svc.rdb.Del(ctx, "auth:user_session:user-2").Err(); err != nil {
+		t.Fatalf("del pointer failed: %v", err)
+	}
+
+	// 旧 token 不应被判定为被踢（fail-open），仅按 JWT 签名 + at key 校验
+	if _, err := svc.ParseAccessToken(p.Tokens.AccessToken); err == ErrSessionKicked {
+		t.Fatalf("pointer absence must NOT be treated as kicked (fail-open), got ErrSessionKicked")
+	}
+}
+
+// TestHasOtherDeviceSession 单设备登录两阶段流程：登录前的「他设备」检测。
+// - 同 UA 的既有会话 → 视为同设备重登录，无需二次确认（false）
+// - 不同 UA 的既有会话 → 他设备，需二次确认（true）
+// 仅读取，不踢任何会话；配合 ConfirmLogin 实现「确认后才踢」。
+func TestHasOtherDeviceSession(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	u := userRow{ID: "user-3", Email: "d@e.com", DisplayName: "D"}
+	// 建立 ua1 会话
+	if _, err := svc.createSessionAndTokens(ctx, u, "1.1.1.1", "ua1"); err != nil {
+		t.Fatalf("first login failed: %v", err)
+	}
+
+	// 同 UA 检测 → false（同设备重登录，不弹确认）
+	if svc.hasOtherDeviceSession(ctx, u.ID, "ua1") {
+		t.Fatalf("same-UA session must NOT be treated as other device")
+	}
+	// 不同 UA 检测 → true（他设备，需确认）
+	if !svc.hasOtherDeviceSession(ctx, u.ID, "ua2") {
+		t.Fatalf("different-UA session must be detected as other device")
+	}
+}

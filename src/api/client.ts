@@ -56,16 +56,23 @@ let refreshPromise: Promise<string | null> | null = null
 // 单设备登录：被其他设备顶号时，清空本地会话并跳转到登录页（仅执行一次，避免并发请求重复跳转）
 let kickedHandled = false
 function handleKicked() {
-  clearTokens()
   if (kickedHandled) return
   kickedHandled = true
+  // 1. 先派发事件让编辑器用 beacon 把未落库的改动送出（此时 token 还在，beacon 能带上鉴权头，
+  //    keepalive 请求可在跳转后继续送达，避免被踢瞬间丢失编辑内容）
+  window.dispatchEvent(new CustomEvent('resumecraft:before-kick'))
+  // 2. 再清本地 token，避免后续请求继续带旧 token
+  clearTokens()
+  // 3. 记下原页面，便于重新登录后回到原处（例如 /edit/xxx）
+  const current = window.location.pathname + window.location.search
   toast('账号已在其他设备登录，您已退出', 'error')
   setTimeout(() => {
-    // 带上 reason=kicked，让登录页展示常驻提示横幅
+    // 带 reason=kicked（登录页常驻横幅）+ return=<原路径>（重登后回到原处）
     const url = new URL(window.location.href)
     url.searchParams.set('reason', 'kicked')
+    url.searchParams.set('return', current)
     window.location.href = url.pathname + url.search
-  }, 1200)
+  }, 800)
 }
 
 async function refreshAccessToken(): Promise<string | null> {

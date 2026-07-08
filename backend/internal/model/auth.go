@@ -49,7 +49,16 @@ type AuthUser struct {
 type AuthPayload struct {
 	User   AuthUser   `json:"user"`
 	Tokens AuthTokens `json:"tokens"`
-	// PreviousSessionKicked 表示本次登录是否挤掉了该账号在其他设备上的会话（单设备登录）。
-	// 前端据此提示「已在其他设备登录，已将其挤下线」。
-	PreviousSessionKicked bool `json:"previousSessionKicked,omitempty"`
+	// 单设备登录：检测到该账号在其他设备上有在线会话。
+	// 为 true 时不签发 token、不踢旧设备，仅返回短效 LoginTicket；
+	// 前端需弹二次确认，用户点「是我，继续」后用 LoginTicket 调
+	// POST /auth/login/confirm 完成登录（此时才创建会话并踢掉旧设备）。
+	// 「不是我」则丢弃 ticket，旧设备完全不受影响。
+	RequiresKickConfirm bool   `json:"requiresKickConfirm,omitempty"`
+	LoginTicket         string `json:"loginTicket,omitempty"`
+}
+
+// ConfirmLoginRequest 二次确认完成登录（单设备登录两阶段流程的第二步）
+type ConfirmLoginRequest struct {
+	Ticket string `json:"ticket" binding:"required"`
 }

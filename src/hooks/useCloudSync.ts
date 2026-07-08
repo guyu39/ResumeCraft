@@ -258,6 +258,19 @@ export function useCloudSync() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isAuthenticated, saveToCloud])
 
+  // ========== 事件驱动：被顶号前抢救落库 ==========
+  // client.ts 的 handleKicked 在清 token 前派发此事件；此时 token 仍在，beacon 能带鉴权头，
+  // keepalive 请求在硬跳转后仍可送达，避免被踢瞬间丢失编辑内容。
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const handleBeforeKick = () => {
+      flushDraft()
+      saveToCloud(true)
+    }
+    window.addEventListener('resumecraft:before-kick', handleBeforeKick)
+    return () => window.removeEventListener('resumecraft:before-kick', handleBeforeKick)
+  }, [isAuthenticated, saveToCloud])
+
   // ========== 事件驱动：切后台（移动端更可靠） ==========
   useEffect(() => {
     if (!isAuthenticated) return

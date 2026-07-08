@@ -43,6 +43,9 @@ type Service interface {
 	SendEmailCode(ctx context.Context, email, purpose string) error
 	Register(ctx context.Context, req model.RegisterRequest, ip, ua string) (*model.AuthPayload, error)
 	Login(ctx context.Context, req model.LoginRequest, ip, ua string) (*model.AuthPayload, error)
+	// ConfirmLogin 单设备登录两阶段流程第二步：验证 loginConfirm ticket 后创建会话并踢掉他设备。
+	// 「顶号」的实际副作用（撤销旧设备 token）在此发生，而非 Login 时。
+	ConfirmLogin(ctx context.Context, ticket, ip, ua string) (*model.AuthPayload, error)
 	Refresh(ctx context.Context, refreshToken, ip, ua string) (*model.AuthPayload, error)
 	Logout(ctx context.Context, accessToken, refreshToken string) error
 	Me(ctx context.Context, userID string) (*model.AuthUser, error)
@@ -70,6 +73,10 @@ type service struct {
 	refreshTokenTTL time.Duration
 }
 
+// loginConfirmTTL 单设备登录两阶段流程中 loginConfirm ticket 的有效期。
+// 用户需在此窗口内点「是我，继续」完成登录；超时则需重新登录。
+const loginConfirmTTL = 3 * time.Minute
+
 type userRow struct {
 	ID          string
 	Email       string
@@ -85,9 +92,10 @@ type tokenClaims struct {
 
 // Redis key 模式
 const (
-	keyAccessToken  = "auth:at:%s"      // auth:at:{sha256(accessToken)} → userID
-	keySession      = "auth:session:%s" // auth:session:{sessionID} → JSON{sessionData}
-	keyUserSessions = "auth:us:%s"      // auth:us:{userID} → Set{sessionID, ...}
+	keyAccessToken  = "auth:at:%s"             // auth:at:{sha256(accessToken)} → userID（即时撤销）
+	keySession      = "auth:session:%s"        // auth:session:{sessionID} → JSON{sessionData}（refresh 校验）
+	keyUserSessions = "auth:us:%s"             // auth:us:{userID} → Set{sessionID, ...}（会话索引）
+	keyUserSession  = "auth:user_session:%s"   // auth:user_session:{userID} → 当前生效的 sessionID（单设备登录的「顶号」判据）
 )
 
 func NewService(pool *pgxpool.Pool, rdb *redis.Client, cfg config.AuthConfig, mailer *mail.Sender) Service {
@@ -301,12 +309,97 @@ func (s *service) Login(ctx context.Context, req model.LoginRequest, ip, ua stri
 	s.recordLoginAttempt(ctx, email, true, "", ip, ua)
 	_, _ = s.pool.Exec(ctx, `UPDATE users SET last_login_at = NOW() WHERE id = $1`, u.ID)
 
+	// 单设备登录两阶段流程：检测他设备在线会话。
+	// 若存在 → 暂不签发 token、不踢旧设备，返回短效 loginConfirm ticket 交前端二次确认。
+	// 「顶号」副作用推迟到 ConfirmLogin，保证「不是我」时旧设备毫发无损。
+	if s.hasOtherDeviceSession(ctx, u.ID, ua) {
+		ticket, err := s.signLoginConfirmTicket(u.ID)
+		if err != nil {
+			return nil, fmt.Errorf("sign login confirm ticket: %w", err)
+		}
+		return &model.AuthPayload{
+			User: model.AuthUser{
+				ID:          u.ID,
+				Email:       u.Email,
+				DisplayName: u.DisplayName,
+			},
+			RequiresKickConfirm: true,
+			LoginTicket:         ticket,
+		}, nil
+	}
+
 	payload, err := s.createSessionAndTokens(ctx, u, ip, ua)
 	if err != nil {
 		return nil, err
 	}
 
 	return payload, nil
+}
+
+// hasOtherDeviceSession 是否存在「他设备」在线会话（UA 与当前登录不同）。
+// 同设备重登录（UA 相同）返回 false，无需二次确认。仅做读取，不修改任何会话状态。
+func (s *service) hasOtherDeviceSession(ctx context.Context, userID, currentUA string) bool {
+	if s.rdb == nil {
+		return false // Redis 不可用无法判定，按无他设备处理（单设备登录本就依赖 Redis）
+	}
+	usKey := fmt.Sprintf(keyUserSessions, userID)
+	members, err := s.rdb.SMembers(ctx, usKey).Result()
+	if err != nil || len(members) == 0 {
+		return false
+	}
+	for _, sid := range members {
+		sessKey := fmt.Sprintf(keySession, sid)
+		val, err := s.rdb.Get(ctx, sessKey).Result()
+		if err != nil || val == "" {
+			continue // 会话已过期/不存在，跳过（集合成员可能滞后）
+		}
+		var sess sessionData
+		if json.Unmarshal([]byte(val), &sess) != nil {
+			continue
+		}
+		// 他设备判定：UA 非空且与当前登录不同（与同设备重登录区分）
+		if sess.UA != "" && sess.UA != currentUA {
+			return true
+		}
+	}
+	return false
+}
+
+// signLoginConfirmTicket 签发短效 loginConfirm ticket（单设备登录两阶段流程的临时凭证）。
+// 持有者可在 loginConfirmTTL 内调用 ConfirmLogin 完成登录；本身不承载任何会话权限。
+func (s *service) signLoginConfirmTicket(userID string) (string, error) {
+	now := time.Now()
+	claims := tokenClaims{
+		UserID: userID,
+		Type:   "login_confirm",
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(loginConfirmTTL)),
+			Subject:   userID,
+		},
+	}
+	return s.signClaims(claims)
+}
+
+// ConfirmLogin 单设备登录两阶段流程第二步：验证 ticket 后创建会话并踢掉他设备。
+// 「顶号」的实际副作用（撤销旧设备 access token + 覆盖当前会话指针）在这里发生。
+func (s *service) ConfirmLogin(ctx context.Context, ticket, ip, ua string) (*model.AuthPayload, error) {
+	claims, err := s.parseToken(ticket, "login_confirm")
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+	var u userRow
+	err = s.pool.QueryRow(ctx,
+		`SELECT id, email, display_name FROM users WHERE id = $1 AND deleted_at IS NULL`,
+		claims.UserID,
+	).Scan(&u.ID, &u.Email, &u.DisplayName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvalidToken
+		}
+		return nil, fmt.Errorf("query user: %w", err)
+	}
+	return s.createSessionAndTokens(ctx, u, ip, ua)
 }
 
 func (s *service) Refresh(ctx context.Context, refreshToken, ip, ua string) (*model.AuthPayload, error) {
@@ -320,25 +413,25 @@ func (s *service) Refresh(ctx context.Context, refreshToken, ip, ua string) (*mo
 		sessKey := fmt.Sprintf(keySession, claims.SessionID)
 		val, err := s.rdb.Get(ctx, sessKey).Result()
 		if err == redis.Nil {
+			// 会话明确不存在（被踢 / 被登出 / refresh rotation 删旧）→ 拒绝刷新
 			return nil, ErrTokenRevoked
 		}
 		if err != nil {
-			log.Printf("[auth] redis get session error: %v", err)
-			return nil, ErrInvalidToken
+			// Redis 故障：与 ParseAccessToken 一致 fail-open，不因 redis 抖动把人踢下线。
+			// 无法校验 refresh hash，但仍签发新会话（createSessionAndTokens 会重建 redis 状态）。
+			log.Printf("[auth] refresh: redis get session error: %v (fail-open)", err)
+		} else {
+			var sess sessionData
+			if err := json.Unmarshal([]byte(val), &sess); err != nil {
+				return nil, ErrInvalidToken
+			}
+			// 验证 refresh token hash
+			if sess.TokenHash != hashToken(refreshToken) {
+				return nil, ErrInvalidToken
+			}
+			// 删除旧会话（refresh token rotation）
+			s.deleteSessionFromRedis(ctx, claims.SessionID, sess.UserID)
 		}
-
-		var sess sessionData
-		if err := json.Unmarshal([]byte(val), &sess); err != nil {
-			return nil, ErrInvalidToken
-		}
-
-		// 验证 refresh token hash
-		if sess.TokenHash != hashToken(refreshToken) {
-			return nil, ErrInvalidToken
-		}
-
-		// 删除旧会话（refresh token rotation）
-		s.deleteSessionFromRedis(ctx, claims.SessionID, sess.UserID)
 	} else {
 		// Redis 不可用，回退到 PostgreSQL
 		return s.refreshFromPostgres(ctx, claims, refreshToken)
@@ -432,18 +525,21 @@ func (s *service) ParseAccessToken(token string) (string, error) {
 	if s.rdb != nil {
 		ctx := context.Background()
 
-		// 单设备登录：会话 key 被驱逐即代表被其他设备顶号，优先于 access token 校验返回专用错误
+		// 单设备登录判据：读取「当前生效会话」指针。
+		// - 指针存在且 ≠ 我的 sessionID → 已被其他设备顶号 → SESSION_KICKED
+		// - 指针缺失（redis 丢 key / 重启 / LRU 驱逐）→ 状态歧义 → fail-open，不踢
+		//   （不把「redis 丢数据」误判为「被顶号」，避免误导性的全量登出）
+		// - redis 故障（err）→ fail-open
 		if claims.SessionID != "" {
-			sessKey := fmt.Sprintf(keySession, claims.SessionID)
-			exists, err := s.rdb.Exists(ctx, sessKey).Result()
-			if err != nil {
-				// Redis 故障沿用 fail-open：仅日志警告，不阻断请求
-				log.Printf("[auth] redis check session error: %v (fail-open)", err)
-			} else if exists == 0 {
-				log.Printf("[auth] SESSION_KICKED user=%s session=%s (session key absent)", claims.UserID, claims.SessionID)
+			ptrKey := fmt.Sprintf(keyUserSession, claims.UserID)
+			curSID, err := s.rdb.Get(ctx, ptrKey).Result()
+			if err == redis.Nil {
+				// 指针缺失：歧义，落回 access token 校验，不踢
+			} else if err != nil {
+				log.Printf("[auth] redis get user_session error: %v (fail-open)", err)
+			} else if curSID != claims.SessionID {
+				log.Printf("[auth] SESSION_KICKED user=%s session=%s (current=%s)", claims.UserID, claims.SessionID, curSID)
 				return "", ErrSessionKicked
-			} else {
-				log.Printf("[auth] session ok user=%s session=%s", claims.UserID, claims.SessionID)
 			}
 		}
 
@@ -562,8 +658,10 @@ func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua 
 		return nil, fmt.Errorf("sign refresh token: %w", err)
 	}
 
-	// 4. 单设备登录：建立新会话前，踢掉该用户的其他在线会话，并返回被踢数量用于前端提示
-	evicted := s.evictOtherSessions(ctx, u.ID, sessionID)
+	// 4. 单设备登录：踢掉该用户的其他在线会话（撤销旧设备 token）。
+	//    注意：此函数在 ConfirmLogin（用户确认后）或无他设备的普通登录时才被调用，
+	//    因此这里的副作用不会先于用户确认发生。
+	_ = s.evictOtherSessions(ctx, u.ID, sessionID)
 
 	// 5. 存储到 Redis
 	if s.rdb != nil {
@@ -592,6 +690,12 @@ func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua 
 		usKey := fmt.Sprintf(keyUserSessions, u.ID)
 		s.rdb.SAdd(ctx, usKey, sessionID)
 		s.rdb.Expire(ctx, usKey, s.refreshTokenTTL)
+
+		// 5d. 当前生效会话指针（单设备登录的「顶号」判据：ParseAccessToken 据此判定旧端是否被顶）
+		ptrKey := fmt.Sprintf(keyUserSession, u.ID)
+		if err := s.rdb.Set(ctx, ptrKey, sessionID, s.refreshTokenTTL).Err(); err != nil {
+			log.Printf("[auth] redis set user_session ptr error: %v", err)
+		}
 	} else {
 		// Redis 不可用，回退到 PostgreSQL
 		_, err := s.pool.Exec(ctx,
@@ -615,7 +719,6 @@ func (s *service) createSessionAndTokens(ctx context.Context, u userRow, ip, ua 
 			RefreshToken: refreshToken,
 			ExpiresIn:    int64(s.accessTokenTTL.Seconds()),
 		},
-		PreviousSessionKicked: evicted > 0,
 	}, nil
 }
 
@@ -629,8 +732,9 @@ func (s *service) deleteSessionFromRedis(ctx context.Context, sessionID, userID 
 }
 
 // evictOtherSessions 单设备登录核心：撤销该用户除 exceptSessionID 之外的所有会话。
-// 被驱逐会话的 auth:session:{sid} 被删除后，旧设备后续请求经 ParseAccessToken 会话校验即被拒。
-// 返回被踢掉的会话数量，供 createSessionAndTokens 写入 AuthPayload 以提示前端。
+// 被驱逐会话的 auth:session:{sid} 被删除后，旧设备后续请求经 ParseAccessToken 的指针校验即被拒
+// （指针在 createSessionAndTokens 中被覆盖为 exceptSessionID）。
+// 仅在用户确认（ConfirmLogin）或无他设备的普通登录路径调用，保证踢号不先于用户确认。
 func (s *service) evictOtherSessions(ctx context.Context, userID, exceptSessionID string) int {
 	if s.rdb == nil {
 		// Redis 不可用：回退 PostgreSQL，撤销其他未撤销的会话行

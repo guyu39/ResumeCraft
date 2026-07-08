@@ -59,8 +59,13 @@ export interface AuthTokens {
 export interface AuthPayload {
   user: AuthUser
   tokens: AuthTokens
-  /** 本次登录是否挤掉了该账号在其他设备上的会话（单设备登录） */
-  previousSessionKicked?: boolean
+  /**
+   * 单设备登录两阶段流程：检测到他设备在线会话。
+   * 为 true 时不签发 token、不踢旧设备，仅返回 loginTicket；
+   * 前端弹二次确认，用户点「是我，继续」后用 loginTicket 调 confirmLogin 完成登录（此时才踢旧设备）。
+   */
+  requiresKickConfirm?: boolean
+  loginTicket?: string
 }
 
 // 简历相关

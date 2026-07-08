@@ -48,6 +48,8 @@ function restoreCloudSnapshotData(cloudResume: any) {
 const App: React.FC = () => {
   const { initResume, loadFromStorage, setResumeVersion, setDraftsVersion, setPersonalData } = useResumeStore()
   const { isAuthenticated, checkAuth, logout } = useAuthStore()
+  // 单设备登录：检测到他设备后暂存了 loginTicket 待二次确认；确认前保持在登录页，不进入应用
+  const kickPending = useAuthStore((s) => !!s.kickConfirm)
   const [authChecked, setAuthChecked] = useState(false)
   const [cloudResumes, setCloudResumes] = useState<any[]>([])
   const [showLogin, setShowLogin] = useState(false)
@@ -168,15 +170,15 @@ const App: React.FC = () => {
     init()
   }, [checkAuth])
 
-  // 单设备登录：已登录设备定期探测会话有效性。被其他设备顶号后，旧会话在 Redis 中已删除，
-  // 下一次 /auth/me 会返回 401 SESSION_KICKED，由 client.ts 拦截器统一处理（清 token + 跳登录页）。
-  // 这样即便旧设备空闲、不发业务请求，也能在轮询间隔内主动感知被踢，避免「偶尔没提示」。
+  // 单设备登录：已登录设备定期探测会话有效性。被其他设备顶号后，下一次 /auth/me 返回 401
+  // SESSION_KICKED，由 client.ts 拦截器统一处理（清 token + 跳登录页）。
+  // 个人工具被顶是低频事件，间隔放宽到 3 分钟；tab 切到后台暂停轮询，可见时立即补一次再恢复。
   useEffect(() => {
     if (!authChecked || !isAuthenticated) return
     let cancelled = false
-    const HEARTBEAT_MS = 30_000
+    const HEARTBEAT_MS = 180_000
     const tick = async () => {
-      if (cancelled) return
+      if (cancelled || document.hidden) return
       try {
         await authApi.me()
       } catch {
@@ -184,9 +186,14 @@ const App: React.FC = () => {
       }
     }
     const timer = window.setInterval(tick, HEARTBEAT_MS)
+    const onVisible = () => {
+      if (!document.hidden) void tick()
+    }
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [authChecked, isAuthenticated])
 
@@ -257,8 +264,8 @@ const App: React.FC = () => {
   // 分享页（公开，无需登录）
   if (isSharePage) return <ShareViewPage />
 
-  // 未登录时强制显示登录页
-  if (!isAuthenticated || showLogin) {
+  // 未登录 / 强制登录页 / 挤号待确认：均渲染登录页（确认框作为登录环节的二次确认，盖在登录页上）
+  if (!isAuthenticated || showLogin || kickPending) {
     return (
       <>
         <LoginPage />
