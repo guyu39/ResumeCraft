@@ -1,11 +1,7 @@
 // ============================================================
 // FunnelAnalytics — 求职数据分析（图表化，无列表）
 // 数据来源：GET /api/applications/stats
-// 可视化（ui-ux-pro-max 选型）：
-//   - KPI 卡片（保持）
-//   - 阶段分布环图（饼图，满足"用饼图"需求，带 % + 图例表兜底）
-//   - 求职漏斗（真正漏斗图，每阶显式转化 %）
-//   - 简历版本对比（分组条形图，AAA 无障碍，替代原列表）
+// 布局：紧凑 KPI 概览 + 进展卡（阶段分布环图 / 转化漏斗二合一）+ 简历版本对比
 // ============================================================
 
 import React, { useEffect, useMemo, useState } from 'react'
@@ -16,7 +12,6 @@ import {
   Trophy,
   RefreshCw,
   PieChart as PieIcon,
-  Filter,
   Layers3,
 } from 'lucide-react'
 import {
@@ -25,9 +20,6 @@ import {
   Cell,
   ResponsiveContainer,
   Tooltip,
-  FunnelChart,
-  Funnel,
-  LabelList,
   BarChart,
   Bar,
   XAxis,
@@ -70,6 +62,22 @@ const tooltipStyle = {
   padding: '8px 10px',
 }
 
+type Kpi = {
+  label: string
+  value: number | string
+  icon: React.ComponentType<{ className?: string }>
+  tone: 'blue' | 'indigo' | 'amber' | 'emerald'
+  hint: string
+  isText?: boolean
+}
+
+const TONE: Record<Kpi['tone'], { bg: string; fg: string }> = {
+  blue: { bg: 'bg-blue-50', fg: 'text-blue-600' },
+  indigo: { bg: 'bg-indigo-50', fg: 'text-indigo-600' },
+  amber: { bg: 'bg-amber-50', fg: 'text-amber-600' },
+  emerald: { bg: 'bg-emerald-50', fg: 'text-emerald-600' },
+}
+
 const FunnelAnalytics: React.FC = () => {
   const [data, setData] = useState<FunnelStatsResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -92,7 +100,6 @@ const FunnelAnalytics: React.FC = () => {
   }, [])
 
   // 阶段分布环图（互斥分段，由 funnel 累计计数推导）
-  // 单位规则：投递/笔试/面试为「次」，Offer 为「个」
   const donut = useMemo(() => {
     if (!data) return []
     const f = data.funnel
@@ -134,7 +141,7 @@ const FunnelAnalytics: React.FC = () => {
       }))
   }, [data])
 
-  const barHeight = Math.max(240, versionData.length * 46 + 48)
+  const barHeight = Math.max(180, versionData.length * 40 + 36)
 
   if (loading && !data) {
     return (
@@ -149,9 +156,18 @@ const FunnelAnalytics: React.FC = () => {
   const { funnel } = data
   const isEmpty = funnel.total === 0
 
+  const kpis: Kpi[] = [
+    { label: '投递数', value: funnel.submitted, icon: Send, tone: 'blue', hint: '已提交' },
+    { label: '笔试', value: funnel.writtenTest, icon: FileCheck, tone: 'indigo', hint: `转化 ${pct(funnel.writtenTest, funnel.submitted)}` },
+    { label: '面试', value: funnel.interview, icon: Users, tone: 'amber', hint: `转化 ${pct(funnel.interview, funnel.writtenTest)}` },
+    { label: 'Offer', value: funnel.offer, icon: Trophy, tone: 'emerald', hint: `转化 ${pct(funnel.offer, funnel.interview)}` },
+    { label: '整体回复率', value: pct(funnel.interview, funnel.submitted), icon: PieIcon, tone: 'blue', isText: true, hint: '面试 / 投递' },
+    { label: 'Offer率', value: pct(funnel.offer, funnel.submitted), icon: Trophy, tone: 'emerald', isText: true, hint: 'Offer / 投递' },
+  ]
+
   return (
     <div className="h-full overflow-y-auto px-0 py-0 no-scrollbar">
-      <div className="space-y-6">
+      <div className="space-y-4">
         {isEmpty ? (
           <div className="rounded-2xl border border-dashed border-line bg-surface py-16 text-center">
             <Send className="mx-auto h-10 w-10 text-slate-300" />
@@ -160,125 +176,158 @@ const FunnelAnalytics: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* KPI 卡片行 */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                { label: '投递数', value: funnel.submitted, icon: Send, hint: '已提交的投递' },
-                { label: '面试邀约', value: funnel.interview, icon: Users, hint: `转化 ${pct(funnel.interview, funnel.submitted)}` },
-                { label: 'Offer', value: funnel.offer, icon: Trophy, hint: `转化 ${pct(funnel.offer, funnel.interview)}` },
-                { label: '整体回复率', value: pct(funnel.interview, funnel.submitted), icon: FileCheck, hint: '面试 / 投递', isText: true },
-              ].map((k) => (
-                <div key={k.label} className="rounded-2xl border border-line bg-surface p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted">{k.label}</span>
-                    <k.icon className="h-4 w-4 text-primary/70" />
+            {/* KPI 概览：紧凑网格，信息密度更高（6 项） */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+              {kpis.map((k) => {
+                const t = TONE[k.tone]
+                return (
+                  <div
+                    key={k.label}
+                    className="group rounded-xl border border-line bg-surface p-3 transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted">{k.label}</span>
+                      <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${t.bg}`}>
+                        <k.icon className={`h-3.5 w-3.5 ${t.fg}`} />
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xl font-bold tabular-nums text-ink">{k.value}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-400">{k.hint}</p>
                   </div>
-                  <p className="mt-2 text-2xl font-bold tabular-nums text-ink">{k.value}</p>
-                  <p className="mt-1 text-[11px] text-slate-400">{k.hint}</p>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
-            {/* 上排：阶段分布环图 + 求职漏斗 */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {/* 阶段分布环图（饼图） */}
-              <div className="rounded-2xl border border-line bg-surface p-5">
-                <div className="flex items-center gap-2">
-                  <PieIcon className="h-4 w-4 text-primary" />
-                  <h3 className="text-sm font-semibold text-ink">投递进展分布</h3>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-400">各投递最终停留的环节占比（已投递 → Offer）</p>
+            {/* 投递进展：阶段分布 + 转化漏斗 合并为一张卡片，提升密度与连贯性 */}
+            <div className="rounded-2xl border border-line bg-surface p-5">
+              <div className="flex items-center gap-2">
+                <PieIcon className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold text-ink">投递进展</h3>
+                <span className="ml-auto text-xs text-slate-400">共 {funnel.total} 条记录</span>
+              </div>
 
-                <div className="mt-3 flex flex-col items-center gap-4 sm:flex-row sm:items-center">
-                  <div className="relative h-56 w-56 shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={donut}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={62}
-                          outerRadius={92}
-                          paddingAngle={2}
-                          stroke="none"
-                          isAnimationActive={!reduced}
-                        >
-                          {donut.map((d, i) => (
-                            <Cell key={i} fill={d.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={tooltipStyle}
-                          formatter={(value: any, name: any, item: any) => [
-                            `${value} ${item?.payload?.unit ?? '次'}（${pct(value, donutTotal)}）`,
-                            name,
-                          ]}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    {/* 环图中心文字（绝对定位，规避 Recharts Label 行为差异） */}
-                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-xs text-muted">总投递</span>
-                      <span className="text-2xl font-bold tabular-nums text-ink">{donutBase}</span>
+              <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {/* 左：阶段分布环图 */}
+                <div>
+                  <p className="mb-2 text-xs font-medium text-slate-500">阶段分布</p>
+                  <div className="flex flex-col items-center gap-3 sm:flex-row">
+                    <div className="relative h-44 w-44 shrink-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={donut}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={56}
+                            outerRadius={84}
+                            paddingAngle={2}
+                            stroke="none"
+                            isAnimationActive={!reduced}
+                          >
+                            {donut.map((d, i) => (
+                              <Cell key={i} fill={d.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={tooltipStyle}
+                            formatter={(value: any, name: any, item: any) => [
+                              `${value} ${item?.payload?.unit ?? '次'}（${pct(value, donutTotal)}）`,
+                              name,
+                            ]}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-xs text-muted">总投递</span>
+                        <span className="text-2xl font-bold tabular-nums text-ink">{donutBase}</span>
+                      </div>
+                    </div>
+
+                    <div className="w-full flex-1 space-y-1.5">
+                      {donut.map((d) => (
+                        <div key={d.name} className="flex items-center gap-2 text-sm">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                          <span className="text-ink">{d.name}</span>
+                          <span className="ml-auto tabular-nums text-muted">{d.value} {d.unit}</span>
+                          <span className="w-12 text-right tabular-nums font-medium text-ink">{pct(d.value, donutTotal)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 右：倒三角漏斗（梯形堆叠，无缝连续收窄） */}
+                <div>
+                  <p className="mb-2 text-xs font-medium text-slate-500">转化漏斗</p>
+                  <div className="relative h-44">
+                    <svg
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                      className="absolute inset-0 h-full w-full"
+                      role="img"
+                      aria-label="求职转化漏斗"
+                    >
+                      {funnelStages.map((s, i) => {
+                        const maxV = funnel.submitted || 1
+                        const halfW = (v: number) => Math.min((v / maxV) * 48, 48)
+                        const y0 = i * 25
+                        const y1 = (i + 1) * 25
+                        const topW = halfW(s.value)
+                        const bottomW = halfW(i < funnelStages.length - 1 ? funnelStages[i + 1].value : 0)
+                        const pts = `${50 - topW},${y0} ${50 + topW},${y0} ${50 + bottomW},${y1} ${50 - bottomW},${y1}`
+                        return <polygon key={s.name} points={pts} fill={s.color} />
+                      })}
+                    </svg>
+                    <div className="pointer-events-none absolute inset-0">
+                      {funnelStages.map((s, i) => {
+                        const maxV = funnel.submitted || 1
+                        const halfW = (v: number) => Math.min((v / maxV) * 48, 48)
+                        const topW = halfW(s.value)
+                        const bottomW = halfW(i < funnelStages.length - 1 ? funnelStages[i + 1].value : 0)
+                        const avgW = (topW + bottomW) / 2
+                        const showInside = avgW >= 18
+                        return (
+                          <div
+                            key={s.name}
+                            className="absolute left-0 right-0 flex items-center px-1"
+                            style={{ top: `${i * 25}%`, height: '25%' }}
+                          >
+                            {showInside ? (
+                              <span
+                                className="w-full truncate text-center text-[10px] font-semibold leading-tight text-white"
+                                style={{ textShadow: '0 1px 2px rgba(0,0,0,0.45)' }}
+                              >
+                                {s.name} {s.value}
+                              </span>
+                            ) : (
+                              <span className="ml-auto rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold shadow-sm" style={{ color: s.color }}>
+                                {s.name} {s.value}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
 
-                  {/* 图例 + 数据表兜底（无障碍要求：百分比 + 数据表） */}
-                  <div className="w-full flex-1 space-y-2">
-                    {donut.map((d) => (
-                      <div key={d.name} className="flex items-center gap-2 text-sm">
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
-                        <span className="text-ink">{d.name}</span>
-                        <span className="ml-auto tabular-nums text-muted">{d.value} {d.unit}</span>
-                        <span className="w-12 text-right tabular-nums font-medium text-ink">{pct(d.value, donutTotal)}</span>
-                      </div>
-                    ))}
+                  {/* 每阶显式转化 %（带阶段色顶边，提升可读性） */}
+                  <div className="mt-2 grid grid-cols-4 gap-2">
+                    {funnelStages.map((s, i) => {
+                      const prev = i === 0 ? funnel.submitted : funnelStages[i - 1].value
+                      const rate = i === 0 ? 100 : prev > 0 ? Math.round((s.value / prev) * 100) : 0
+                      return (
+                        <div
+                          key={s.name}
+                          className="rounded-lg border border-line bg-canvas px-2 py-2"
+                          style={{ borderTopColor: s.color, borderTopWidth: 2 }}
+                        >
+                          <p className="truncate text-[11px] text-muted">{s.name}</p>
+                          <p className="mt-0.5 text-base font-bold tabular-nums text-ink">{s.value}</p>
+                          <p className="text-[10px]" style={{ color: s.color }}>{i === 0 ? '基准' : `转化 ${rate}%`}</p>
+                        </div>
+                      )
+                    })}
                   </div>
-                </div>
-              </div>
-
-              {/* 求职漏斗（真正漏斗图） */}
-              <div className="rounded-2xl border border-line bg-surface p-5">
-                <div className="flex items-center gap-2">
-                  <Filter className="h-4 w-4 text-primary" />
-                  <h3 className="text-sm font-semibold text-ink">求职漏斗</h3>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-400">投递 → 笔试 → 面试 → Offer 各阶段数量与转化率</p>
-
-                <div className="mt-3 h-60">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <FunnelChart>
-                      <Tooltip
-                        contentStyle={tooltipStyle}
-                        formatter={(value: any, name: any, item: any) => [
-                          `${value} ${item?.payload?.unit ?? '次'}`,
-                          name,
-                        ]}
-                      />
-                      <Funnel dataKey="value" data={funnelStages} isAnimationActive={!reduced}>
-                        <LabelList position="right" fill="#64748B" stroke="none" dataKey="name" fontSize={12} />
-                        <LabelList position="left" fill="#0F172A" stroke="none" dataKey="value" fontSize={12} fontWeight={600} />
-                        {funnelStages.map((s, i) => (
-                          <Cell key={i} fill={s.color} />
-                        ))}
-                      </Funnel>
-                    </FunnelChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* 每阶显式转化 %（漏斗无障碍兜底） */}
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {funnelStages.map((s, i) => {
-                    const prev = i === 0 ? funnel.submitted : funnelStages[i - 1].value
-                    const rate = i === 0 ? 100 : prev > 0 ? Math.round((s.value / prev) * 100) : 0
-                    return (
-                      <div key={s.name} className="rounded-xl border border-line bg-canvas px-3 py-2">
-                        <p className="truncate text-[11px] text-muted">{s.name}</p>
-                        <p className="mt-0.5 text-base font-bold tabular-nums text-ink">{s.value}</p>
-                        <p className="text-[10px] text-slate-400">{i === 0 ? '基准' : `转化 ${rate}%`}</p>
-                      </div>
-                    )
-                  })}
                 </div>
               </div>
             </div>
@@ -288,15 +337,13 @@ const FunnelAnalytics: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Layers3 className="h-4 w-4 text-primary" />
                 <h3 className="text-sm font-semibold text-ink">简历版本对比</h3>
+                <span className="ml-auto text-xs text-slate-400">按回复率降序</span>
               </div>
-              <p className="mt-0.5 text-xs text-slate-400">
-                按投递时绑定的简历版本分组，对比投递 / 面试 / Offer 人数（按回复率降序）
-              </p>
 
               {versionData.length === 0 ? (
                 <p className="mt-4 text-center text-xs text-slate-400">暂无版本对比数据</p>
               ) : (
-                <div className="mt-4" style={{ height: barHeight }}>
+                <div className="mt-3" style={{ height: barHeight }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={versionData}
@@ -309,7 +356,7 @@ const FunnelAnalytics: React.FC = () => {
                       <YAxis
                         type="category"
                         dataKey="name"
-                        width={120}
+                        width={110}
                         tick={{ fontSize: 11, fill: '#0F172A' }}
                         axisLine={false}
                         tickLine={false}
