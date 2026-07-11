@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
+  AlertTriangle,
   BriefcaseBusiness,
   CalendarClock,
   ChevronLeft,
@@ -234,13 +235,27 @@ function displayDatetimeRange(start?: number, end?: number): string {
   return s
 }
 
-/** 卡片用：紧凑展示面试时间 "07/15 14:00" */
-function displayInterviewShort(start?: number): string {
+/** 卡片用：
+ * - 开始时间或结束时间任一为空 → 仅显示年月日（如 2026/07/23）
+ * - 开始与结束时间都存在 → 显示年月日 时间段（如 2026/07/23 04:00 - 01:00）
+ */
+function displayInterviewShort(start?: number, end?: number): string {
   if (!start) return '待排期'
-  const d = new Date(start)
-  const date = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
-  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  return `${date} ${time}`
+  const fmtDate = (ts: number) => {
+    const d = new Date(ts)
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+  }
+  const fmtTime = (ts: number) => {
+    const d = new Date(ts)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+  if (!end) return fmtDate(start)
+  const d1 = new Date(start)
+  const d2 = new Date(end)
+  const sameDay = d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate()
+  return sameDay
+    ? `${fmtDate(start)} ${fmtTime(start)} - ${fmtTime(end)}`
+    : `${fmtDate(start)} ${fmtTime(start)} - ${fmtDate(end)} ${fmtTime(end)}`
 }
 
 /**
@@ -386,10 +401,23 @@ const ApplicationsPage: React.FC = () => {
   const [createForm, setCreateForm] = useState<CreateFormState>(EMPTY_CREATE_FORM)
   const [createSnapshots, setCreateSnapshots] = useState<SnapshotListItem[]>([])
   const [interviewForm, setInterviewForm] = useState<CreateInterviewRequest>(emptyInterviewForm)
+  // 结束时间早于开始时间时，禁用保存并给出显眼提示
+  const interviewEndBeforeStart = !!(
+    interviewForm.scheduledEnd && interviewForm.scheduledAt && interviewForm.scheduledEnd < interviewForm.scheduledAt
+  )
   const [flowEditorOpen, setFlowEditorOpen] = useState(false)
+  // AI 分析：分析进行中与结论文本
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingInterviewId, setEditingInterviewId] = useState<string | null>(null)
+
+  // 切换投递记录时，清空上一次的 AI 分析结论
+  useEffect(() => {
+    setAnalysisResult(null)
+    setAnalyzing(false)
+  }, [detail?.id])
 
   const filters = useMemo<ListApplicationsParams>(() => ({
     page,
@@ -717,6 +745,36 @@ const ApplicationsPage: React.FC = () => {
     }
   }
 
+  // 根据面试状态（通过 / 终止）进行整体表现分析；仅当所有面试均已终结（通过或终止）时允许触发。
+  // 当前为占位实现：依据终结状态生成结论文本，后续可替换为真实 AI 分析接口。
+  const runAnalysis = () => {
+    if (!detail) return
+    const interviews = detail.interviews || []
+    if (interviews.length === 0) {
+      toast('暂无面试记录，无法分析')
+      return
+    }
+    if (!interviews.every((i) => i.result === '通过' || i.result === '终止')) {
+      toast('面试尚未结束，待全部面试通过或终止后方可分析')
+      return
+    }
+    setAnalyzing(true)
+    setAnalysisResult(null)
+    // 模拟分析时延（后续替换为真实 AI 接口调用）
+    setTimeout(() => {
+      const allPassed = interviews.every((i) => i.result === '通过')
+      const rounds = interviews.map((i) => i.round).join('、')
+      const conclusion = allPassed ? '通过' : '终止'
+      const body = allPassed
+        ? `整体表现优异，各轮面试均通过。\n建议：在入职准备阶段重点关注岗位核心职责的落地节奏，并保持技术深度与沟通表达的优势。`
+        : `面试流程已终止，建议复盘各轮表现，总结待提升点并针对性补强。\n建议：结合具体反馈优化项目深度与问答策略，为下一次机会做准备。`
+      setAnalysisResult(
+        `【面试结论：${conclusion}】\n本次应聘「${detail.companyName} · ${detail.targetTitle}」共经历 ${rounds} 等 ${interviews.length} 轮面试。\n${body}\n\n（以上为按面试状态生成的初步结论，多维度评估详情将由 AI 分析补充。）`,
+      )
+      setAnalyzing(false)
+    }, 700)
+  }
+
   const saveInterview = async () => {
     if (!detail) return
     if (finalStatuses.includes(detail.status)) {
@@ -732,6 +790,49 @@ const ApplicationsPage: React.FC = () => {
     if (dateErr) {
       toast(dateErr)
       return
+    }
+    // 新增面试时，检测是否存在「权重低于当前新增轮次」且尚未置为「通过 / 终止」的前置面试；
+    // 若有，二次提示「将把 xx 面更新成通过状态」，确认后将这些前置面试置为通过再创建新面试。
+    // 仅检查比当前轮次更早的面试：例如新增「二面」只检查「一面」，新增「一面」则不检查任何轮次。
+    if (!editingInterviewId) {
+      const newWeight = ROUND_ORDER[interviewForm.round] || 0
+      const pending = (detail.interviews || []).filter(
+        (i) => i.result !== '通过' && i.result !== '终止' && (ROUND_ORDER[i.round] || 0) < newWeight,
+      )
+      if (pending.length > 0) {
+        const rounds = pending.map((i) => i.round).join('、')
+        requestDelete({
+          title: '更新前置面试状态',
+          message: `检测到「${rounds}」的面试结果尚未置为通过或终止。新增面试将把${rounds}更新成通过状态，是否继续？`,
+          confirmLabel: '确认更新',
+          confirmVariant: 'primary',
+          onConfirm: async () => {
+            try {
+              for (const it of pending) {
+                await applicationsApi.updateInterview(detail.id, it.id, {
+                  round: it.round,
+                  scheduledAt: it.scheduledAt,
+                  scheduledEnd: it.scheduledEnd,
+                  format: it.format,
+                  interviewer: it.interviewer,
+                  questions: it.questions,
+                  notes: it.notes,
+                  result: '通过',
+                })
+              }
+              await applicationsApi.createInterview(detail.id, interviewForm)
+              setInterviewForm(emptyInterviewForm)
+              setEditingInterviewId(null)
+              setFlowEditorOpen(false)
+              await loadDetail(detail.id)
+              await loadList()
+            } catch (err) {
+              toast(cleanError(err, '保存面试记录失败'))
+            }
+          },
+        })
+        return
+      }
     }
     try {
       if (editingInterviewId) {
@@ -930,9 +1031,9 @@ const ApplicationsPage: React.FC = () => {
                                   <span className={`shrink-0 rounded px-1.5 py-0.5 font-medium ring-1 ${iv.result === '通过' ? 'bg-emerald-50 text-emerald-600 ring-emerald-100' : iv.result === '终止' ? 'bg-red-50 text-red-600 ring-red-100' : 'bg-blue-50 text-blue-600 ring-blue-100'}`}>{iv.round}</span>
                                   <span
                                     className={`truncate ${iv.scheduledAt && isToday(iv.scheduledAt) ? 'font-semibold text-blue-600' : 'text-slate-500'}`}
-                                    title={iv.scheduledAt ? displayDatetimeRange(iv.scheduledAt, iv.scheduledEnd) : '待排期'}
+                                    title={iv.scheduledAt ? displayInterviewShort(iv.scheduledAt, iv.scheduledEnd) : '待排期'}
                                   >
-                                    {iv.scheduledAt ? displayInterviewShort(iv.scheduledAt) : '待排期'}
+                                    {iv.scheduledAt ? displayInterviewShort(iv.scheduledAt, iv.scheduledEnd) : '待排期'}
                                   </span>
                                 </li>
                               ))}
@@ -982,7 +1083,6 @@ const ApplicationsPage: React.FC = () => {
             <div className="relative flex h-full min-h-0 flex-col">
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Application Detail</p>
                   <h2 className="mt-1 text-base font-semibold">{detail?.companyName || '选择投递记录'} · {detail?.targetTitle || '查看详情'}</h2>
                 </div>
                 <button type="button" onClick={() => { setDetailOpen(false); setFlowEditorOpen(false); setEditingInterviewId(null) }} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="收起详情">
@@ -1065,6 +1165,60 @@ const ApplicationsPage: React.FC = () => {
                     <div className={`mt-3 h-40 whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm leading-6 text-slate-600 ${hiddenScrollClass}`}>{detail.jdText || '暂无岗位JD'}</div>
                   </section>
 
+                  <section>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-blue-600" />
+                        <h3 className="text-sm font-semibold text-slate-900">AI分析</h3>
+                      </div>
+                      {(() => {
+                        const interviews = detail?.interviews || []
+                        const hasInterviews = interviews.length > 0
+                        const allConcluded = hasInterviews && interviews.every((i) => i.result === '通过' || i.result === '终止')
+                        const disabled = !allConcluded || analyzing
+                        return (
+                          <button
+                            type="button"
+                            disabled={disabled}
+                            onClick={runAnalysis}
+                            title={!hasInterviews ? '暂无面试记录' : !allConcluded ? '面试尚未结束（仍有面试进行中），待通过或终止后方可分析' : '开始智能分析'}
+                            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-white shadow-lg transition ${disabled ? 'cursor-not-allowed bg-slate-300 shadow-none' : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'}`}
+                          >
+                            {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                            {analyzing ? '分析中...' : '开始分析'}
+                          </button>
+                        )
+                      })()}
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">将综合此岗位多轮面试表现进行智能分析</p>
+
+                    {(() => {
+                      const interviews = detail?.interviews || []
+                      const hasInterviews = interviews.length > 0
+                      const allConcluded = hasInterviews && interviews.every((i) => i.result === '通过' || i.result === '终止')
+                      if (!allConcluded && hasInterviews) {
+                        return (
+                          <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-600">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            面试尚未结束（仍有面试进行中），待面试通过或终止后方可分析
+                          </p>
+                        )
+                      }
+                      return null
+                    })()}
+
+                    {analysisResult ? (
+                      <div className="mt-3 whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-3 text-sm leading-6 text-slate-600">
+                        {analysisResult}
+                      </div>
+                    ) : (
+                      <div className="mt-3 flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center">
+                        <Sparkles className="h-5 w-5 text-slate-300" />
+                        <p className="text-xs leading-5 text-slate-400">{analyzing ? '正在智能分析多轮面试表现...' : '点击「开始分析」后，结果将在此展示，涵盖多维度面试评估结论'}</p>
+                      </div>
+                    )}
+                  </section>
+
                 </div>
               )}
               {detail && flowEditorOpen && (
@@ -1072,7 +1226,6 @@ const ApplicationsPage: React.FC = () => {
                   <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20">
                     <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">Interview Flow</p>
                         <h3 className="mt-1 text-sm font-semibold text-slate-900">面试记录</h3>
                       </div>
                       <button type="button" onClick={() => { setFlowEditorOpen(false); setEditingInterviewId(null) }} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
@@ -1202,8 +1355,14 @@ const ApplicationsPage: React.FC = () => {
                     </div>
                     </div>
                     <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+                      {interviewEndBeforeStart && (
+                        <div className="mr-auto flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                          面试结束时间早于开始时间！
+                        </div>
+                      )}
                       <button type="button" onClick={() => setFlowEditorOpen(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-100">取消</button>
-                      <button type="button" onClick={saveInterview} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700">
+                      <button type="button" onClick={saveInterview} disabled={interviewEndBeforeStart} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none disabled:opacity-70">
                         <FilePlus2 className="h-4 w-4" />保存
                       </button>
                     </div>
@@ -1237,7 +1396,6 @@ const ApplicationsPage: React.FC = () => {
             <div className="flex min-h-0 flex-col overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Job Pipeline</p>
                   <h3 className="mt-1 text-lg font-semibold text-slate-900">编辑投递记录</h3>
                 </div>
                 <button type="button" onClick={() => setCreateOpen(false)} className="rounded-2xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
@@ -1310,7 +1468,7 @@ const ApplicationsPage: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
-                <p className="text-xs text-slate-500">保存后会自动进入列表并展开右侧详情。</p>
+                <p className="text-xs text-slate-500"></p>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setCreateOpen(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 transition hover:bg-slate-100">取消</button>
                   <button type="button" onClick={saveApplication} disabled={creating} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:opacity-50">{creating ? '保存中...' : (editingId ? '保存修改' : '保存投递')}</button>

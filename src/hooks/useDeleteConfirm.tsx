@@ -5,12 +5,16 @@ interface ConfirmState {
     title: string
     message: string
     onConfirm: () => void
+    confirmLabel: string
+    confirmVariant: 'danger' | 'primary'
 }
 
 interface ConfirmOptions {
     title?: string
     message?: string
     onConfirm: () => void
+    confirmLabel?: string
+    confirmVariant?: 'danger' | 'primary'
 }
 
 const DEFAULT_TITLE = '删除条目'
@@ -19,8 +23,14 @@ const DEFAULT_MESSAGE = '确定删除这条记录吗？删除后数据不可恢�
 const useDeleteConfirm = () => {
     const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
 
-    const requestDelete = ({ title = DEFAULT_TITLE, message = DEFAULT_MESSAGE, onConfirm }: ConfirmOptions) => {
-        setConfirmState({ title, message, onConfirm })
+    const requestDelete = ({
+        title = DEFAULT_TITLE,
+        message = DEFAULT_MESSAGE,
+        onConfirm,
+        confirmLabel = '确认删除',
+        confirmVariant = 'danger',
+    }: ConfirmOptions) => {
+        setConfirmState({ title, message, onConfirm, confirmLabel, confirmVariant })
     }
 
     const close = () => setConfirmState(null)
@@ -51,9 +61,11 @@ const useDeleteConfirm = () => {
                         <button
                             type="button"
                             onClick={confirm}
-                            className="px-3.5 py-2 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600"
+                            className={`px-3.5 py-2 text-sm rounded-lg text-white hover:opacity-90 ${
+                                confirmState.confirmVariant === 'danger' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'
+                            }`}
                         >
-                            确认删除
+                            {confirmState.confirmLabel}
                         </button>
                     </div>
                 </div>
