@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"resumecraft-pdf-backend/internal/model"
+	"resumecraft-pdf-backend/internal/storage/audit"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -110,11 +111,12 @@ type Repository interface {
 }
 
 type repository struct {
-	pool *pgxpool.Pool
+	pool  *pgxpool.Pool
+	audit audit.Writer
 }
 
-func NewRepository(pool *pgxpool.Pool) Repository {
-	return &repository{pool: pool}
+func NewRepository(pool *pgxpool.Pool, auditWriter audit.Writer) Repository {
+	return &repository{pool: pool, audit: auditWriter}
 }
 
 func (r *repository) List(ctx context.Context, userID string, filters model.JobApplicationFilters) ([]model.JobApplicationListItem, int, error) {
@@ -282,6 +284,14 @@ func (r *repository) Create(ctx context.Context, params CreateApplicationParams)
 		return nil, fmt.Errorf("create status event: %w", err)
 	}
 
+	if err = r.audit.AppendTx(ctx, tx, audit.Entry{
+		Action:       "job_application.created",
+		ResourceType: "job_application",
+		ResourceID:   id,
+		Metadata:     map[string]any{},
+	}); err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit create application: %w", err)
 	}
@@ -390,26 +400,51 @@ func (r *repository) Update(ctx context.Context, userID, applicationID string, p
 		%s
 	`, strings.Join(updates, ", "), applicationIDArg, userIDArg, whereAssociation)
 
-	result, err := r.pool.Exec(ctx, query, args...)
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin update application tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("update job application: %w", err)
 	}
 	if result.RowsAffected() == 0 {
 		if params.ResumeID != "" && params.SnapshotVersionID != "" {
 			var exists bool
-			_ = r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM job_applications WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL)`, applicationID, userID).Scan(&exists)
+			_ = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM job_applications WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL)`, applicationID, userID).Scan(&exists)
 			if exists {
 				return nil, ErrInvalidAssociation
 			}
 		}
 		return nil, ErrApplicationNotFound
 	}
+	if err := r.audit.AppendTx(ctx, tx, audit.Entry{
+		Action:       "job_application.updated",
+		ResourceType: "job_application",
+		ResourceID:   applicationID,
+		Metadata: map[string]any{
+			"updated_fields": updates[:len(updates)-1],
+		},
+	}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit update application: %w", err)
+	}
 
 	return r.GetByID(ctx, userID, applicationID)
 }
 
 func (r *repository) Delete(ctx context.Context, userID, applicationID string) error {
-	result, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete application tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(ctx, `
 		UPDATE job_applications
 		SET deleted_at = NOW(), updated_at = NOW()
 		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
@@ -419,6 +454,17 @@ func (r *repository) Delete(ctx context.Context, userID, applicationID string) e
 	}
 	if result.RowsAffected() == 0 {
 		return ErrApplicationNotFound
+	}
+	if err := r.audit.AppendTx(ctx, tx, audit.Entry{
+		Action:       "job_application.deleted",
+		ResourceType: "job_application",
+		ResourceID:   applicationID,
+		Metadata:     map[string]any{},
+	}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete application: %w", err)
 	}
 	return nil
 }
@@ -501,6 +547,18 @@ func (r *repository) UpdateStatus(ctx context.Context, userID, applicationID str
 
 	event, err := insertStatusEvent(ctx, tx, applicationID, userID, &fromStatus, status, note)
 	if err != nil {
+		return nil, err
+	}
+	if err = r.audit.AppendTx(ctx, tx, audit.Entry{
+		Action:       "job_application.status_changed",
+		ResourceType: "job_application",
+		ResourceID:   applicationID,
+		Metadata: map[string]any{
+			"from_status": fromStatus,
+			"to_status":   status,
+			"has_note":    strings.TrimSpace(note) != "",
+		},
+	}); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {

@@ -9,17 +9,18 @@ import (
 	"time"
 
 	"resumecraft-pdf-backend/internal/model"
+	"resumecraft-pdf-backend/internal/storage/audit"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
-	ErrResumeNotFound    = errors.New("resume not found")
-	ErrDuplicateTitle    = errors.New("resume title already exists")
-	ErrDuplicateLabel    = errors.New("snapshot label already exists")
-	ErrVersionConflict   = errors.New("version conflict: resume was modified by another client")
-	ErrCommentForbidden  = errors.New("comment not found or not owned by visitor")
+	ErrResumeNotFound   = errors.New("resume not found")
+	ErrDuplicateTitle   = errors.New("resume title already exists")
+	ErrDuplicateLabel   = errors.New("snapshot label already exists")
+	ErrVersionConflict  = errors.New("version conflict: resume was modified by another client")
+	ErrCommentForbidden = errors.New("comment not found or not owned by visitor")
 )
 
 type Repository interface {
@@ -58,11 +59,12 @@ type Repository interface {
 }
 
 type repository struct {
-	pool *pgxpool.Pool
+	pool  *pgxpool.Pool
+	audit audit.Writer
 }
 
-func NewRepository(pool *pgxpool.Pool) Repository {
-	return &repository{pool: pool}
+func NewRepository(pool *pgxpool.Pool, auditWriter audit.Writer) Repository {
+	return &repository{pool: pool, audit: auditWriter}
 }
 
 func (r *repository) List(ctx context.Context, userID string, page, pageSize int, keyword string) ([]model.ResumeListItem, int, error) {
@@ -197,6 +199,17 @@ func (r *repository) Create(ctx context.Context, userID string, req model.Create
 		UPDATE resumes SET latest_version_id = $1 WHERE id = $2
 	`, defaultSnapshotID, resumeID); err != nil {
 		return nil, fmt.Errorf("set latest_version_id: %w", err)
+	}
+
+	if err = r.audit.AppendTx(ctx, tx, audit.Entry{
+		Action:       "resume.created",
+		ResourceType: "resume",
+		ResourceID:   resumeID,
+		Metadata: map[string]any{
+			"default_snapshot_id": defaultSnapshotID,
+		},
+	}); err != nil {
+		return nil, err
 	}
 
 	if err = tx.Commit(ctx); err != nil {
@@ -470,6 +483,18 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		ORDER BY created_at DESC LIMIT 1
 	`, resumeID).Scan(&latestSnapshotID)
 
+	if err := r.audit.AppendTx(ctx, tx, audit.Entry{
+		Action:       "resume.updated",
+		ResourceType: "resume",
+		ResourceID:   resumeID,
+		Metadata: map[string]any{
+			"content_updated": updateContent,
+			"drafts_updated":  updateDrafts,
+			"version":         newVersion,
+		},
+	}); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit update: %w", err)
 	}
@@ -485,13 +510,35 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 }
 
 func (r *repository) Delete(ctx context.Context, userID, resumeID string) error {
-	_, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete resume tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(ctx, `
 		UPDATE resumes SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 	`, resumeID, userID)
 	if err != nil {
 		return fmt.Errorf("delete resume: %w", err)
 	}
-	// 幂等删除：无论是否真的删除了记录，都返回成功
+	if result.RowsAffected() == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit idempotent delete resume: %w", err)
+		}
+		return nil
+	}
+	if err := r.audit.AppendTx(ctx, tx, audit.Entry{
+		Action:       "resume.deleted",
+		ResourceType: "resume",
+		ResourceID:   resumeID,
+		Metadata:     map[string]any{},
+	}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete resume: %w", err)
+	}
 	return nil
 }
 
@@ -548,6 +595,17 @@ func (r *repository) RestoreFromVersion(ctx context.Context, userID, resumeID, s
 		ORDER BY created_at DESC LIMIT 1
 	`, resumeID).Scan(&latestSnapshotID)
 
+	if err := r.audit.AppendTx(ctx, tx, audit.Entry{
+		Action:       "resume.version_restored",
+		ResourceType: "resume",
+		ResourceID:   resumeID,
+		Metadata: map[string]any{
+			"snapshot_id": snapshotID,
+			"version":     newVersion,
+		},
+	}); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit restore: %w", err)
 	}

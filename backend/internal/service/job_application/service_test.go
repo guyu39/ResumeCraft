@@ -235,6 +235,26 @@ func (m *mockRepo) DeleteInterview(ctx context.Context, userID, applicationID, i
 	return nil
 }
 
+func (m *mockRepo) CreateInterviewAttachment(ctx context.Context, userID, applicationID string, params appRepo.CreateInterviewAttachmentParams) (*model.JobApplicationAttachment, error) {
+	return &model.JobApplicationAttachment{InterviewID: params.InterviewID}, nil
+}
+
+func (m *mockRepo) GetInterviewAttachment(ctx context.Context, userID, applicationID, interviewID string) (*model.JobApplicationAttachment, error) {
+	return &model.JobApplicationAttachment{InterviewID: interviewID}, nil
+}
+
+func (m *mockRepo) DeleteInterviewAttachment(ctx context.Context, userID, applicationID, interviewID string) error {
+	return nil
+}
+
 func (m *mockRepo) GetStatus(ctx context.Context, userID, applicationID string) (model.JobApplicationStatus, error) {
 	return m.status, nil
+}
+
+func (m *mockRepo) GetFunnelStats(ctx context.Context, userID string) (model.FunnelStats, error) {
+	return model.FunnelStats{}, nil
+}
+
+func (m *mockRepo) GetConversionBySnapshot(ctx context.Context, userID string) ([]model.SnapshotConversion, error) {
+	return nil, nil
 }

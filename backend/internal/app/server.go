@@ -18,6 +18,7 @@ import (
 	"resumecraft-pdf-backend/internal/service/pdf"
 	"resumecraft-pdf-backend/internal/service/resume"
 	aiStorage "resumecraft-pdf-backend/internal/storage/ai"
+	"resumecraft-pdf-backend/internal/storage/audit"
 	"resumecraft-pdf-backend/internal/storage/db"
 	exportStorage "resumecraft-pdf-backend/internal/storage/export"
 	applicationStorage "resumecraft-pdf-backend/internal/storage/job_application"
@@ -88,8 +89,9 @@ func NewServer() *http.Server {
 				log.Printf("[auth] init postgres failed: %v", err)
 			} else {
 				authService = auth.NewService(pool, redisClient, cfg.Auth, mail.NewSender(cfg.SMTP))
+				auditWriter := audit.NewWriter()
 				// 初始化简历服务
-				resumeRepo := resumeStorage.NewRepository(pool)
+				resumeRepo := resumeStorage.NewRepository(pool, auditWriter)
 				resumeService = resume.NewService(resumeRepo)
 				// 初始化对象存储
 				objectStorage := object.NewObjectStorage(cfg.Storage)
@@ -105,7 +107,7 @@ func NewServer() *http.Server {
 				aiInterviewRepo := aiStorage.NewInterviewRepository(pool)
 				aiService = ai.NewService(aiRepo, aiCfgRepo, aiSuggestRecordRepo, aiParserCfgRepo, aiInterviewRepo, cfg.AI, redisClient)
 				// 初始化投递管理服务
-				applicationRepo := applicationStorage.NewRepository(pool)
+				applicationRepo := applicationStorage.NewRepository(pool, auditWriter)
 				applicationService = jobapplication.NewService(applicationRepo)
 			}
 		}

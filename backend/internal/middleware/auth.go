@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"resumecraft-pdf-backend/internal/requestmeta"
 	"resumecraft-pdf-backend/internal/service/auth"
 	"resumecraft-pdf-backend/pkg/response"
 
@@ -42,6 +43,7 @@ func AuthRequired(authService auth.Service) gin.HandlerFunc {
 		}
 
 		c.Set(ContextUserIDKey, userID)
+		c.Request = c.Request.WithContext(requestmeta.WithActor(c.Request.Context(), userID))
 		c.Next()
 	}
 }

@@ -3,6 +3,8 @@ package response
 import (
 	"time"
 
+	"resumecraft-pdf-backend/internal/requestmeta"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -24,11 +26,18 @@ func newRequestID() string {
 	return "req_" + uuid.New().String()[:12]
 }
 
+func requestID(c *gin.Context) string {
+	if metadata, ok := requestmeta.From(c.Request.Context()); ok && metadata.RequestID != "" {
+		return metadata.RequestID
+	}
+	return newRequestID()
+}
+
 func JSONSuccess(c *gin.Context, data interface{}) {
 	c.JSON(200, SuccessBody{
 		Code:      "OK",
 		Message:   "success",
-		RequestID: newRequestID(),
+		RequestID: requestID(c),
 		Data:      data,
 	})
 }
@@ -37,7 +46,7 @@ func JSONError(c *gin.Context, status int, code, message string) {
 	c.JSON(status, ErrorBody{
 		Code:      code,
 		Message:   message,
-		RequestID: newRequestID(),
+		RequestID: requestID(c),
 	})
 }
 
@@ -46,7 +55,7 @@ func JSONSuccessWithCode(c *gin.Context, code string, message string, data inter
 	c.JSON(200, SuccessBody{
 		Code:      code,
 		Message:   message,
-		RequestID: newRequestID(),
+		RequestID: requestID(c),
 		Data:      data,
 	})
 }
@@ -56,7 +65,7 @@ func JSONCreated(c *gin.Context, data interface{}) {
 	c.JSON(201, SuccessBody{
 		Code:      "OK",
 		Message:   "created",
-		RequestID: newRequestID(),
+		RequestID: requestID(c),
 		Data:      data,
 	})
 }
