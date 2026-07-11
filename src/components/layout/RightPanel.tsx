@@ -520,8 +520,8 @@ const RightPanel: React.FC = () => {
                     <button
                         onClick={() => { window.location.href = '/applications' }}
                         className="flex-shrink-0 p-2 rounded-xl border border-line bg-surface text-muted hover:bg-slate-50 hover:text-ink transition-colors"
-                        title="投递管理 / 职位库"
-                        aria-label="投递管理 / 职位库"
+                        title="投递管理"
+                        aria-label="投递管理"
                     >
                         <BriefcaseBusiness className="w-3.5 h-3.5" />
                     </button>

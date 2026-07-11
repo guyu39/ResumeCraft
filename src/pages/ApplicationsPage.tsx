@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   BriefcaseBusiness,
@@ -13,7 +13,9 @@ import {
   Layers3,
   Link2,
   Loader2,
+  Maximize2,
   PanelRightClose,
+  Pencil,
   Plus,
   RefreshCw,
   Sparkles,
@@ -107,9 +109,6 @@ const fieldInputClass = 'mt-1 h-10 w-full rounded-xl border border-slate-200 bg-
 const fieldTextareaClass = 'mt-1 h-40 w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition [scrollbar-width:none] focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 [&::-webkit-scrollbar]:hidden'
 const fieldLabelClass = 'text-xs font-medium text-slate-500'
 const hiddenScrollClass = 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-
-const stickyActionClass = 'sticky right-0 z-[5] border-l border-t border-slate-100 bg-white px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
-const stickyActionHeadClass = 'sticky right-0 z-20 border-l border-slate-100 bg-slate-50 px-2 py-3 text-center shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.5)]'
 
 function rowDisplayStatus(status: JobApplicationStatus): string {
   if (status === 'interview') return '面试中'
@@ -233,6 +232,106 @@ function displayDatetimeRange(start?: number, end?: number): string {
   const e = fmt(d2, !sameDay)
   if (s && e) return `${s} - ${e}`
   return s
+}
+
+/** 卡片用：紧凑展示面试时间 "07/15 14:00" */
+function displayInterviewShort(start?: number): string {
+  if (!start) return '待排期'
+  const d = new Date(start)
+  const date = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return `${date} ${time}`
+}
+
+/**
+ * 自定义滚动区：隐藏浏览器原生滚动条，改用右侧可拖拽的细滚动条 thumb。
+ * 仅当内容超过可视高度时才显示 thumb；支持滚轮（原生 overflow）与拖拽。
+ */
+function CustomScrollArea({ children, className = '', maxHeight }: { children: React.ReactNode; className?: string; maxHeight?: number }) {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const [thumb, setThumb] = useState<{ top: number; height: number; visible: boolean }>({ top: 0, height: 0, visible: false })
+  const dragState = useRef<{ startY: number; startScrollTop: number } | null>(null)
+
+  const updateThumb = useCallback(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const { scrollHeight, clientHeight, scrollTop } = el
+    if (scrollHeight <= clientHeight + 1) {
+      setThumb((t) => (t.visible ? { ...t, visible: false } : t))
+      return
+    }
+    const height = Math.max(28, Math.floor((clientHeight / scrollHeight) * clientHeight))
+    const maxScroll = scrollHeight - clientHeight
+    const top = maxScroll > 0 ? (scrollTop / maxScroll) * (clientHeight - height) : 0
+    setThumb({ top, height, visible: true })
+  }, [])
+
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    updateThumb()
+    el.addEventListener('scroll', updateThumb, { passive: true })
+    window.addEventListener('resize', updateThumb)
+    return () => {
+      el.removeEventListener('scroll', updateThumb)
+      window.removeEventListener('resize', updateThumb)
+    }
+  }, [updateThumb])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const ds = dragState.current
+      const el = viewportRef.current
+      if (!ds || !el) return
+      const { clientHeight, scrollHeight } = el
+      const track = clientHeight - thumb.height
+      const dy = e.clientY - ds.startY
+      const ratio = track > 0 ? dy / track : 0
+      el.scrollTop = ds.startScrollTop + ratio * (scrollHeight - clientHeight)
+    }
+    const onUp = () => {
+      if (!dragState.current) return
+      dragState.current = null
+      document.body.style.userSelect = ''
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [thumb.height])
+
+  const onThumbDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const el = viewportRef.current
+    if (!el) return
+    dragState.current = { startY: e.clientY, startScrollTop: el.scrollTop }
+    document.body.style.userSelect = 'none'
+  }
+
+  return (
+    <div className={`relative ${className}`}>
+      <div
+        ref={viewportRef}
+        className="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={maxHeight != null ? { maxHeight } : undefined}
+      >
+        {children}
+      </div>
+      {thumb.visible && (
+        <div className="pointer-events-none absolute inset-y-0 right-0.5 w-1.5">
+          <div
+            onMouseDown={onThumbDown}
+            onClick={(e) => e.stopPropagation()}
+            className="pointer-events-auto cursor-grab rounded-full bg-slate-300 transition-colors hover:bg-slate-400 active:cursor-grabbing"
+            style={{ height: thumb.height, transform: `translateY(${thumb.top}px)` }}
+          />
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** 从时间戳拆出 { hour, minute } */
@@ -723,89 +822,73 @@ const ApplicationsPage: React.FC = () => {
       <ToastContainer />
       {deleteConfirmDialog}
       <div className="shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex max-w-[1680px] items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => { window.location.href = '/' }} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="返回简历列表">
+        <div className="mx-auto flex max-w-[1680px] items-center justify-between gap-4 px-6 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" onClick={() => { window.location.href = '/' }} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="返回简历列表">
               <ArrowLeft className="h-4 w-4" />
             </button>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">投递管理 / 职位库</h1>
-              <p className="text-sm text-slate-500">左侧管理投递列表，右侧跟踪流程、面试记录与岗位JD</p>
+            <h1 className="shrink-0 text-xl font-semibold tracking-tight">投递管理</h1>
+            <div className="ml-1 inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-line bg-slate-100 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setView('list')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-colors ${view === 'list' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-700/70 hover:text-blue-700'}`}
+              >
+                <ListIcon className="h-3.5 w-3.5" /> 投递列表
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('analytics')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-colors ${view === 'analytics' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-700/70 hover:text-blue-700'}`}
+              >
+                <BarChart3 className="h-3.5 w-3.5" /> 数据分析
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button type="button" onClick={openCreateModal} className={toolbarPrimaryButtonClass}><Plus className="h-4 w-4" />新增投递</button>
             <button type="button" onClick={loadList} className={toolbarSecondaryButtonClass}><RefreshCw className="h-4 w-4" />刷新</button>
             <button type="button" onClick={exportExcel} className={toolbarSecondaryButtonClass}><Download className="h-4 w-4" />导出 Excel</button>
           </div>
         </div>
-        {/* 视图切换 tab */}
-        <div className="mx-auto max-w-[1680px] px-6 pb-3">
-          <div className="inline-flex items-center gap-1 rounded-xl border border-line bg-slate-100 p-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setView('list')}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${view === 'list' ? 'border border-line bg-surface text-primary shadow-sm' : 'border border-transparent text-muted hover:text-ink'}`}
-            >
-              <ListIcon className="h-3.5 w-3.5" /> 投递列表
-            </button>
-            <button
-              type="button"
-              onClick={() => setView('analytics')}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${view === 'analytics' ? 'border border-line bg-surface text-primary shadow-sm' : 'border border-transparent text-muted hover:text-ink'}`}
-            >
-              <BarChart3 className="h-3.5 w-3.5" /> 数据分析
-            </button>
-          </div>
-        </div>
       </div>
 
       {view === 'analytics' ? (
-        <main className="mx-auto min-h-0 w-full max-w-[1680px] flex-1 overflow-hidden px-6 py-6">
-          <section className="h-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+        <main className="min-h-0 w-full flex-1 overflow-hidden">
+          <section className="h-full overflow-hidden bg-transparent">
             <FunnelAnalytics />
           </section>
         </main>
       ) : (
-      <main className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 grid-cols-1 gap-4 overflow-hidden px-6 py-6 transition-all">
-        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
+      <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden px-0 py-0 transition-all sm:flex-row">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex shrink-0 flex-wrap items-center gap-3 bg-slate-50/70 px-4 py-3">
             <input value={keyword} onChange={(event) => { setKeyword(event.target.value); setDetailOpen(false) }} placeholder="搜索公司、岗位、岗位JD" className="h-10 w-64 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
             <div className="w-36"><StyledSelect value={status} onChange={(v) => { setStatus(v as DisplayStatus | ''); setDetailOpen(false) }} options={DISPLAY_STATUS_OPTIONS.map((option) => ({ label: option.label, value: option.value }))} /></div>
             <div className="w-44"><StyledSelect value={resumeId} onChange={(v) => { setResumeId(v); setDetailOpen(false) }} placeholder="全部简历" options={[{ label: '全部简历', value: '' }, ...resumes.map((resume) => ({ label: resume.title, value: resume.id }))]} /></div>
           </div>
 
-          <div className={`min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain thin-scrollbar [scrollbar-width:thin] [&::-webkit-scrollbar]:block [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 hover:[&::-webkit-scrollbar-thumb]:bg-slate-400`}>
-            <table className="w-full min-w-[1480px] border-separate border-spacing-0 text-left text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-medium text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">公司</th>
-                  <th className="px-4 py-3">投递职位</th>
-                  <th className="px-4 py-3">投递部门</th>
-                  <th className="px-4 py-3">意向城市</th>
-                  <th className="px-4 py-3">投递状态</th>
-                  {interviewRoundOptions.map((round) => (
-                    <th key={round} className="px-4 py-3 whitespace-nowrap">{round}</th>
-                  ))}
-                  <th className="px-4 py-3">投递时间</th>
-                  <th className="px-4 py-3">笔试时间</th>
-                  <th className="px-4 py-3">投递链接</th>
-                  <th className={stickyActionHeadClass}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={7 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">加载中...</td></tr>
-                ) : items.length === 0 ? (
-                  <tr><td colSpan={7 + interviewRoundOptions.length} className="px-4 py-12 text-center text-slate-400">暂无投递记录</td></tr>
-                ) : items.map((item) => (
-                  <tr key={item.id} onClick={() => selectApplication(item.id)} className={`cursor-pointer border-t border-slate-100 transition hover:bg-blue-50/50 ${selectedId === item.id ? 'bg-blue-50/80' : ''}`}>
-                    <td className="border-t border-slate-100 px-4 py-3 font-medium text-slate-800">{item.companyName || <span className="text-slate-400">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.targetTitle}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{item.department || <span className="text-slate-400">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-slate-600">{item.preferredCity || <span className="text-slate-400">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3" onClick={(event) => event.stopPropagation()}>
-                      <div className="w-24">
+          <div className="min-h-0 flex-1 overflow-y-auto thin-scrollbar px-0 py-0">
+            {loading ? (
+              <div className="py-16 text-center text-sm text-slate-400">加载中...</div>
+            ) : items.length === 0 ? (
+              <div className="py-16 text-center text-sm text-slate-400">暂无投递记录</div>
+            ) : (
+              <div className={`grid grid-cols-1 gap-4 ${detailOpen ? 'sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'}`}>
+                {items.map((item) => (
+                  <article
+                    key={item.id}
+                    className="group flex flex-col rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-100 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/60 hover:ring-slate-200"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-semibold text-slate-800" title={item.companyName || undefined}>{item.companyName || <span className="text-slate-400">无</span>}</h3>
+                        <p className="mt-0.5 truncate text-xs text-slate-500" title={item.targetTitle}>{item.targetTitle}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button type="button" onClick={() => selectApplication(item.id)} title="查看详情" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600">
+                          <Maximize2 className="h-4 w-4" />
+                        </button>
                         <StyledSelect
                           size="compact"
                           value={displayToBackendStatus(rowDisplayStatus(item.status))}
@@ -814,40 +897,72 @@ const ApplicationsPage: React.FC = () => {
                           buttonClassName={`rounded-full font-medium ring-1 ${STATUS_COLOR_CLASS[rowDisplayStatus(item.status)] || STATUS_COLOR_CLASS["已投递"]}`}
                         />
                       </div>
-                    </td>
-                    {interviewRoundOptions.map((round) => {
-                      const brief = item.interviews?.find((it) => it.round === round)
-                      return (
-                        <td key={round} className="border-t border-slate-100 px-4 py-3">
-                          {brief ? (
-                            <div className="flex flex-col gap-0.5">
-                              {brief.result === '通过' ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-100">通过</span>
-                               : brief.result === '终止' ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 ring-1 ring-red-100">终止</span>
-                               : <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 ring-1 ring-blue-100">面试中</span>}
-                              {brief.scheduledAt ? <span className="text-[11px] text-slate-400">{displayDate(brief.scheduledAt)}</span> : null}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300">无</span>
-                          )}
-                        </td>
-                      )
-                    })}
-                    <td className="border-t border-slate-100 px-4 py-3 text-slate-500">{item.submittedAt ? displayDate(item.submittedAt) : <span className="text-slate-300">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3 text-slate-500">{item.writtenTestAt ? displayDate(item.writtenTestAt) : <span className="text-slate-300">无</span>}</td>
-                    <td className="border-t border-slate-100 px-4 py-3">
-                      {item.applicationUrl ? <a href={item.applicationUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="text-blue-600 hover:underline">链接</a> : <span className="text-slate-400">无</span>}
-                    </td>
-                    <td className={stickyActionClass}>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button type="button" onClick={(event) => { event.stopPropagation(); openEditModal(item.id) }} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">编辑</button>
-                        <button type="button" onClick={(event) => { event.stopPropagation(); deleteApplication(item.id) }} className="rounded-lg border border-red-100 bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100">删除</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                    </div>
 
-              </tbody>
-            </table>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                      <div className="min-w-0">
+                        <dt className="text-slate-400">部门</dt>
+                        <dd className="mt-0.5 truncate text-slate-700">{item.department || '无'}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-slate-400">城市</dt>
+                        <dd className="mt-0.5 truncate text-slate-700">{item.preferredCity || '无'}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-slate-400">投递时间</dt>
+                        <dd className="mt-0.5 text-slate-700">{item.submittedAt ? displayDate(item.submittedAt) : '无'}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-slate-400">笔试时间</dt>
+                        <dd className="mt-0.5 text-slate-700">{item.writtenTestAt ? displayDate(item.writtenTestAt) : '无'}</dd>
+                      </div>
+                    </dl>
+
+                    {item.interviews && item.interviews.length > 0 ? (
+                      <div className="mt-3">
+                        <p className="mb-1 text-[11px] text-slate-400">面试安排</p>
+                        <CustomScrollArea maxHeight={item.interviews.length > 3 ? 124 : undefined} className="pr-1">
+                          <ul className="space-y-1">
+                            {[...item.interviews]
+                              .sort((a, b) => (ROUND_ORDER[a.round] || 0) - (ROUND_ORDER[b.round] || 0))
+                              .map((iv) => (
+                                <li key={iv.round} className="flex items-center justify-between gap-2 text-[11px]">
+                                  <span className={`shrink-0 rounded px-1.5 py-0.5 font-medium ring-1 ${iv.result === '通过' ? 'bg-emerald-50 text-emerald-600 ring-emerald-100' : iv.result === '终止' ? 'bg-red-50 text-red-600 ring-red-100' : 'bg-blue-50 text-blue-600 ring-blue-100'}`}>{iv.round}</span>
+                                  <span
+                                    className={`truncate ${iv.scheduledAt && isToday(iv.scheduledAt) ? 'font-semibold text-blue-600' : 'text-slate-500'}`}
+                                    title={iv.scheduledAt ? displayDatetimeRange(iv.scheduledAt, iv.scheduledEnd) : '待排期'}
+                                  >
+                                    {iv.scheduledAt ? displayInterviewShort(iv.scheduledAt) : '待排期'}
+                                  </span>
+                                </li>
+                              ))}
+                          </ul>
+                        </CustomScrollArea>
+                      </div>
+                    ) : interviewRoundOptions.length > 0 ? (
+                      <div className="mt-3">
+                        <p className="mb-1 text-[11px] text-slate-400">面试安排</p>
+                        <p className="text-[11px] text-slate-300">未安排面试</p>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-auto flex items-center justify-end gap-1 border-t border-slate-100 pt-2">
+                      {item.applicationUrl ? (
+                        <a href={item.applicationUrl} target="_blank" rel="noopener noreferrer" title="投递链接" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600">
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      ) : null}
+                      <button type="button" onClick={() => openEditModal(item.id)} title="编辑" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button type="button" onClick={() => deleteApplication(item.id)} title="删除" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3">
@@ -863,7 +978,7 @@ const ApplicationsPage: React.FC = () => {
         </section>
 
         {detailOpen && (
-          <aside className="fixed bottom-6 right-6 top-24 z-40 w-[min(450px,calc(100vw-3rem))] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-950/15 transition-all">
+          <aside className="flex h-[55vh] w-full shrink-0 flex-col overflow-hidden border-t border-slate-200 bg-white transition-all sm:h-full sm:w-[min(440px,42vw)] sm:border-l sm:border-t-0">
             <div className="relative flex h-full min-h-0 flex-col">
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div>
@@ -1112,7 +1227,6 @@ const ApplicationsPage: React.FC = () => {
                   <BriefcaseBusiness className="h-5 w-5" />
                 </div>
                 <h2 className="mt-5 text-2xl font-semibold tracking-tight">{editingId ? "编辑投递" : "新增投递"}</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-300">录入职位后进入左侧列表，点击后在右侧跟踪流程。</p>
                 <div className="mt-8 space-y-4 text-sm">
                   <div className="flex items-start gap-3"><FileText className="mt-0.5 h-4 w-4 text-blue-300" /><span className="text-slate-300">职位信息与 JD 集中归档</span></div>
                   <div className="flex items-start gap-3"><Layers3 className="mt-0.5 h-4 w-4 text-blue-300" /><span className="text-slate-300">绑定简历快照，便于后续复盘</span></div>

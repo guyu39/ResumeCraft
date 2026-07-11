@@ -150,20 +150,8 @@ const FunnelAnalytics: React.FC = () => {
   const isEmpty = funnel.total === 0
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-6 no-scrollbar">
-      <div className="mx-auto max-w-[1680px] space-y-6">
-        {/* 顶部刷新 */}
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted">基于全部投递记录统计，实时反映数据变化</p>
-          <button
-            type="button"
-            onClick={load}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs text-muted transition hover:bg-slate-50 hover:text-ink"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> 刷新
-          </button>
-        </div>
-
+    <div className="h-full overflow-y-auto px-0 py-0 no-scrollbar">
+      <div className="space-y-6">
         {isEmpty ? (
           <div className="rounded-2xl border border-dashed border-line bg-surface py-16 text-center">
             <Send className="mx-auto h-10 w-10 text-slate-300" />
