@@ -527,6 +527,14 @@ setPendingCreateName(defaultTitle)
                                 </button>
                                 <button
                                     type="button"
+                                    onClick={() => { window.location.href = '/jobs' }}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:bg-slate-50"
+                                >
+                                    <BriefcaseBusiness className="h-4 w-4" />
+                                    招聘聚合
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={onLogout}
                                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:bg-slate-50"
                                 >

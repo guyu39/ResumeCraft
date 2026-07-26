@@ -208,6 +208,16 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 		{
 			pdf.POST("/export", h.ExportPDF)
 		}
+
+		// 招聘数据聚合（公开只读列表/筛选枚举 + 登录用户可触发同步）
+		if h.JobPostingService() != nil {
+			jobGroup := api.Group("/job-postings")
+			{
+				jobGroup.GET("", h.ListJobPostings)
+				jobGroup.GET("/filters", h.GetJobPostingFilters)
+				jobGroup.POST("/sync", middleware.AuthRequired(h.AuthService()), h.SyncJobPostings)
+			}
+		}
 	}
 
 	if frontendDistDir == "" {

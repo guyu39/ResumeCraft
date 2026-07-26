@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/authStore'
 import AppShell from '@/components/layout/AppShell'
 import ShareViewPage from '@/pages/ShareViewPage'
 import ApplicationsPage from '@/pages/ApplicationsPage'
+import JobPostingsPage from '@/pages/JobPostingsPage'
 import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
 import KickConfirmModal from '@/components/common/KickConfirmModal'
@@ -144,6 +145,7 @@ const App: React.FC = () => {
 
   const isSharePage = pathname.startsWith('/share/')
   const isApplicationsPage = pathname.startsWith('/applications')
+  const isJobsPage = pathname.startsWith('/jobs')
   const isEditorPage = pathname === '/editor'
 
   // 检查是否需要显示登录页
@@ -275,6 +277,8 @@ const App: React.FC = () => {
   }
 
   if (isApplicationsPage) return <><ApplicationsPage /><KickConfirmModal /></>
+
+  if (isJobsPage) return <><JobPostingsPage /><KickConfirmModal /></>
 
   if (isEditorPage) return <><AppShell /><KickConfirmModal /></>
 

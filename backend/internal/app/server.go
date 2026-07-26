@@ -4,16 +4,20 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"resumecraft-pdf-backend/internal/config"
+	"resumecraft-pdf-backend/internal/cron"
 	"resumecraft-pdf-backend/internal/handler"
 	"resumecraft-pdf-backend/internal/middleware"
+	"resumecraft-pdf-backend/internal/migrate"
 	"resumecraft-pdf-backend/internal/router"
 	"resumecraft-pdf-backend/internal/service/ai"
 	"resumecraft-pdf-backend/internal/service/auth"
 	"resumecraft-pdf-backend/internal/service/export"
 	jobapplication "resumecraft-pdf-backend/internal/service/job_application"
+	jobpostingService "resumecraft-pdf-backend/internal/service/job_posting"
 	"resumecraft-pdf-backend/internal/service/mail"
 	"resumecraft-pdf-backend/internal/service/pdf"
 	"resumecraft-pdf-backend/internal/service/resume"
@@ -22,6 +26,7 @@ import (
 	"resumecraft-pdf-backend/internal/storage/db"
 	exportStorage "resumecraft-pdf-backend/internal/storage/export"
 	applicationStorage "resumecraft-pdf-backend/internal/storage/job_application"
+	jobpostingStorage "resumecraft-pdf-backend/internal/storage/job_posting"
 	"resumecraft-pdf-backend/internal/storage/object"
 	resumeStorage "resumecraft-pdf-backend/internal/storage/resume"
 
@@ -75,6 +80,7 @@ func NewServer() *http.Server {
 	var exportService export.Service
 	var aiService ai.Service
 	var applicationService jobapplication.Service
+	var jobPostingService jobpostingService.Service
 	var pool *pgxpool.Pool
 
 	if cfg.Auth.Enabled {
@@ -88,6 +94,13 @@ func NewServer() *http.Server {
 			if err != nil {
 				log.Printf("[auth] init postgres failed: %v", err)
 			} else {
+				// 启动自动迁移：补齐 migrations/*.sql 中尚未执行的变更（幂等、只跑一次）
+				if mErr := migrate.RunMigrations(context.Background(), pool, getEnv("MIGRATIONS_DIR", "")); mErr != nil {
+					log.Printf("[migrate] WARNING: auto-migration failed: %v", mErr)
+				} else {
+					log.Printf("[migrate] auto-migration completed")
+				}
+
 				authService = auth.NewService(pool, redisClient, cfg.Auth, mail.NewSender(cfg.SMTP))
 				auditWriter := audit.NewWriter()
 				// 初始化简历服务
@@ -109,6 +122,14 @@ func NewServer() *http.Server {
 				// 初始化投递管理服务
 				applicationRepo := applicationStorage.NewRepository(pool, auditWriter)
 				applicationService = jobapplication.NewService(applicationRepo)
+
+				// 初始化招聘数据聚合服务（腾讯文档智能表格同步）
+				jobPostingRepo := jobpostingStorage.NewRepository(pool)
+				jobPostingService = jobpostingService.NewService(
+					jobPostingRepo,
+					getEnv("SCRAPER_SCRIPT", "../python-parser/scrape_smartsheet.py"),
+					getEnv("PYTHON_BIN", "python3"),
+				)
 			}
 		}
 	}
@@ -138,8 +159,22 @@ func NewServer() *http.Server {
 	// 初始化对象存储（不依赖数据库）
 	objectStorage := object.NewObjectStorage(cfg.Storage)
 
-	h := handler.New(pdfService, authService, resumeService, exportService, aiService, applicationService, objectStorage, cfg.Parser.ServiceURL)
+	h := handler.New(pdfService, authService, resumeService, exportService, aiService, applicationService, jobPostingService, objectStorage, cfg.Parser.ServiceURL)
 	router.Register(engine, h, cfg.Server.FrontendDistDir, authLimiter, aiLimiter)
+
+	// 招聘数据定时同步调度器（默认每分钟，JOB_SYNC_INTERVAL 可覆盖，如 "30s" 便于本地验证）
+	var jobScheduler *cron.JobSyncScheduler
+	if jobPostingService != nil {
+		interval := 6 * time.Hour
+		if v := getEnv("JOB_SYNC_INTERVAL", ""); v != "" {
+			if d, err := time.ParseDuration(v); err == nil {
+				interval = d
+			} else {
+				log.Printf("[cron] invalid JOB_SYNC_INTERVAL=%q, fallback to 6h", v)
+			}
+		}
+		jobScheduler = cron.NewJobSyncScheduler(jobPostingService, interval)
+	}
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Server.Port,
@@ -147,6 +182,14 @@ func NewServer() *http.Server {
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
 		ReadTimeout:       cfg.Server.ReadTimeout,
 		WriteTimeout:      cfg.Server.WriteTimeout,
+	}
+
+	if jobScheduler != nil {
+		go jobScheduler.Start()
+		server.RegisterOnShutdown(func() {
+			jobScheduler.Stop()
+			log.Println("[cron] job-postings scheduler shutdown signaled")
+		})
 	}
 
 	if pool != nil {
@@ -161,4 +204,12 @@ func NewServer() *http.Server {
 	}
 
 	return server
+}
+
+// getEnv 读取环境变量，缺失时返回默认值
+func getEnv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }

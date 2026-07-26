@@ -23,6 +23,28 @@ RUN sed -i 's|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/d
     fontconfig \
     tzdata \
     wget \
+    python3 \
+    python3-pip \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libatspi2.0-0 \
+    libxshmfence1 \
+    libx11-xcb1 \
+    libxcb-dri3-0 \
     && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -s /bin/bash appuser \
@@ -33,11 +55,19 @@ RUN mkdir -p /home/appuser/.config/fontconfig && \
     printf '<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n<fontconfig>\n  <!-- 微软雅黑 → 文泉驿微米黑 -->\n  <alias><family>Microsoft YaHei</family><prefer><family>WenQuanYi Micro Hei</family></prefer></alias>\n  <!-- 宋体 → Noto Serif CJK SC -->\n  <alias><family>SimSun</family><prefer><family>Noto Serif CJK SC</family></prefer></alias>\n  <!-- 黑体 → 文泉驿正黑 -->\n  <alias><family>SimHei</family><prefer><family>WenQuanYi Zen Hei</family></prefer></alias>\n  <!-- 楷体 → 文泉驿微米黑（Linux 无自带楷体） -->\n  <alias><family>KaiTi</family><prefer><family>WenQuanYi Micro Hei</family></prefer></alias>\n  <!-- 苹方 → 文泉驿微米黑 -->\n  <alias><family>PingFang SC</family><prefer><family>WenQuanYi Micro Hei</family></prefer></alias>\n</fontconfig>\n' > /home/appuser/.config/fontconfig/fonts.conf && \
     chown -R appuser:appuser /home/appuser/.config
 
+# 安装 Python + Playwright，供 /jobs 同步抓取腾讯文档智能表格
+# 浏览器统一装到世界可读路径，避免非 root 的 appuser 无法读取 root 的缓存目录
+RUN pip3 install --break-system-packages -i https://pypi.tuna.tsinghua.edu.cn/simple playwright \
+    && PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright \
+       PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers python3 -m playwright install chromium \
+    && chmod -R a+rX /opt/playwright-browsers \
+    && rm -rf /root/.cache/ms-playwright
 
 USER appuser
 WORKDIR /app
 
 COPY --chown=appuser:appuser --from=backend-builder /out/server /app/server
+COPY --chown=appuser:appuser python-parser/scrape_smartsheet.py /app/scrape_smartsheet.py
 
 ENV PORT=8787 \
     CHROMIUM_HEADLESS=true \
@@ -50,7 +80,10 @@ ENV PORT=8787 \
     PDF_PAPER_WIDTH_INCH=8.27 \
     PDF_PAPER_HEIGHT_INCH=11.69 \
     PDF_SCALE=1 \
-    CHROME_PATH=/usr/bin/chromium
+    CHROME_PATH=/usr/bin/chromium \
+    SCRAPER_SCRIPT=/app/scrape_smartsheet.py \
+    PYTHON_BIN=python3 \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 EXPOSE 8787
 

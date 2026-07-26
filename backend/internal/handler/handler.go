@@ -5,6 +5,7 @@ import (
 	"resumecraft-pdf-backend/internal/service/auth"
 	"resumecraft-pdf-backend/internal/service/export"
 	jobapplication "resumecraft-pdf-backend/internal/service/job_application"
+	"resumecraft-pdf-backend/internal/service/job_posting"
 	"resumecraft-pdf-backend/internal/service/pdf"
 	"resumecraft-pdf-backend/internal/service/resume"
 	"resumecraft-pdf-backend/internal/storage/object"
@@ -17,6 +18,7 @@ type Handler struct {
 	exportService      export.Service
 	aiService          ai.Service
 	applicationService jobapplication.Service
+	jobPostingService  job_posting.Service
 	objectStorage      object.ObjectStorage
 	parserServiceURL   string
 }
@@ -28,6 +30,7 @@ func New(
 	exportService export.Service,
 	aiService ai.Service,
 	applicationService jobapplication.Service,
+	jobPostingService job_posting.Service,
 	objectStorage object.ObjectStorage,
 	parserServiceURL string,
 ) *Handler {
@@ -38,6 +41,7 @@ func New(
 		exportService:      exportService,
 		aiService:          aiService,
 		applicationService: applicationService,
+		jobPostingService:  jobPostingService,
 		objectStorage:      objectStorage,
 		parserServiceURL:   parserServiceURL,
 	}
@@ -65,6 +69,10 @@ func (h *Handler) AIService() ai.Service {
 
 func (h *Handler) ApplicationService() jobapplication.Service {
 	return h.applicationService
+}
+
+func (h *Handler) JobPostingService() job_posting.Service {
+	return h.jobPostingService
 }
 
 func (h *Handler) ObjectStorage() object.ObjectStorage {
