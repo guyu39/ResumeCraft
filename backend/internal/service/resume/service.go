@@ -9,11 +9,12 @@ import (
 )
 
 var (
-	ErrResumeNotFound  = errors.New("resume not found")
-	ErrDuplicateTitle  = errors.New("resume title already exists")
-	ErrDuplicateLabel  = errors.New("snapshot label already exists")
-	ErrVersionConflict = errors.New("version conflict")
+	ErrResumeNotFound   = errors.New("resume not found")
+	ErrDuplicateTitle   = errors.New("resume title already exists")
+	ErrDuplicateLabel   = errors.New("snapshot label already exists")
+	ErrVersionConflict  = errors.New("version conflict")
 	ErrCommentForbidden = errors.New("comment not found or not owned by visitor")
+	ErrSnapshotInUse    = errors.New("snapshot is referenced by job applications")
 )
 
 type Service interface {
@@ -207,11 +208,22 @@ func (s *service) UpdateSnapshotLabel(ctx context.Context, snapshotID, userID st
 }
 
 func (s *service) DeleteSnapshot(ctx context.Context, snapshotID, userID string) error {
-	err := s.repo.DeleteSnapshot(ctx, snapshotID, userID)
-	if errors.Is(err, resumeRepo.ErrResumeNotFound) {
-		return ErrResumeNotFound
+	// 该快照若已被投递记录引用（job_applications.snapshot_version_id 为 NOT NULL 且外键 RESTRICT），
+	// 直接删除会被 PG 拒绝。主动拦截并返回明确错误，避免退回 500。
+	inUse, err := s.repo.IsSnapshotInUse(ctx, snapshotID, userID)
+	if err != nil {
+		return err
 	}
-	return err
+	if inUse {
+		return ErrSnapshotInUse
+	}
+	if err := s.repo.DeleteSnapshot(ctx, snapshotID, userID); err != nil {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
+			return ErrResumeNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *service) GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error) {

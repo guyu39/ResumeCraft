@@ -154,7 +154,11 @@ func (h *Handler) DeleteSnapshot(c *gin.Context) {
 
 	if err := h.resumeService.DeleteSnapshot(c.Request.Context(), snapshotID, userID.(string)); err != nil {
 		log.Printf("[snapshot] DeleteSnapshot error: %v", err)
-		if errors.Is(err, resume.ErrResumeNotFound) {
+		switch {
+		case errors.Is(err, resume.ErrSnapshotInUse):
+			response.JSONError(c, http.StatusConflict, "SNAPSHOT_IN_USE", "该快照已被投递记录使用，无法删除")
+			return
+		case errors.Is(err, resume.ErrResumeNotFound):
 			response.JSONError(c, http.StatusNotFound, "SNAPSHOT_NOT_FOUND", "快照不存在")
 			return
 		}

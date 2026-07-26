@@ -39,6 +39,7 @@ type Repository interface {
 	CreateSnapshotWithContent(ctx context.Context, userID, resumeID string, contentJSON []byte, label string) (string, error)
 	UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error
 	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
+	IsSnapshotInUse(ctx context.Context, snapshotID, userID string) (bool, error)
 	GetSnapshotDetail(ctx context.Context, snapshotID string) (*model.VersionSnapshot, []byte, error)
 	DiffSnapshots(ctx context.Context, snapshotAID, snapshotBID string, currentModules, comparisonModules []map[string]interface{}) (*model.DiffResult, error)
 	SyncAvatarToPersonalData(ctx context.Context, userID, avatarURL string) error
@@ -848,6 +849,20 @@ func (r *repository) DeleteSnapshot(ctx context.Context, snapshotID, userID stri
 		return ErrResumeNotFound
 	}
 	return nil
+}
+
+// IsSnapshotInUse 查询该快照是否被投递记录引用。
+// job_applications.snapshot_version_id 为 NOT NULL 且外键 RESTRICT，被引用时无法删除，需提前拦截。
+func (r *repository) IsSnapshotInUse(ctx context.Context, snapshotID, userID string) (bool, error) {
+	var count int64
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM job_applications
+		WHERE snapshot_version_id = $1 AND user_id = $2
+	`, snapshotID, userID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check snapshot in use: %w", err)
+	}
+	return count > 0, nil
 }
 
 // GetSnapshotDetail 获取快照详情（元信息 + 内容）

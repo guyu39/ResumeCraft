@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { resumeApi } from '@/api/resume'
 import type { SnapshotListItem } from '@/api/resume'
+import useDeleteConfirm from '@/hooks/useDeleteConfirm'
+import { toast } from '@/components/common/Toast'
 
 interface SnapshotTimelineProps {
   resumeId: string
@@ -32,6 +34,7 @@ export default function SnapshotTimeline({
   const [renameValue, setRenameValue] = useState('')
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tooltipHovered = useRef(false)
+  const { requestDelete, deleteConfirmDialog } = useDeleteConfirm()
 
   const loadSnapshots = useCallback(async () => {
     if (!resumeId) return
@@ -60,15 +63,24 @@ export default function SnapshotTimeline({
   const handleTooltipEnter = () => { tooltipHovered.current = true }
   const handleTooltipLeave = () => { tooltipHovered.current = false; setTooltip(null) }
 
-  const handleDelete = async (snapshotId: string) => {
-    if (!confirm('确定删除此快照？')) return
-    setTooltip(null)
-    try {
-      await resumeApi.deleteSnapshot(resumeId, snapshotId)
-      // 清除该快照的本地草稿
-      try { localStorage.removeItem(`resumecraft_snapshot_draft_${snapshotId}`) } catch { /* ignore */ }
-      await loadSnapshots()
-    } catch { setError('删除快照失败') }
+  const handleDelete = (snapshotId: string) => {
+    requestDelete({
+      title: '删除快照',
+      message: '确定删除此快照？删除后不可恢复。',
+      onConfirm: async () => {
+        setTooltip(null)
+        try {
+          await resumeApi.deleteSnapshot(resumeId, snapshotId)
+          // 清除该快照的本地草稿
+          try { localStorage.removeItem(`resumecraft_snapshot_draft_${snapshotId}`) } catch { /* ignore */ }
+          await loadSnapshots()
+          toast('快照已删除', 'success')
+        } catch (e) {
+          const code = (e as { code?: string })?.code
+          toast(code === 'SNAPSHOT_IN_USE' ? '该快照已被投递记录使用，无法删除' : '删除快照失败', 'error')
+        }
+      },
+    })
   }
 
   const handleStartRename = (snapshot: SnapshotListItem) => {
@@ -190,6 +202,9 @@ export default function SnapshotTimeline({
         </div>,
         document.body
       )}
+
+      {/* 全局删除确认弹窗（替换原生 confirm） */}
+      {deleteConfirmDialog}
     </div>
   )
 }
