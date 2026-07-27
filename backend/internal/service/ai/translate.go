@@ -17,7 +17,7 @@ import (
 var localeFontFallback = map[string]struct {
 	BodyFont string
 }{
-	"zh-CN": {BodyFont: "Microsoft YaHei"},
+	"zh-CN": {BodyFont: model.DefaultResumeFontFamily},
 	"en-US": {BodyFont: "Georgia"},
 }
 

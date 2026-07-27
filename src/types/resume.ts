@@ -31,6 +31,9 @@ export type TemplateType = 'classic' | 'modern' | 'minimal'
 /** 简历语言 */
 export type ResumeLocale = 'zh-CN' | 'en-US'
 
+/** 简历编辑预览与导出的唯一默认字体 */
+export const DEFAULT_RESUME_FONT_FAMILY = 'Source Han Sans SC'
+
 /** 行业模板预设 */
 export type IndustryPresetId = 'general' | 'tech' | 'product' | 'design' | 'finance'
 
@@ -333,9 +336,9 @@ export interface ResumeStyleSettings {
 }
 
 export const DEFAULT_RESUME_STYLE_SETTINGS: ResumeStyleSettings = {
-  fontFamily: 'Microsoft YaHei',
+  fontFamily: DEFAULT_RESUME_FONT_FAMILY,
   fontSize: 12,
-  moduleTitleFontFamily: 'Microsoft YaHei',
+  moduleTitleFontFamily: DEFAULT_RESUME_FONT_FAMILY,
   moduleTitleFontSize: 14,
   textColor: '#363636',
   lineHeight: 1.3,
@@ -367,7 +370,7 @@ export const INDUSTRY_TEMPLATE_PRESETS: IndustryTemplatePreset[] = [
     template: 'classic',
     themeColor: '#1A56DB',
     locale: 'zh-CN',
-    styleSettings: { fontFamily: 'Microsoft YaHei', fontSize: 12, lineHeight: 1.3 },
+    styleSettings: { fontFamily: DEFAULT_RESUME_FONT_FAMILY, moduleTitleFontFamily: DEFAULT_RESUME_FONT_FAMILY, fontSize: 12, lineHeight: 1.3 },
   },
   {
     id: 'tech',
@@ -376,7 +379,7 @@ export const INDUSTRY_TEMPLATE_PRESETS: IndustryTemplatePreset[] = [
     template: 'modern',
     themeColor: '#0F766E',
     locale: 'zh-CN',
-    styleSettings: { fontFamily: 'Source Han Sans', fontSize: 11, lineHeight: 1.35 },
+    styleSettings: { fontFamily: DEFAULT_RESUME_FONT_FAMILY, moduleTitleFontFamily: DEFAULT_RESUME_FONT_FAMILY, fontSize: 11, lineHeight: 1.35 },
   },
   {
     id: 'product',
@@ -385,7 +388,7 @@ export const INDUSTRY_TEMPLATE_PRESETS: IndustryTemplatePreset[] = [
     template: 'classic',
     themeColor: '#0F4C81',
     locale: 'zh-CN',
-    styleSettings: { fontFamily: 'PingFang SC', fontSize: 12, lineHeight: 1.4 },
+    styleSettings: { fontFamily: DEFAULT_RESUME_FONT_FAMILY, moduleTitleFontFamily: DEFAULT_RESUME_FONT_FAMILY, fontSize: 12, lineHeight: 1.4 },
   },
   {
     id: 'design',
@@ -394,7 +397,7 @@ export const INDUSTRY_TEMPLATE_PRESETS: IndustryTemplatePreset[] = [
     template: 'minimal',
     themeColor: '#7C3AED',
     locale: 'zh-CN',
-    styleSettings: { fontFamily: 'PingFang SC', fontSize: 11, lineHeight: 1.45 },
+    styleSettings: { fontFamily: DEFAULT_RESUME_FONT_FAMILY, moduleTitleFontFamily: DEFAULT_RESUME_FONT_FAMILY, fontSize: 11, lineHeight: 1.45 },
   },
   {
     id: 'finance',
@@ -403,7 +406,7 @@ export const INDUSTRY_TEMPLATE_PRESETS: IndustryTemplatePreset[] = [
     template: 'classic',
     themeColor: '#1E3A8A',
     locale: 'zh-CN',
-    styleSettings: { fontFamily: 'SimSun', fontSize: 11, lineHeight: 1.32 },
+    styleSettings: { fontFamily: DEFAULT_RESUME_FONT_FAMILY, moduleTitleFontFamily: DEFAULT_RESUME_FONT_FAMILY, fontSize: 11, lineHeight: 1.32 },
   },
 ]
 

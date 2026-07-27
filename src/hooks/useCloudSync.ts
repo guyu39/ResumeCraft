@@ -7,21 +7,16 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useResumeStore, flushDraft, registerFlushToCloud } from '@/store/resumeStore'
+import { useResumeStore, flushDraft, registerFlushToCloud, serializeResumeContent } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { resumeApi } from '@/api'
 import type { Resume } from '@/types/resume'
-import { requestConflictResolve } from '@/components/common/ConflictDialog'
 import { toast } from '@/components/common/Toast'
 
 export type SaveStatus = 'idle' | 'saving' | 'synced' | 'error' | 'loading'
 
 function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-}
-
-function serializeResume(r: Resume): string {
-  return JSON.stringify({ title: r.title, themeColor: r.themeColor, styleSettings: r.styleSettings, modules: r.modules })
 }
 
 /** 收集 localStorage 中所有快照专属草稿 → Map<snapshotId, DraftContent> */
@@ -81,7 +76,7 @@ export function useCloudSync() {
     // （flushToCloud 在 updateModuleData 之后立即调用，此时 React 尚未 re-render，
     //  closure 中的 resume 仍是旧值，导致头像 URL 未写入云端）
     const latestResume = useResumeStore.getState().resume
-    const currentData = serializeResume(latestResume)
+    const currentData = serializeResumeContent(latestResume)
 
     // 内容去重：与上次落库相同则跳过（比 isDirty 更可靠，不依赖额外状态维护）
     if (currentData === lastSyncedDataRef.current) {
@@ -150,10 +145,8 @@ export function useCloudSync() {
       return true
     } catch (err: any) {
       console.error('[CloudSync] 保存失败:', err)
-      // 409 Conflict：云端已被其他端更新，弹窗让用户选择处理方式
+      // 409 Conflict：先自动拉取最新云端版本并重试，不再打断用户。
       if (err?.status === 409 || err?.code === 'VERSION_CONFLICT') {
-        setSaveStatus('error')
-        setSyncStatus('conflict')
         isSyncingRef.current = false
         await handleConflict(targetId)
         return false
@@ -174,15 +167,16 @@ export function useCloudSync() {
     if (conflictResolvingRef.current) return
     conflictResolvingRef.current = true
     try {
-      const localData = serializeResume(useResumeStore.getState().resume)
+      const localResume = useResumeStore.getState().resume
+      const localData = serializeResumeContent(localResume)
 
       // 先拉云端最新，用于内容比对 + version 对齐
       const cloud = await resumeApi.get(targetId)
       const cloudVersion = (cloud as any).version ?? 0
       const cloudDraftsVersion = (cloud as any).snapshotDraftsVersion ?? 0
-      const cloudData = serializeResume(cloud as Resume)
+      const cloudData = serializeResumeContent(cloud as Resume)
 
-      // ① 内容一致：假冲突（仅 version 脱节），静默对齐并标记已同步，不弹窗
+      // ① 内容一致：假冲突（仅 version 脱节），静默对齐并标记已同步。
       if (cloudData === localData) {
         localVersionRef.current = cloudVersion
         localDraftsVersionRef.current = cloudDraftsVersion
@@ -194,34 +188,8 @@ export function useCloudSync() {
         return
       }
 
-      // ② 内容确有差异：弹窗让用户选择
-      const choice = await requestConflictResolve()
-      if (!choice) return // 稍后处理：保持 conflict 状态，下次保存再触发
-
-      if (choice === 'useCloud') {
-        // 用云端覆盖本地：灌回 store + 对齐版本/指纹
-        const { initResume, setResumeVersion: setV, setDraftsVersion: setDV, setPersonalData } = useResumeStore.getState()
-        initResume({
-          id: cloud.id,
-          title: cloud.title,
-          locale: cloud.locale as Resume['locale'],
-          template: cloud.template as Resume['template'],
-          themeColor: cloud.themeColor,
-          styleSettings: cloud.styleSettings as Resume['styleSettings'],
-          modules: cloud.modules as Resume['modules'],
-          updatedAt: cloud.updatedAt,
-        })
-        setV(cloudVersion)
-        setDV(cloudDraftsVersion)
-        setPersonalData((cloud as any).personalData ?? {})
-        localVersionRef.current = cloudVersion
-        localDraftsVersionRef.current = cloudDraftsVersion
-        lastSyncedDataRef.current = cloudData
-        setSyncStatus('cloud_synced')
-        setSaveStatus('synced')
-        toast('已加载云端最新版本', 'success')
-      } else {
-        // 保留本地覆盖云端：对齐到云端 version 后重新保存（本地内容不变）
+      const keepLocal = async () => {
+        // 单设备策略：版本冲突时仍以本端内容为准，先对齐云端 version 再重试保存。
         localVersionRef.current = cloudVersion
         localDraftsVersionRef.current = cloudDraftsVersion
         setResumeVersion(cloudVersion)
@@ -231,9 +199,10 @@ export function useCloudSync() {
         const ok = await saveToCloudRef.current?.(false)
         if (ok) toast('已用本端内容覆盖云端', 'success')
       }
+      await keepLocal()
     } catch (e) {
       console.error('[CloudSync] 冲突解决失败:', e)
-      toast('冲突处理失败，请刷新页面后重试', 'error')
+      toast('自动覆盖云端失败，请稍后重试', 'error')
     } finally {
       conflictResolvingRef.current = false
     }
@@ -289,7 +258,7 @@ export function useCloudSync() {
   // ========== 监听内容变化，重置状态 ==========
   useEffect(() => {
     if (!isAuthenticated) return
-    const currentData = serializeResume(resume)
+    const currentData = serializeResumeContent(resume)
     if (currentData !== lastSyncedDataRef.current) {
       setSaveStatus('idle')
     }
@@ -323,7 +292,7 @@ export function useCloudSync() {
         if (lastSavedAt && cloudResume.updatedAt && lastSavedAt > cloudResume.updatedAt) {
           await saveToCloud()
         } else if (!lastSavedAt || lastSavedAt < cloudResume.updatedAt) {
-          lastSyncedDataRef.current = serializeResume(cloudResume as Resume)
+          lastSyncedDataRef.current = serializeResumeContent(cloudResume as Resume)
           setSaveStatus('synced')
         }
       } catch (err) {
@@ -341,7 +310,7 @@ export function useCloudSync() {
     if (!isAuthenticated) return null
     try {
       const cloudResume = await resumeApi.get(resumeId)
-      lastSyncedDataRef.current = serializeResume(cloudResume as Resume)
+      lastSyncedDataRef.current = serializeResumeContent(cloudResume as Resume)
       cloudIdRef.current = resumeId
       hasSyncedOnMountRef.current = true
       // 对齐云端 version，避免本地 version 脱节后续误判 409
@@ -367,15 +336,24 @@ export function useCloudSync() {
     hasSyncedOnMountRef.current = true
   }, [])
 
+  const alignCloudVersion = useCallback((id: string, version: number, snapshotDraftsVersion: number) => {
+    cloudIdRef.current = id
+    hasSyncedOnMountRef.current = true
+    localVersionRef.current = version
+    localDraftsVersionRef.current = snapshotDraftsVersion
+    setResumeVersion(version)
+    setDraftsVersion(snapshotDraftsVersion)
+  }, [setDraftsVersion, setResumeVersion])
+
   useEffect(() => {
     (window as any).__cloudSyncSetCloudId = setCloudId
-      ; (window as any).__cloudSyncMarkSynced = () => { hasSyncedOnMountRef.current = true }
+    ;(window as any).__cloudSyncAlignVersion = alignCloudVersion
+    ;(window as any).__cloudSyncMarkSynced = () => { hasSyncedOnMountRef.current = true }
     // 对齐同步指纹：用 store 当前最新 resume（通常已被云端数据灌入）重算指纹并认账「已同步」，
-    // 口径与本 hook 内部 serializeResume 一致，避免外部口径不一致导致仍判 dirty。
-    // 供「选用云端覆盖本地」后调用，确保不再触发多余落库。
+    // 口径与本 hook 内部 serializeResumeContent 一致，避免外部口径不一致导致仍判 dirty。
     ;(window as any).__cloudSyncMarkSyncedWith = () => {
       const latest = useResumeStore.getState().resume
-      lastSyncedDataRef.current = serializeResume(latest)
+      lastSyncedDataRef.current = serializeResumeContent(latest)
       hasSyncedOnMountRef.current = true
       setSaveStatus('synced')
       setSyncStatus('cloud_synced')
@@ -384,11 +362,12 @@ export function useCloudSync() {
     registerFlushToCloud(() => saveToCloud())
     return () => {
       delete (window as any).__cloudSyncSetCloudId
+      delete (window as any).__cloudSyncAlignVersion
       delete (window as any).__cloudSyncMarkSynced
       delete (window as any).__cloudSyncMarkSyncedWith
       registerFlushToCloud(async () => false)
     }
-  }, [setCloudId, saveToCloud, setSyncStatus])
+  }, [setCloudId, alignCloudVersion, saveToCloud, setSyncStatus])
 
   return { saveToCloud, loadFromCloud, manualSave, setCloudId, saveStatus, lastSyncedAt }
 }

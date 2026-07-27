@@ -15,6 +15,7 @@ import {
 } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { resumeApi } from '@/api'
+import { DEFAULT_RESUME_STYLE_SETTINGS } from '@/types/resume'
 import type { Resume, TemplateType } from '@/types/resume'
 import type { ResumeListItem } from '@/api'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
@@ -381,7 +382,7 @@ setPendingCreateName(defaultTitle)
             template: cr.template as TemplateType,
             locale: 'zh-CN' as const,
             themeColor: '#1A56DB',
-            styleSettings: { fontFamily: 'Microsoft YaHei', fontSize: 12, moduleTitleFontFamily: 'Microsoft YaHei', moduleTitleFontSize: 14, textColor: '#363636', lineHeight: 1.3, pagePaddingHorizontal: 20, pagePaddingVertical: 20, moduleSpacing: 7, paragraphSpacing: 1, moduleTitleLinePosition: 'left', moduleTitleMarkerStyle: 'bar', moduleTitleMarkerVisible: true, avatarPosition: 'right' as const },
+            styleSettings: DEFAULT_RESUME_STYLE_SETTINGS,
             updatedAt: cr.updatedAt,
             modules: [],
         })) as Resume[]

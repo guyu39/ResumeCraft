@@ -639,17 +639,26 @@ func (r *repository) GetVersionContent(ctx context.Context, versionID string) ([
 func getOrDefaultStyleSettings(s *model.ResumeStyleSettings) model.ResumeStyleSettings {
 	if s == nil {
 		return model.ResumeStyleSettings{
-			FontFamily:            "Microsoft YaHei",
-			FontSize:              12,
-			TextColor:             "#363636",
-			LineHeight:            1.3,
-			PagePaddingHorizontal: 20,
-			PagePaddingVertical:   20,
-			ModuleSpacing:         7,
-			ParagraphSpacing:      1,
+			FontFamily:               model.DefaultResumeFontFamily,
+			FontSize:                 12,
+			TextColor:                "#363636",
+			LineHeight:               1.3,
+			PagePaddingHorizontal:    20,
+			PagePaddingVertical:      20,
+			ModuleSpacing:            7,
+			ParagraphSpacing:         1,
+			ModuleTitleLinePosition:  "left",
+			ModuleTitleMarkerStyle:   "bar",
+			ModuleTitleMarkerVisible: true,
+			ModuleTitleFontFamily:    model.DefaultResumeFontFamily,
+			ModuleTitleFontSize:      14,
+			AvatarPosition:           "right",
 		}
 	}
-	return *s
+	normalized := *s
+	normalized.FontFamily = model.DefaultResumeFontFamily
+	normalized.ModuleTitleFontFamily = model.DefaultResumeFontFamily
+	return normalized
 }
 
 // ============================================================================

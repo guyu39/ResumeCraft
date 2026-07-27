@@ -4,7 +4,7 @@
 // ============================================================
 
 import React from 'react'
-import { Resume, DEFAULT_RESUME_STYLE_SETTINGS } from '@/types/resume'
+import { Resume, DEFAULT_RESUME_FONT_FAMILY, DEFAULT_RESUME_STYLE_SETTINGS } from '@/types/resume'
 
 interface StyleVarsResult {
   // 展开到模板根 div 的 style
@@ -22,16 +22,16 @@ export function useResumeStyleVars(resume: Resume, opts?: { overrideMinHeight?: 
   const style: React.CSSProperties = {
     minHeight: opts?.overrideMinHeight ?? '842px',
     padding: `${styleSettings.pagePaddingVertical}px ${styleSettings.pagePaddingHorizontal}px`,
-    fontFamily: styleSettings.fontFamily,
+    fontFamily: DEFAULT_RESUME_FONT_FAMILY,
     fontSize: `${styleSettings.fontSize}pt`,
     color: styleSettings.textColor,
     lineHeight: styleSettings.lineHeight,
     ['--module-spacing' as string]: `${styleSettings.moduleSpacing}px`,
     ['--paragraph-spacing' as string]: `${styleSettings.paragraphSpacing}px`,
-    ['--resume-font-family' as string]: styleSettings.fontFamily,
+    ['--resume-font-family' as string]: DEFAULT_RESUME_FONT_FAMILY,
     ['--resume-text-color' as string]: styleSettings.textColor,
     ['--resume-font-scale' as string]: String(styleSettings.fontSize / DEFAULT_RESUME_STYLE_SETTINGS.fontSize),
-    ['--module-title-font-family' as string]: styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily,
+    ['--module-title-font-family' as string]: DEFAULT_RESUME_FONT_FAMILY,
     ['--module-title-font-size' as string]: `${styleSettings.moduleTitleFontSize ?? styleSettings.fontSize + 2}pt`,
     ['--module-title-color' as string]: themeColor,
   }

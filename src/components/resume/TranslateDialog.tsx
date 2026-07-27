@@ -28,7 +28,6 @@ const TranslateDialog: React.FC<TranslateDialogProps> = ({
     const defaultTargetLocale = sourceLocale === 'en-US' ? 'zh-CN' : 'en-US'
     const [targetLocale, setTargetLocale] = useState<'zh-CN' | 'en-US'>(defaultTargetLocale)
     const [keepChineseFields, setKeepChineseFields] = useState(false)
-    const [fontFallback, setFontFallback] = useState(true)
 
     const { translate, reset, loading, error, result } = useTranslate()
     const { t } = useI18n()
@@ -39,7 +38,6 @@ const TranslateDialog: React.FC<TranslateDialogProps> = ({
             reset()
             setTargetLocale(sourceLocale === 'en-US' ? 'zh-CN' : 'en-US')
             setKeepChineseFields(false)
-            setFontFallback(true)
         }
     }, [open, sourceLocale, reset])
 
@@ -49,7 +47,7 @@ const TranslateDialog: React.FC<TranslateDialogProps> = ({
         translate({
             resumeId,
             targetLocale,
-            options: { keepChineseFields, fontFallback },
+            options: { keepChineseFields },
         })
     }
 
@@ -133,15 +131,6 @@ const TranslateDialog: React.FC<TranslateDialogProps> = ({
                                         <span className="text-sm text-gray-700">{t('translate.keepChineseFields')}</span>
                                     </label>
                                 )}
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={fontFallback}
-                                        onChange={(e) => setFontFallback(e.target.checked)}
-                                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-                                    />
-                                    <span className="text-sm text-gray-700">{t('translate.autoFont')}</span>
-                                </label>
                             </div>
 
                             {/* 说明 */}
@@ -193,11 +182,6 @@ const TranslateDialog: React.FC<TranslateDialogProps> = ({
                                     </div>
                                 )}
 
-                                {result.suggestedStyleSettings && (
-                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                        <span>{t('translate.fontHint')} {result.suggestedStyleSettings.fontFamily}</span>
-                                    </div>
-                                )}
                             </div>
                         </>
                     )}

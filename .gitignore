@@ -38,6 +38,7 @@ docker/minio-data/
 .workbuddy/
 .claude/commands/
 .claude/skills/
+.claude/worktrees/
 .codebuddy/
 .agents/
 

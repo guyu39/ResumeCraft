@@ -29,6 +29,7 @@ import {
   MODULE_META_LIST,
   MODULE_TITLES_BY_LOCALE,
   INDUSTRY_TEMPLATE_PRESETS,
+  DEFAULT_RESUME_FONT_FAMILY,
   DEFAULT_RESUME_STYLE_SETTINGS,
   FIXED_MODULE_TYPES,
 } from '@/types/resume'
@@ -372,14 +373,18 @@ function loadDraftFromStorage(): Resume | null {
 
 // 只读地探查本地草稿（含 savedAt），不触发任何副作用（不恢复 basedOnSnapshotId、不写回）。
 // 供加载/刷新时做「本地草稿 vs 云端」新旧仲裁，避免无脑用云端覆盖未提交的本地改动。
-export function peekLocalDraft(): { data: Resume; savedAt: number } | null {
+export function peekLocalDraft(): { data: Resume; savedAt: number; basedOnSnapshotId: string | null } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const payload: StoragePayload = JSON.parse(raw)
     if (payload.version !== STORAGE_VERSION) return null
     if (!payload.data) return null
-    return { data: payload.data, savedAt: payload.savedAt ?? 0 }
+    return {
+      data: payload.data,
+      savedAt: payload.savedAt ?? 0,
+      basedOnSnapshotId: payload.basedOnSnapshotId ?? null,
+    }
   } catch {
     return null
   }
@@ -387,8 +392,17 @@ export function peekLocalDraft(): { data: Resume; savedAt: number } | null {
 
 // 内容指纹：与 useCloudSync 保持一致（title/themeColor/styleSettings/modules），用于判断本地与云端内容是否实质不同。
 // 关键：styleSettings 两边都过 DEFAULT 补全 + 稳定键序，避免「本地已 merge 完整字段 vs 云端缺字段」造成永远判不同。
+function normalizeResumeStyleSettings(s: Partial<ResumeStyleSettings> | undefined): ResumeStyleSettings {
+  return {
+    ...DEFAULT_RESUME_STYLE_SETTINGS,
+    ...(s ?? {}),
+    fontFamily: DEFAULT_RESUME_FONT_FAMILY,
+    moduleTitleFontFamily: DEFAULT_RESUME_FONT_FAMILY,
+  }
+}
+
 function normalizeStyleSettings(s: Partial<ResumeStyleSettings> | undefined): Record<string, unknown> {
-  const merged = { ...DEFAULT_RESUME_STYLE_SETTINGS, ...(s ?? {}) } as Record<string, unknown>
+  const merged = normalizeResumeStyleSettings(s) as unknown as Record<string, unknown>
   // 稳定键序：按 key 排序后重建，消除字段顺序差异
   return Object.keys(merged).sort().reduce<Record<string, unknown>>((acc, k) => {
     acc[k] = merged[k]
@@ -570,10 +584,7 @@ export const useResumeStore = create<ResumeStore>((set) => ({
       ...base,
       ...partial,
       locale: partial?.locale ?? base.locale,
-      styleSettings: {
-        ...DEFAULT_RESUME_STYLE_SETTINGS,
-        ...(partial?.styleSettings ?? {}),
-      },
+      styleSettings: normalizeResumeStyleSettings(partial?.styleSettings),
       modules: partial?.modules ?? base.modules,
     }
     // 仅在未显式传入时设为当前时间，保留云端时间戳用于草稿对比
@@ -642,11 +653,10 @@ export const useResumeStore = create<ResumeStore>((set) => ({
       const preset = INDUSTRY_TEMPLATE_PRESETS.find((item) => item.id === presetId)
       if (!preset) return state
 
-      const merged = {
-        ...DEFAULT_RESUME_STYLE_SETTINGS,
+      const merged = normalizeResumeStyleSettings({
         ...state.resume.styleSettings,
         ...preset.styleSettings,
-      }
+      })
       // 确保模块标题字号 >= 内容字号 + 1
       if (merged.moduleTitleFontSize <= merged.fontSize) {
         merged.moduleTitleFontSize = merged.fontSize + 1
@@ -681,11 +691,10 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   // ---------- setStyleSettings ----------
   setStyleSettings: (settings) => {
     set((state) => {
-      const merged = {
-        ...DEFAULT_RESUME_STYLE_SETTINGS,
+      const merged = normalizeResumeStyleSettings({
         ...state.resume.styleSettings,
         ...settings,
-      }
+      })
       // 确保模块标题字号 >= 内容字号 + 1
       if (merged.moduleTitleFontSize <= merged.fontSize) {
         merged.moduleTitleFontSize = merged.fontSize + 1
@@ -852,15 +861,12 @@ export const useResumeStore = create<ResumeStore>((set) => ({
 
     if (saved) {
       setCurrentResumeIdToStorage(saved.id)
-      saveToStorage(saved)
       const normalizedResume = {
         ...saved,
         locale: saved.locale ?? 'zh-CN',
-        styleSettings: {
-          ...DEFAULT_RESUME_STYLE_SETTINGS,
-          ...(saved.styleSettings ?? {}),
-        },
+        styleSettings: normalizeResumeStyleSettings(saved.styleSettings),
       }
+      saveToStorage(normalizedResume)
       const state = useResumeStore.getState()
       set({
         resume: normalizedResume,

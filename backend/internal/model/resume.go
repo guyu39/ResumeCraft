@@ -2,6 +2,8 @@ package model
 
 import "encoding/json"
 
+const DefaultResumeFontFamily = "Source Han Sans SC"
+
 // ResumeListItem 简历列表项
 type ResumeListItem struct {
 	ID        string `json:"id"`

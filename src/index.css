@@ -22,12 +22,12 @@ body {
   border-radius: 1rem;
 }
 
-/* 简历内部统一使用微软雅黑 */
+/* 简历内部统一使用思源黑体 SC */
 #resume-paper,
 #resume-paper *,
 #resume-paper-export,
 #resume-paper-export * {
-  font-family: var(--resume-font-family, 'Microsoft YaHei'), 'PingFang SC', 'Noto Sans SC', sans-serif;
+  font-family: var(--resume-font-family, 'Source Han Sans SC'), 'Source Han Sans', 'Noto Sans CJK SC', 'Noto Sans SC', sans-serif;
 }
 
 .resume-preview-content p {

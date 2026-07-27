@@ -12,7 +12,6 @@ import { usePendingParse } from '@/hooks/usePendingParse'
 import type { NoticeItem } from '@/components/common/NoticeCenter'
 import { useResumeStore } from '@/store/resumeStore'
 import ToastContainer from '@/components/common/Toast'
-import ConflictDialog from '@/components/common/ConflictDialog'
 
 const STORAGE_KEY_LEFT = 'resumecraft_panel_left_width'
 const STORAGE_KEY_RIGHT = 'resumecraft_panel_right_width'
@@ -206,7 +205,6 @@ const AppShell: React.FC = () => {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas p-2">
       <ToastContainer />
-      <ConflictDialog />
       <div className="flex flex-1 w-full overflow-hidden gap-2">
         {/* 左栏 — 模块管理面板 */}
         <aside

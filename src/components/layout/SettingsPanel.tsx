@@ -1,5 +1,5 @@
 // ============================================================
-// SettingsPanel — 设置面板（模板/字体/颜色/AI 配置/解析配置/翻译）
+// SettingsPanel — 设置面板（模板/排版/颜色/AI 配置/解析配置/翻译）
 // 从 RightPanel 拆出，减小主文件体积。
 // ============================================================
 
@@ -26,17 +26,6 @@ import ThemeColorPicker from '@/components/common/ThemeColorPicker'
 import TemplateSwitcher from '@/components/common/TemplateSwitcher'
 import ModuleTitleStylePicker from '@/components/common/ModuleTitleStylePicker'
 import TranslateDialog from '@/components/resume/TranslateDialog'
-
-const FONT_OPTIONS = [
-    { label: '思源黑体', value: 'Source Han Sans' },
-    { label: '微软雅黑', value: 'Microsoft YaHei' },
-    { label: '宋体', value: 'SimSun' },
-    { label: '楷体', value: 'KaiTi' },
-    // { label: 'Arial', value: 'Arial' },
-    // { label: 'Times New Roman', value: 'Times New Roman' },
-    // { label: '苹方', value: 'PingFang SC' },
-    { label: '黑体', value: 'SimHei' },
-]
 
 interface RangeFieldProps {
     label: string
@@ -341,19 +330,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     </div>
                 )}
 
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">
-                        内容字体（{FONT_OPTIONS.find((item) => item.value === styleSettings.fontFamily)?.label ?? styleSettings.fontFamily}）
-                    </label>
-                    <StyledSelect
-                        value={styleSettings.fontFamily}
-                        onChange={(v) => setStyleSettings({ fontFamily: v })}
-                        options={FONT_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
-                        size="compact"
-                        className="mt-1"
-                    />
-                </div>
-
                 <RangeField
                     label="内容字号"
                     value={styleSettings.fontSize}
@@ -364,20 +340,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 />
 
                 <div className="border-t border-gray-100 pt-3 space-y-3">
-                    <p className="text-xs text-gray-400">模块标题字体设置</p>
-
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-700">
-                            标题字体（{FONT_OPTIONS.find((item) => item.value === (styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily))?.label ?? (styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily)}）
-                        </label>
-                        <StyledSelect
-                            value={styleSettings.moduleTitleFontFamily ?? styleSettings.fontFamily}
-                            onChange={(v) => setStyleSettings({ moduleTitleFontFamily: v })}
-                            options={FONT_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
-                            size="compact"
-                            className="mt-1"
-                        />
-                    </div>
+                    <p className="text-xs text-gray-400">模块标题设置</p>
 
                     <RangeField
                         label="标题字号"
@@ -747,12 +710,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                 onCreated={(translateResult) => {
                     setShowTranslateDialog(false)
                     // 创建翻译后的简历副本
-                    // 合并样式：保留原设置，仅覆盖建议的字体
+                    // 合并样式：字体族固定为简历默认值，仅保留字号/间距等设置
                     const newStyleSettings = { ...resume.styleSettings }
-                    if (translateResult.suggestedStyleSettings?.fontFamily) {
-                        newStyleSettings.fontFamily = translateResult.suggestedStyleSettings.fontFamily
-                        newStyleSettings.moduleTitleFontFamily = translateResult.suggestedStyleSettings.fontFamily
-                    }
                     resumeApi.create({
                         title: translateResult.translatedTitle,
                         locale: translateResult.targetLocale,

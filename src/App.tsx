@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useEffect, useState } from 'react'
-import { useResumeStore, peekLocalDraft, serializeResumeContent, flushToCloud } from '@/store/resumeStore'
+import { useResumeStore, peekLocalDraft, flushToCloud } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import AppShell from '@/components/layout/AppShell'
 import ShareViewPage from '@/pages/ShareViewPage'
@@ -13,8 +13,7 @@ import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
 import KickConfirmModal from '@/components/common/KickConfirmModal'
 import { resumeApi, authApi } from '@/api'
-import { requestConflictResolve } from '@/components/common/ConflictDialog'
-import type { ResumeLocale, TemplateType, Module, ResumeStyleSettings, Resume } from '@/types/resume'
+import type { ResumeLocale, TemplateType, Module, ResumeStyleSettings } from '@/types/resume'
 
 function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
@@ -47,7 +46,7 @@ function restoreCloudSnapshotData(cloudResume: any) {
 }
 
 const App: React.FC = () => {
-  const { initResume, loadFromStorage, setResumeVersion, setDraftsVersion, setPersonalData } = useResumeStore()
+  const { initResume, loadFromStorage, setResumeVersion, setDraftsVersion, setPersonalData, setBasedOnSnapshotId } = useResumeStore()
   const { isAuthenticated, checkAuth, logout } = useAuthStore()
   // 单设备登录：检测到他设备后暂存了 loginTicket 待二次确认；确认前保持在登录页，不进入应用
   const kickPending = useAuthStore((s) => !!s.kickConfirm)
@@ -83,52 +82,39 @@ const App: React.FC = () => {
   }
 
   // 保留本地未提交的草稿（不被云端覆盖），并对齐云端版本号以便后续落库时覆盖云端。
-  const keepLocalDraft = (draft: Resume, cloud: any) => {
-    restoreCloudSnapshotData(cloud)
+  const keepLocalDraft = (draft: NonNullable<ReturnType<typeof peekLocalDraft>>, cloud: any) => {
+    // 保留本端时不能先恢复云端 snapshotDrafts，否则会覆盖当前浏览器里的快照草稿。
+    if (draft.basedOnSnapshotId) {
+      setBasedOnSnapshotId(draft.basedOnSnapshotId)
+    }
+    const cloudVersion = (cloud as any).version ?? 0
+    const cloudDraftsVersion = (cloud as any).snapshotDraftsVersion ?? 0
     initResume({
-      id: draft.id,
-      title: draft.title,
-      locale: draft.locale,
-      template: draft.template,
-      themeColor: draft.themeColor,
-      styleSettings: draft.styleSettings,
-      modules: draft.modules,
+      id: draft.data.id,
+      title: draft.data.title,
+      locale: draft.data.locale,
+      template: draft.data.template,
+      themeColor: draft.data.themeColor,
+      styleSettings: draft.data.styleSettings,
+      modules: draft.data.modules,
       updatedAt: Date.now(),
     })
     // 对齐云端版本号：本地草稿提交时用云端 version 才能通过乐观锁覆盖
-    setResumeVersion((cloud as any).version ?? 0)
-    setDraftsVersion((cloud as any).snapshotDraftsVersion ?? 0)
-    ;(window as any).__cloudSyncSetCloudId?.(cloud.id)
+    setResumeVersion(cloudVersion)
+    setDraftsVersion(cloudDraftsVersion)
+    ;(window as any).__cloudSyncAlignVersion?.(cloud.id, cloudVersion, cloudDraftsVersion)
   }
 
-  // 加载云端简历前，先检测本地是否有「同一份简历、更新且内容不同」的未提交草稿。
-  // 有冲突 → 弹窗仲裁；否则直接用云端，避免无脑覆盖本地未落库的改动。
+  // 加载云端简历前，先检测本地是否有同一份简历的未提交草稿。
+  // 单设备策略：只要本地草稿更新，就默认保留本端并自动落库，不再让用户仲裁。
   const loadCloudWithConflictCheck = async (cloud: any) => {
     const draft = peekLocalDraft()
-    const isConflict =
-      draft &&
-      draft.data.id === cloud.id &&
-      draft.savedAt > (cloud.updatedAt ?? 0) &&
-      serializeResumeContent(draft.data) !== serializeResumeContent(cloud as Resume)
+    const shouldKeepLocal = draft && draft.data.id === cloud.id && draft.savedAt > (cloud.updatedAt ?? 0)
 
-    if (isConflict) {
-      // 字段级差异：本端 modules 作 currentModules(before)，云端作 comparisonModules(after)
-      const loadDiff = async () => {
-        const result = await resumeApi.diffSnapshots(
-          cloud.id, '', '',
-          draft!.data.modules as unknown[],
-          (cloud.modules ?? []) as unknown[],
-        )
-        return result.diffs
-      }
-      const choice = await requestConflictResolve(loadDiff)
-      if (choice === 'keepLocal') {
-        keepLocalDraft(draft!.data, cloud)
-        // 确认保留本地后立即落库，把本地版固化到云端（已对齐云端 version，可通过乐观锁）
-        void flushToCloud()
+    if (shouldKeepLocal) {
+        keepLocalDraft(draft!, cloud)
+        await flushToCloud()
         return
-      }
-      // 'useCloud' 或 取消（稍后处理）→ 用云端覆盖（云端已是最新，无需落库）
     }
     hydrateFromCloud(cloud)
   }
