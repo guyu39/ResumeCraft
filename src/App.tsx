@@ -19,16 +19,8 @@ function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 }
 
-/** 从云端响应恢复快照专属草稿到 localStorage + 恢复 basedOnSnapshotId */
+/** 从云端响应恢复 basedOnSnapshotId（快照草稿中转层已移除，编辑直接落 resume_versions） */
 function restoreCloudSnapshotData(cloudResume: any) {
-  // 恢复快照草稿到 localStorage（确保重入后可被 handleSelectSnapshot 读取）
-  if (cloudResume?.snapshotDrafts && typeof cloudResume.snapshotDrafts === 'object') {
-    for (const [snapshotId, draft] of Object.entries(cloudResume.snapshotDrafts)) {
-      try {
-        localStorage.setItem(`resumecraft_snapshot_draft_${snapshotId}`, JSON.stringify(draft))
-      } catch { /* ignore */ }
-    }
-  }
   // 恢复 basedOnSnapshotId，使 handleSnapshotsLoaded 能选中正确的快照
   // 优先级：云端 > localStorage fallback（迁移未执行时 based_on_snapshot_id 列为 null）
   const cloudId = cloudResume?.basedOnSnapshotId
@@ -43,6 +35,15 @@ function restoreCloudSnapshotData(cloudResume: any) {
       }
     } catch { /* ignore */ }
   }
+  // 一次性清理：移除历史遗留的快照草稿 localStorage key（草稿中转层已废弃）
+  try {
+    const toRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('resumecraft_snapshot_draft_')) toRemove.push(key)
+    }
+    for (const key of toRemove) localStorage.removeItem(key)
+  } catch { /* ignore */ }
 }
 
 const App: React.FC = () => {

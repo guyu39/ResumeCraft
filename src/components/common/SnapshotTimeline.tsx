@@ -71,8 +71,6 @@ export default function SnapshotTimeline({
         setTooltip(null)
         try {
           await resumeApi.deleteSnapshot(resumeId, snapshotId)
-          // 清除该快照的本地草稿
-          try { localStorage.removeItem(`resumecraft_snapshot_draft_${snapshotId}`) } catch { /* ignore */ }
           await loadSnapshots()
           toast('快照已删除', 'success')
         } catch (e) {

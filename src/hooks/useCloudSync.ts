@@ -19,26 +19,6 @@ function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 }
 
-function collectSnapshotDrafts(): Record<string, unknown> {
-  const drafts: Record<string, unknown> = {}
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (!key || !key.startsWith('resumecraft_snapshot_draft_')) continue
-      const raw = localStorage.getItem(key)
-      if (!raw) continue
-      try {
-        drafts[key.slice('resumecraft_snapshot_draft_'.length)] = JSON.parse(raw)
-      } catch {
-        console.warn('[CloudSync] 忽略损坏的快照草稿:', key)
-      }
-    }
-  } catch (error) {
-    console.warn('[CloudSync] 读取快照草稿失败:', error)
-  }
-  return drafts
-}
-
 interface PersistedResumePayload {
   title: string
   locale: string
@@ -48,7 +28,6 @@ interface PersistedResumePayload {
   modules: Resume['modules']
   personalData: Record<string, unknown>
   basedOnSnapshotId?: string
-  snapshotDrafts?: Record<string, unknown>
 }
 
 interface SaveWaiter {
@@ -76,7 +55,6 @@ function serializePayload(payload: PersistedResumePayload): string {
 function buildPayload(): PersistedResumePayload {
   const state = useResumeStore.getState()
   const resume = state.resume
-  const snapshotDrafts = collectSnapshotDrafts()
   return {
     title: resume.title,
     locale: resume.locale,
@@ -86,7 +64,6 @@ function buildPayload(): PersistedResumePayload {
     modules: resume.modules,
     personalData: state.personalData,
     basedOnSnapshotId: state.basedOnSnapshotId || undefined,
-    snapshotDrafts: Object.keys(snapshotDrafts).length > 0 ? snapshotDrafts : undefined,
   }
 }
 
@@ -109,7 +86,6 @@ function cloudPayload(cloud: ResumeDetail): PersistedResumePayload {
     modules: cloud.modules as Resume['modules'],
     personalData: cloud.personalData || {},
     basedOnSnapshotId: cloud.basedOnSnapshotId || undefined,
-    snapshotDrafts: cloud.snapshotDrafts,
   }
 }
 

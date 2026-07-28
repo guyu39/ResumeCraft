@@ -155,9 +155,9 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveSt
     }
   }, [resume.id])
 
-  // 点击节点 → 切换快照。快照是不可变时间点，但支持每个快照独立的本地草稿：
-  // - 切走时：将当前编辑保存到快照专属 localStorage key，而非云DB
-  // - 切入时：优先加载快照专属本地草稿（如果存在），跳过云端 API
+  // 点击节点 → 切换快照。快照正文权威在 resume_versions.content_snapshot：
+  // - 切走时：先把当前编辑 flush 到云端（更新当前快照行）
+  // - 切入时：从云端加载目标快照的 content_snapshot
   const handleSelectSnapshot = useCallback(async (snapshot: SnapshotListItem) => {
     if (snapshot.id === activeSnapshotId) return
 
@@ -166,27 +166,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveSt
       await flushToCloud()
     }
 
-    // ② 进入目标快照：优先加载快照专属本地草稿
-    const targetDraftKey = `resumecraft_snapshot_draft_${snapshot.id}`
-    const targetDraft = (() => { try { return localStorage.getItem(targetDraftKey) } catch { return null } })()
-
-    if (targetDraft) {
-      const parsed = JSON.parse(targetDraft)
-      if (parsed.modules) {
-        initResume({
-          ...resume,
-          modules: parsed.modules as Resume['modules'],
-          themeColor: (parsed.themeColor as Resume['themeColor']) ?? resume.themeColor,
-          styleSettings: (parsed.styleSettings as Resume['styleSettings']) ?? resume.styleSettings,
-        })
-        setActiveSnapshotId(snapshot.id)
-        setBasedOnSnapshotId(snapshot.id)
-        void flushToCloud()
-        return
-      }
-    }
-
-    // ③ 无本地草稿：从云端加载快照原始内容
+    // ② 从云端加载目标快照原始内容
     try {
       const { content } = await resumeApi.getSnapshotDetail(resume.id, snapshot.id)
       const c = content as { modules?: unknown[]; themeColor?: string; styleSettings?: unknown }
@@ -208,23 +188,11 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveSt
   const handleCompareSnapshot = useCallback(async (snapshotId: string) => {
     if (!activeSnapshotId || activeSnapshotId === snapshotId) return
     try {
-      // 加载对比快照的本地草稿（如果有修改但未落库）
-      let comparisonModules: unknown[] | undefined
-      const comparisonDraftKey = `resumecraft_snapshot_draft_${snapshotId}`
-      try {
-        const raw = localStorage.getItem(comparisonDraftKey)
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          if (parsed.modules) {
-            comparisonModules = parsed.modules
-          }
-        }
-      } catch { /* ignore */ }
-      // 将当前模块（含草稿）和对比快照模块（含草稿，如有）都传给后端
+      // 将当前模块（含草稿）和对比快照模块都传给后端
       const result = await resumeApi.diffSnapshots(
         resume.id, activeSnapshotId, snapshotId,
         resume.modules as unknown[],
-        comparisonModules,
+        undefined,
       )
       setDiffResult(result)
     } catch { /* ignore */ }
@@ -250,29 +218,6 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveSt
         setActiveSnapshotId(targetId)
         setBasedOnSnapshotId(targetId)
       }
-
-      // 加载本地草稿（仅在草稿比云端数据新时使用，避免旧草稿覆盖云端更新）
-      const draftKey = `resumecraft_snapshot_draft_${targetId}`
-      try {
-        const raw = localStorage.getItem(draftKey)
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          if (parsed.modules) {
-            const current = useResumeStore.getState()
-            // 比较草稿保存时间和云端更新时间：草稿更新时才覆盖
-            const cloudUpdatedAt = current.resume.updatedAt ?? 0
-            const draftSavedAt = (parsed.savedAt as number) ?? 0
-            if (draftSavedAt > cloudUpdatedAt) {
-              current.initResume({
-                ...current.resume,
-                modules: parsed.modules as Resume['modules'],
-                themeColor: (parsed.themeColor as Resume['themeColor']) ?? current.resume.themeColor,
-                styleSettings: (parsed.styleSettings as Resume['styleSettings']) ?? current.resume.styleSettings,
-              })
-            }
-          }
-        }
-      } catch { /* ignore */ }
     }
   }, [activeSnapshotId, basedOnSnapshotId, setActiveSnapshotId, setBasedOnSnapshotId, setStoreSnapshots])
 
