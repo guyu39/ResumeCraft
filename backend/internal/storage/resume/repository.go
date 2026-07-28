@@ -184,22 +184,22 @@ func (r *repository) Create(ctx context.Context, userID string, req model.Create
 		return nil, fmt.Errorf("create resume: %w", err)
 	}
 
-	// 自动创建 "默认" 快照（隐藏，不在时间轴显示）
-	var defaultSnapshotID string
+	// 自动创建 "current" 快照（编辑载体，正文权威）；同时回填 based_on_snapshot_id 指向它
+	var currentSnapshotID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO resume_versions (resume_id, user_id, content_snapshot, snapshot_type, label)
-		VALUES ($1, $2, $3, 'default', '默认')
+		VALUES ($1, $2, $3, 'current', '当前')
 		RETURNING id
-	`, resumeID, userID, contentJSON).Scan(&defaultSnapshotID)
+	`, resumeID, userID, contentJSON).Scan(&currentSnapshotID)
 	if err != nil {
-		return nil, fmt.Errorf("create default snapshot: %w", err)
+		return nil, fmt.Errorf("create current snapshot: %w", err)
 	}
 
-	// 将 latest_version_id 指向默认快照
+	// latest_version_id 与 based_on_snapshot_id 均指向 current 快照
 	if _, err = tx.Exec(ctx, `
-		UPDATE resumes SET latest_version_id = $1 WHERE id = $2
-	`, defaultSnapshotID, resumeID); err != nil {
-		return nil, fmt.Errorf("set latest_version_id: %w", err)
+		UPDATE resumes SET latest_version_id = $1, based_on_snapshot_id = $1 WHERE id = $2
+	`, currentSnapshotID, resumeID); err != nil {
+		return nil, fmt.Errorf("set latest_version_id and based_on_snapshot_id: %w", err)
 	}
 
 	if err = r.audit.AppendTx(ctx, tx, audit.Entry{
@@ -207,7 +207,7 @@ func (r *repository) Create(ctx context.Context, userID string, req model.Create
 		ResourceType: "resume",
 		ResourceID:   resumeID,
 		Metadata: map[string]any{
-			"default_snapshot_id": defaultSnapshotID,
+			"current_snapshot_id": currentSnapshotID,
 		},
 	}); err != nil {
 		return nil, err
@@ -302,11 +302,12 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	var currentVersionID *string
 	var currentContentJSON []byte
 	var currentVersion, currentDraftsVersion int64
+	var currentBasedOnSnapshotID *string
 	err = tx.QueryRow(ctx, `
-		SELECT latest_version_id, content, version, snapshot_drafts_version
+		SELECT latest_version_id, content, version, snapshot_drafts_version, based_on_snapshot_id
 		FROM resumes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 		FOR UPDATE
-	`, resumeID, userID).Scan(&currentVersionID, &currentContentJSON, &currentVersion, &currentDraftsVersion)
+	`, resumeID, userID).Scan(&currentVersionID, &currentContentJSON, &currentVersion, &currentDraftsVersion, &currentBasedOnSnapshotID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrResumeNotFound
@@ -322,6 +323,7 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	updateResumeData := false
 	updateDrafts := false
 	var contentVersion, draftsVersion int64
+	var newContentJSON []byte
 
 	if req.Title != "" {
 		updates = append(updates, fmt.Sprintf("title = $%d", argIdx))
@@ -362,6 +364,7 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		if err != nil {
 			return nil, fmt.Errorf("marshal content: %w", err)
 		}
+		newContentJSON = contentJSON
 		updates = append(updates, fmt.Sprintf("content = $%d", argIdx))
 		args = append(args, contentJSON)
 		argIdx++
@@ -492,6 +495,24 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 			return nil, ErrVersionConflict
 		}
 		return nil, fmt.Errorf("update resume: %w", err)
+	}
+
+	// 正文同步落到 based_on_snapshot_id 指向的快照行（resume_versions 为正文权威，resumes.content 为镜像）。
+	// targetSnapshotID 取本次请求传入的 BasedOnSnapshotID（切换快照场景），否则用当前基于的快照。
+	if updateContent {
+		targetSnapshotID := currentBasedOnSnapshotID
+		if req.BasedOnSnapshotID != nil && *req.BasedOnSnapshotID != "" {
+			targetSnapshotID = req.BasedOnSnapshotID
+		}
+		if targetSnapshotID != nil && *targetSnapshotID != "" {
+			if _, err := tx.Exec(ctx, `
+				UPDATE resume_versions
+				SET content_snapshot = $1, version = version + 1
+				WHERE id = $2 AND resume_id = $3 AND user_id = $4
+			`, newContentJSON, *targetSnapshotID, resumeID, userID); err != nil {
+				return nil, fmt.Errorf("sync snapshot content: %w", err)
+			}
+		}
 	}
 
 	var latestSnapshotID *string

@@ -161,21 +161,9 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveSt
   const handleSelectSnapshot = useCallback(async (snapshot: SnapshotListItem) => {
     if (snapshot.id === activeSnapshotId) return
 
-    // ① 离开当前快照：对应当前编辑的快照专属固化到 localStorage
-    // syncStatus !== 'idle' 而非 'dirty'：avatar 上传后 flushToCloud 将状态变为
-    // cloud_synced，但快照 content_snapshot 仍是旧数据，必须保存草稿防止丢失
-    if (syncStatus !== 'idle' && activeSnapshotId) {
-      const draftKey = `resumecraft_snapshot_draft_${activeSnapshotId}`
-      try {
-        localStorage.setItem(draftKey, JSON.stringify({
-          modules: resume.modules,
-          themeColor: resume.themeColor,
-          styleSettings: resume.styleSettings,
-          savedAt: Date.now(),
-        }))
-      } catch { /* ignore */ }
-      // 注意：不调用 setSyncStatus('cloud_synced')！
-      // syncStatus 跟踪的是"相对于云端的修改"，保存到 localStorage 草稿不等于同步到云端
+    // ① 离开当前快照：先把当前编辑 flush 到云端（更新当前快照 resume_versions.content_snapshot）
+    if (syncStatus !== 'idle') {
+      await flushToCloud()
     }
 
     // ② 进入目标快照：优先加载快照专属本地草稿
