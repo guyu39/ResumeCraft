@@ -73,6 +73,8 @@ type CreateResumeRequest struct {
 // UpdateResumeRequest 更新简历请求
 type UpdateResumeRequest struct {
 	Title                 string                     `json:"title" binding:"max=255"`
+	Locale                string                     `json:"locale" binding:"max=10"`
+	Template              string                     `json:"template" binding:"max=50"`
 	ThemeColor            string                     `json:"themeColor"`
 	StyleSettings         *ResumeStyleSettings       `json:"styleSettings"`
 	Modules               []map[string]interface{}   `json:"modules"`

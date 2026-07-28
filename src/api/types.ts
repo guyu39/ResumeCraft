@@ -136,6 +136,8 @@ export interface CreateResumeRequest {
 
 export interface UpdateResumeRequest {
   title?: string
+  locale?: string
+  template?: string
   themeColor?: string
   styleSettings?: ResumeStyleSettings
   modules?: unknown[]

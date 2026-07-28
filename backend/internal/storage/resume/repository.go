@@ -319,6 +319,7 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	args := []interface{}{}
 	argIdx := 1
 	updateContent := false
+	updateResumeData := false
 	updateDrafts := false
 	var contentVersion, draftsVersion int64
 
@@ -326,20 +327,26 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		updates = append(updates, fmt.Sprintf("title = $%d", argIdx))
 		args = append(args, req.Title)
 		argIdx++
+		updateResumeData = true
+	}
+	if req.Locale != "" {
+		updates = append(updates, fmt.Sprintf("locale = $%d", argIdx))
+		args = append(args, req.Locale)
+		argIdx++
+		updateResumeData = true
+	}
+	if req.Template != "" {
+		updates = append(updates, fmt.Sprintf("template = $%d", argIdx))
+		args = append(args, req.Template)
+		argIdx++
+		updateResumeData = true
 	}
 
 	if req.Modules != nil || req.ThemeColor != "" || req.StyleSettings != nil {
-		// 乐观锁：content 更新需要 version CAS
-		if req.Version != nil {
-			contentVersion = *req.Version
-			if contentVersion != currentVersion {
-				return nil, fmt.Errorf("%w: expected v%d, got v%d", ErrVersionConflict, currentVersion, contentVersion)
-			}
-		}
-		// req.Version == nil：兼容旧客户端过渡期，不阻塞但无版本保护
-
 		var existingContent model.ResumeContent
-		json.Unmarshal(currentContentJSON, &existingContent)
+		if err := json.Unmarshal(currentContentJSON, &existingContent); err != nil {
+			return nil, fmt.Errorf("unmarshal current content: %w", err)
+		}
 
 		if req.ThemeColor != "" {
 			existingContent.ThemeColor = req.ThemeColor
@@ -359,6 +366,7 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		args = append(args, contentJSON)
 		argIdx++
 		updateContent = true
+		updateResumeData = true
 	}
 
 	// 个人信息（独立字段，不复用 content 的乐观锁版本号：
@@ -374,6 +382,15 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 		updates = append(updates, fmt.Sprintf("based_on_snapshot_id = $%d", argIdx))
 		args = append(args, *req.BasedOnSnapshotID)
 		argIdx++
+		updateResumeData = true
+	}
+
+	// title/locale/template/正文/当前快照关联共享 content version，避免完整保存请求只更新独立列却绕过 CAS。
+	if updateResumeData && req.Version != nil {
+		contentVersion = *req.Version
+		if contentVersion != currentVersion {
+			return nil, fmt.Errorf("%w: expected v%d, got v%d", ErrVersionConflict, currentVersion, contentVersion)
+		}
 	}
 
 	if req.SnapshotDrafts != nil && len(req.SnapshotDrafts) > 0 {
@@ -439,7 +456,7 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	}
 
 	// 递增版本号
-	if updateContent {
+	if updateResumeData {
 		updates = append(updates, "version = version + 1")
 	}
 	if updateDrafts {
@@ -452,7 +469,7 @@ func (r *repository) Update(ctx context.Context, userID, resumeID string, req mo
 	args = append(args, resumeID, userID)
 	argIdx += 2
 
-	if updateContent && req.Version != nil {
+	if updateResumeData && req.Version != nil {
 		whereConditions = append(whereConditions, fmt.Sprintf("version = $%d", argIdx))
 		args = append(args, contentVersion)
 		argIdx++

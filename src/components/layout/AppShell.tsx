@@ -53,7 +53,7 @@ const AppShell: React.FC = () => {
   const resume = useResumeStore((s) => s.resume)
 
   // 云端同步
-  const { saveStatus } = useCloudSync()
+  const { saveStatus, manualSave } = useCloudSync()
 
   // 后台解析简历（从简历列表页传入的文件）
   const { status: parseStatus, error: parseError, dismiss: dismissParse } = usePendingParse()
@@ -133,11 +133,13 @@ const AppShell: React.FC = () => {
         tone: 'warning',
         title: '云端同步异常',
         description: '本地编辑仍然保留，建议稍后继续操作并等待自动重试。',
+        actionLabel: '立即重试',
+        onAction: () => { void manualSave() },
       })
     }
 
     return items
-  }, [dismissParse, parseError, parseStatus, resume.modules, saveStatus])
+  }, [dismissParse, manualSave, parseError, parseStatus, resume.modules, saveStatus])
 
   React.useEffect(() => {
     if (!拖拽中) return
@@ -225,7 +227,11 @@ const AppShell: React.FC = () => {
 
         {/* 中栏 flex:1 — 简历实时预览 */}
         <main className="flex-1 flex flex-col overflow-hidden rounded-2xl border border-line bg-surface" style={{ minWidth: `${MIDDLE_MIN}px` }}>
-          <CenterPanel workspaceNotices={工作区通知} />
+          <CenterPanel
+            workspaceNotices={工作区通知}
+            saveStatus={saveStatus}
+            onRetrySave={() => { void manualSave() }}
+          />
         </main>
 
         {/* 右拖拽条 */}

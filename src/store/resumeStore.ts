@@ -267,6 +267,9 @@ interface StoragePayload {
   data: Resume
   savedAt: number
   basedOnSnapshotId: string | null
+  personalData?: Record<string, unknown>
+  localRevision?: number
+  ackedRevision?: number
 }
 
 interface CollectionPayload {
@@ -336,11 +339,15 @@ function upsertResumeToCollection(resume: Resume): void {
 
 function saveToStorage(resume: Resume): void {
   try {
+    const state = useResumeStore.getState()
     const payload: StoragePayload = {
       version: STORAGE_VERSION,
       data: resume,
       savedAt: Date.now(),
-      basedOnSnapshotId: useResumeStore.getState().basedOnSnapshotId,
+      basedOnSnapshotId: state.basedOnSnapshotId,
+      personalData: state.personalData,
+      localRevision: state.localRevision,
+      ackedRevision: state.ackedRevision,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     upsertResumeToCollection(resume)
@@ -364,6 +371,10 @@ function loadDraftFromStorage(): Resume | null {
     if (payload.basedOnSnapshotId) {
       useResumeStore.getState().setBasedOnSnapshotId(payload.basedOnSnapshotId)
     }
+    if (payload.personalData) {
+      useResumeStore.getState().setPersonalDataFromStorage(payload.personalData)
+    }
+    useResumeStore.getState().setSyncRevisions(payload.localRevision ?? 0, payload.ackedRevision ?? 0)
     return payload.data
   } catch (e) {
     console.warn('[ResumeStore] localStorage 读取失败:', e)
@@ -373,7 +384,7 @@ function loadDraftFromStorage(): Resume | null {
 
 // 只读地探查本地草稿（含 savedAt），不触发任何副作用（不恢复 basedOnSnapshotId、不写回）。
 // 供加载/刷新时做「本地草稿 vs 云端」新旧仲裁，避免无脑用云端覆盖未提交的本地改动。
-export function peekLocalDraft(): { data: Resume; savedAt: number; basedOnSnapshotId: string | null } | null {
+export function peekLocalDraft(): { data: Resume; savedAt: number; basedOnSnapshotId: string | null; localRevision: number; ackedRevision: number } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
@@ -384,6 +395,8 @@ export function peekLocalDraft(): { data: Resume; savedAt: number; basedOnSnapsh
       data: payload.data,
       savedAt: payload.savedAt ?? 0,
       basedOnSnapshotId: payload.basedOnSnapshotId ?? null,
+      localRevision: payload.localRevision ?? 0,
+      ackedRevision: payload.ackedRevision ?? 0,
     }
   } catch {
     return null
@@ -440,16 +453,18 @@ export async function flushToCloud(): Promise<boolean> {
 // ---------- 防抖保存 ----------
 const debouncedSave = debounce((resume: Resume) => {
   saveToStorage(resume)
-}, 2000)
+}, 150)
 
 // 标记脏数据 + 防抖保存到 localStorage
 function markDirtyAndSave(resume: Resume) {
-  useResumeStore.getState().setSyncStatus('dirty')
+  const state = useResumeStore.getState()
+  state.setSyncStatus('dirty')
+  state.setLocalRevision(state.localRevision + 1)
   debouncedSave(resume)
 }
 
 // 强制刷新：退出前立即保存到 localStorage
-function flushDraft() {
+export function flushDraft() {
   const resume = useResumeStore.getState().resume
   debouncedSave.flush(resume)
 }
@@ -489,6 +504,9 @@ interface ResumeStoreState {
 
   // 最后保存时间
   lastSavedAt: number | null
+  // 本地编辑 revision 与云端确认 revision
+  localRevision: number
+  ackedRevision: number
 }
 
 interface ResumeStoreActions {
@@ -555,8 +573,12 @@ interface ResumeStoreActions {
   setSyncStatus: (status: SyncStatus) => void
   setResumeVersion: (v: number) => void
   setDraftsVersion: (v: number) => void
+  setLocalRevision: (v: number) => void
+  setAckedRevision: (v: number) => void
+  setSyncRevisions: (localRevision: number, ackedRevision: number) => void
   // 个人信息（独立存储）
   setPersonalData: (data: Record<string, unknown>) => void
+  setPersonalDataFromStorage: (data: Record<string, unknown>) => void
 }
 
 type ResumeStore = ResumeStoreState & ResumeStoreActions
@@ -568,6 +590,8 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   activeModuleId: null,
   isLoading: false,
   lastSavedAt: null,
+  localRevision: 0,
+  ackedRevision: 0,
   previewResume: null,
   activeSnapshotId: null,
   basedOnSnapshotId: null,
@@ -915,7 +939,16 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   setSyncStatus: (status: SyncStatus) => set({ syncStatus: status }),
   setResumeVersion: (v: number) => set({ resumeVersion: v }),
   setDraftsVersion: (v: number) => set({ draftsVersion: v }),
-  setPersonalData: (data: Record<string, unknown>) => set({ personalData: data, syncStatus: 'dirty' }),
+  setPersonalData: (data: Record<string, unknown>) => set((state) => {
+    const nextRevision = state.localRevision + 1
+    const next = { ...state, personalData: data, localRevision: nextRevision, syncStatus: 'dirty' as SyncStatus }
+    debouncedSave(next.resume)
+    return next
+  }),
+  setPersonalDataFromStorage: (data: Record<string, unknown>) => set({ personalData: data }),
+  setLocalRevision: (v: number) => set({ localRevision: v }),
+  setAckedRevision: (v: number) => set({ ackedRevision: v }),
+  setSyncRevisions: (localRevision: number, ackedRevision: number) => set({ localRevision, ackedRevision }),
 }))
 
 // ---------- 导出工具函数（供外部使用） ----------
@@ -991,5 +1024,4 @@ export {
   selectResumeForEditingInStorage,
   removeResumeFromStorageCollection,
   setCurrentResumeIdToStorage,
-  flushDraft,
 }

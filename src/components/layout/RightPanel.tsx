@@ -393,10 +393,19 @@ const RightPanel: React.FC = () => {
     }, [activeModuleId])
 
     // ---------- PDF 导出 ----------
+    const flushBeforeAction = async () => {
+        const saved = await flushToCloud()
+        if (!saved) {
+            toast('云端暂未确认保存，已保存在本地，请稍后重试', 'error')
+            return false
+        }
+        return true
+    }
+
     const handleExport = async (format: ExportFormat = 'pdf') => {
         const labels: Record<ExportFormat, string> = { pdf: 'PDF', markdown: 'Markdown', json: 'JSON', resume: 'Resume' }
+        if (!await flushBeforeAction()) return
         toast(`正在生成 ${labels[format]}，请稍候...`, 'success')
-        await flushToCloud()
         // 失败不再抛出：useExport 已 setError，由右侧 NoticeCenter 内嵌显示，避免重复提示
         await exportFile(resume.id, format, {
             versionId: activeSnapshotId || '',
@@ -406,14 +415,14 @@ const RightPanel: React.FC = () => {
 
     // ---------- AI 综合评估 ----------
     const handleRetryEvaluate = async () => {
-        await flushToCloud()
+        if (!await flushBeforeAction()) return
         await runEvaluate(resume, activeSnapshotId)
     }
 
     const handleReevaluate = async () => {
         // 清除历史选择，直接运行新的评估
         setRestoredEvaluation(null)
-        await flushToCloud()
+        if (!await flushBeforeAction()) return
         await runEvaluate(resume, activeSnapshotId)
     }
 
@@ -426,13 +435,13 @@ const RightPanel: React.FC = () => {
     }
 
     const handleRunCheckup = async () => {
-        await flushToCloud()
+        if (!await flushBeforeAction()) return
         await runCheckup(resume, activeSnapshotId)
     }
 
     const handleRunJDMatch = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {        setRestoredJDMatch(null)
         setRestoredJDScore(null)
-        await flushToCloud()
+        if (!await flushBeforeAction()) return
         await runMatch(resume, form, activeSnapshotId)
     }
 
@@ -444,7 +453,7 @@ const RightPanel: React.FC = () => {
     const handleRunJDScore = async (form: { jdText: string; targetTitle?: string; companyName?: string }) => {
         setRestoredJDMatch(null)
         setRestoredJDScore(null)
-        await flushToCloud()
+        if (!await flushBeforeAction()) return
         await runScore(resume, form, activeSnapshotId)
     }
 

@@ -109,7 +109,7 @@ const App: React.FC = () => {
   // 单设备策略：只要本地草稿更新，就默认保留本端并自动落库，不再让用户仲裁。
   const loadCloudWithConflictCheck = async (cloud: any) => {
     const draft = peekLocalDraft()
-    const shouldKeepLocal = draft && draft.data.id === cloud.id && draft.savedAt > (cloud.updatedAt ?? 0)
+    const shouldKeepLocal = draft && draft.data.id === cloud.id && draft.localRevision > draft.ackedRevision
 
     if (shouldKeepLocal) {
         keepLocalDraft(draft!, cloud)

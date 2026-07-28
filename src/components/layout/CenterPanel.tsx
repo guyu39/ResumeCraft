@@ -4,8 +4,9 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, CheckCircle2, Info, X, XCircle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
-import { useResumeStore } from '@/store/resumeStore'
+import { AlertCircle, AlertTriangle, CheckCircle2, Cloud, Info, LoaderCircle, RefreshCw, WifiOff, X, XCircle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
+import { flushToCloud, useResumeStore } from '@/store/resumeStore'
+import type { SaveStatus } from '@/hooks/useCloudSync'
 import PagedResumePaper, { A4_WIDTH_PX } from '@/components/resume/PagedResumePaper'
 import SnapshotTimeline from '@/components/common/SnapshotTimeline'
 import type { NoticeItem } from '@/components/common/NoticeCenter'
@@ -22,9 +23,11 @@ const MIN_READABLE_SCALE = 0.5 // 低于此阈值提示用户收窄侧栏
 
 interface CenterPanelProps {
   workspaceNotices?: NoticeItem[]
+  saveStatus: SaveStatus
+  onRetrySave: () => void
 }
 
-const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
+const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveStatus, onRetrySave }) => {
   const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, syncStatus, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
@@ -92,6 +95,23 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
     }
     return list
   }, [workspaceNotices, finalScale])
+
+  const saveStatusView = useMemo(() => {
+    switch (saveStatus) {
+      case 'saving':
+        return { label: '正在保存...', icon: LoaderCircle, tone: 'text-sky-600', spinning: true }
+      case 'synced':
+        return { label: '已自动保存', icon: CheckCircle2, tone: 'text-emerald-600', spinning: false }
+      case 'offline':
+        return { label: '离线，已保存在本地', icon: WifiOff, tone: 'text-amber-600', spinning: false }
+      case 'error':
+        return { label: '云端保存失败', icon: AlertCircle, tone: 'text-rose-600', spinning: false }
+      case 'loading':
+        return { label: '正在加载云端简历...', icon: Cloud, tone: 'text-slate-500', spinning: false }
+      default:
+        return { label: '编辑中', icon: Cloud, tone: 'text-slate-500', spinning: false }
+    }
+  }, [saveStatus])
 
   // 预览区点击 → 跳转到对应模块编辑
   const handlePreviewClick = useCallback((e: React.MouseEvent) => {
@@ -173,6 +193,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
         })
         setActiveSnapshotId(snapshot.id)
         setBasedOnSnapshotId(snapshot.id)
+        void flushToCloud()
         return
       }
     }
@@ -190,6 +211,7 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
         })
         setActiveSnapshotId(snapshot.id)
         setBasedOnSnapshotId(snapshot.id)
+        void flushToCloud()
       }
     } catch { /* ignore */ }
   }, [resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, syncStatus])
@@ -276,9 +298,29 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
             <span className="text-xs text-primary bg-brand-soft px-2 py-0.5 rounded">{activeSnapshotLabel}</span>
           )}
         </div>
-        {headerNotices.length > 0 && (
-          <div className="mx-4 min-w-0 flex-1 flex justify-center gap-2 flex-wrap">
-            {headerNotices.map((n) => (
+        <div className="mx-4 flex min-w-0 flex-1 items-center justify-center gap-2">
+          <div
+            className={`inline-flex min-w-[9.5rem] flex-shrink-0 items-center justify-center gap-1.5 text-xs ${saveStatusView.tone}`}
+            role="status"
+            aria-live="polite"
+          >
+            <saveStatusView.icon className={`h-3.5 w-3.5 ${saveStatusView.spinning ? 'animate-spin' : ''}`} aria-hidden="true" />
+            <span className="whitespace-nowrap">{saveStatusView.label}</span>
+            {saveStatus === 'error' && (
+              <button
+                type="button"
+                onClick={onRetrySave}
+                className="ml-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                aria-label="重试云端保存"
+              >
+                <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                重试
+              </button>
+            )}
+          </div>
+          {headerNotices.length > 0 && (
+            <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+              {headerNotices.map((n) => (
               <div key={n.id} className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs ${
                 n.tone === 'success'
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
@@ -296,9 +338,10 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [] }) => {
                 </span>
                 <span className="truncate">{n.title}</span>
               </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
