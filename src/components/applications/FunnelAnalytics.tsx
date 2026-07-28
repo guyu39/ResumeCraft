@@ -129,7 +129,8 @@ const FunnelAnalytics: React.FC = () => {
   // 简历版本对比（按回复率降序，分组条形）
   const versionData = useMemo(() => {
     if (!data) return []
-    return [...data.bySnapshot]
+    // 后端在无分组数据时返回 null/undefined（Go nil slice），兜底避免「is not iterable」
+    return [...(data.bySnapshot ?? [])]
       .sort((a, b) => b.replyRate - a.replyRate)
       .map((s) => ({
         name: s.snapshotLabel || `${s.snapshotVersionId.slice(0, 8)}…`,

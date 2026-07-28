@@ -860,13 +860,14 @@ func (r *repository) DeleteSnapshot(ctx context.Context, snapshotID, userID stri
 	return nil
 }
 
-// IsSnapshotInUse 查询该快照是否被投递记录引用。
-// job_applications.snapshot_version_id 为 NOT NULL 且外键 RESTRICT，被引用时无法删除，需提前拦截。
+// IsSnapshotInUse 查询该快照是否被「有效」投递记录引用。
+// 仅统计 deleted_at IS NULL 的记录：软删除的投递记录已释放快照引用（见 Delete 置空 snapshot_version_id），
+// 不再阻止快照删除；只有仍被有效投递记录绑定的快照才返回 true（触发 409 拦截）。
 func (r *repository) IsSnapshotInUse(ctx context.Context, snapshotID, userID string) (bool, error) {
 	var count int64
 	err := r.pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM job_applications
-		WHERE snapshot_version_id = $1 AND user_id = $2
+		WHERE snapshot_version_id = $1 AND user_id = $2 AND deleted_at IS NULL
 	`, snapshotID, userID).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("check snapshot in use: %w", err)

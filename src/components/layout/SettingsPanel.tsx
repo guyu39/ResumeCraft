@@ -477,7 +477,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, initialAIConfig 
                     <button
                         type="button"
                         onClick={() => {
-                            const next = autoFixEnabled
+                            const next = !autoFixEnabled
                             setAutoFixEnabledState(next)
                             setAutoFixEnabled(next)
                         }}

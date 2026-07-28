@@ -446,7 +446,7 @@ func (r *repository) Delete(ctx context.Context, userID, applicationID string) e
 
 	result, err := tx.Exec(ctx, `
 		UPDATE job_applications
-		SET deleted_at = NOW(), updated_at = NOW()
+		SET deleted_at = NOW(), updated_at = NOW(), snapshot_version_id = NULL
 		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 	`, applicationID, userID)
 	if err != nil {
@@ -1119,7 +1119,8 @@ func (r *repository) GetConversionBySnapshot(ctx context.Context, userID string)
 	}
 	defer rows.Close()
 
-	var items []model.SnapshotConversion
+	// 初始化为非 nil 空切片：分组无数据时序列化输出为 [] 而非 null，契约更稳定
+	items := make([]model.SnapshotConversion, 0)
 	for rows.Next() {
 		var it model.SnapshotConversion
 		if err := rows.Scan(&it.SnapshotVersionID, &it.SnapshotLabel, &it.ResumeID, &it.ResumeTitle, &it.Submitted, &it.Interview, &it.Offer); err != nil {

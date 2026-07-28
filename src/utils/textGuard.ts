@@ -68,7 +68,9 @@ export const findSuspiciousChars = (text: string): SuspiciousChar[] => {
 
 export const getAutoFixEnabled = (): boolean => {
     try {
-        return localStorage.getItem(AUTO_FIX_KEY) === '1'
+        const value = localStorage.getItem(AUTO_FIX_KEY)
+        // 默认开启：未显式设置（null）时为 true；仅当显式设为 '0' 时关闭
+        return value === null ? true : value === '1'
     } catch {
         return false
     }
