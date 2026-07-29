@@ -19,22 +19,10 @@ function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 }
 
-/** 从云端响应恢复 basedOnSnapshotId（快照草稿中转层已移除，编辑直接落 resume_versions） */
+/** 从云端恢复手动快照基准；云端空值必须清除本地遗留关联。 */
 function restoreCloudSnapshotData(cloudResume: any) {
-  // 恢复 basedOnSnapshotId，使 handleSnapshotsLoaded 能选中正确的快照
-  // 优先级：云端 > localStorage fallback（迁移未执行时 based_on_snapshot_id 列为 null）
   const cloudId = cloudResume?.basedOnSnapshotId
-  if (cloudId) {
-    useResumeStore.getState().setBasedOnSnapshotId(cloudId)
-  } else {
-    // fallback：从 localStorage 恢复上次编辑的快照 ID
-    try {
-      const localId = localStorage.getItem('resumecraft_active_snapshot_id')
-      if (localId) {
-        useResumeStore.getState().setBasedOnSnapshotId(localId)
-      }
-    } catch { /* ignore */ }
-  }
+  useResumeStore.getState().setBasedOnSnapshotIdFromStorage(cloudId || null)
   // 一次性清理：移除历史遗留的快照草稿 localStorage key（草稿中转层已废弃）
   try {
     const toRemove: string[] = []
@@ -47,7 +35,7 @@ function restoreCloudSnapshotData(cloudResume: any) {
 }
 
 const App: React.FC = () => {
-  const { initResume, loadFromStorage, setResumeVersion, setDraftsVersion, setPersonalData, setBasedOnSnapshotId } = useResumeStore()
+  const { initResume, loadFromStorage, setResumeVersion, setDraftsVersion, setPersonalDataFromStorage, setBasedOnSnapshotIdFromStorage } = useResumeStore()
   const { isAuthenticated, checkAuth, logout } = useAuthStore()
   // 单设备登录：检测到他设备后暂存了 loginTicket 待二次确认；确认前保持在登录页，不进入应用
   const kickPending = useAuthStore((s) => !!s.kickConfirm)
@@ -75,7 +63,7 @@ const App: React.FC = () => {
     // 这里保留本地已有的新头像，不被本次云端数据的 avatar 字段覆盖。
     const localAvatar = (useResumeStore.getState().personalData as any)?.avatar
     const cloudPersonalData = (cloud as any).personalData ?? {}
-    setPersonalData(localAvatar ? { ...cloudPersonalData, avatar: localAvatar } : cloudPersonalData)
+    setPersonalDataFromStorage(localAvatar ? { ...cloudPersonalData, avatar: localAvatar } : cloudPersonalData)
     ;(window as any).__cloudSyncSetCloudId?.(cloud.id)
     // initResume 已把云端数据写入 store + localStorage（覆盖本地缓存）；
     // 再对齐 useCloudSync 同步指纹，认账「已是云端版」，避免随后又判 dirty 触发多余回写。
@@ -85,9 +73,7 @@ const App: React.FC = () => {
   // 保留本地未提交的草稿（不被云端覆盖），并对齐云端版本号以便后续落库时覆盖云端。
   const keepLocalDraft = (draft: NonNullable<ReturnType<typeof peekLocalDraft>>, cloud: any) => {
     // 保留本端时不能先恢复云端 snapshotDrafts，否则会覆盖当前浏览器里的快照草稿。
-    if (draft.basedOnSnapshotId) {
-      setBasedOnSnapshotId(draft.basedOnSnapshotId)
-    }
+    setBasedOnSnapshotIdFromStorage(draft.basedOnSnapshotId)
     const cloudVersion = (cloud as any).version ?? 0
     const cloudDraftsVersion = (cloud as any).snapshotDraftsVersion ?? 0
     initResume({

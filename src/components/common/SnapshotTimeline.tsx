@@ -64,6 +64,12 @@ export default function SnapshotTimeline({
   const handleTooltipLeave = () => { tooltipHovered.current = false; setTooltip(null) }
 
   const handleDelete = (snapshotId: string) => {
+    if (activeSnapshotId === snapshotId) {
+      setTooltip(null)
+      toast('请先切换到其他分支再删除', 'warning')
+      return
+    }
+
     requestDelete({
       title: '删除快照',
       message: '确定删除此快照？删除后不可恢复。',
@@ -75,7 +81,11 @@ export default function SnapshotTimeline({
           toast('快照已删除', 'success')
         } catch (e) {
           const code = (e as { code?: string })?.code
-          toast(code === 'SNAPSHOT_IN_USE' ? '该快照已被投递记录使用，无法删除' : '删除快照失败', 'error')
+          if (code === 'SNAPSHOT_ACTIVE') {
+            toast('请先切换到其他分支再删除', 'warning')
+          } else {
+            toast(code === 'SNAPSHOT_IN_USE' ? '该快照已被投递记录使用，无法删除' : '删除快照失败', 'error')
+          }
         }
       },
     })
@@ -106,7 +116,6 @@ export default function SnapshotTimeline({
     display: 'inline-block',
   })
 
-  // 仅当存在 2 个及以上快照时才显示时间轴，避免单快照时显示孤零零的胶囊
   if (snapshots.length < 2) return null
 
   return (

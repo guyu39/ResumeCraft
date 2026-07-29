@@ -127,19 +127,8 @@ const AppShell: React.FC = () => {
       })
     }
 
-    if (saveStatus === 'error') {
-      items.push({
-        id: 'cloud-sync-error',
-        tone: 'warning',
-        title: '云端同步异常',
-        description: '本地编辑仍然保留，建议稍后继续操作并等待自动重试。',
-        actionLabel: '立即重试',
-        onAction: () => { void manualSave() },
-      })
-    }
-
     return items
-  }, [dismissParse, manualSave, parseError, parseStatus, resume.modules, saveStatus])
+  }, [dismissParse, parseError, parseStatus, resume.modules])
 
   React.useEffect(() => {
     if (!拖拽中) return

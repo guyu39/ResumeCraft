@@ -30,10 +30,12 @@ create table resume_versions
             on delete cascade,
     content_snapshot jsonb                                                      not null,
     created_at       timestamp with time zone default now()                     not null,
+    updated_at       timestamp with time zone default now()                     not null,
+    version          bigint                   default 0                         not null,
     snapshot_type    varchar(20)              default 'auto'::character varying not null
         constraint chk_snapshot_type
             check ((snapshot_type)::text = ANY
-                   ((ARRAY ['auto'::character varying, 'manual'::character varying, 'default'::character varying])::text[])),
+                   ((ARRAY ['current'::character varying, 'auto'::character varying, 'manual'::character varying, 'default'::character varying])::text[])),
     label            varchar(100)
 );
 
@@ -50,6 +52,7 @@ create table resumes
             on delete cascade,
     title                   varchar(120)             default 'resume'::character varying not null,
     content                 jsonb                    default '{}'::jsonb                 not null,
+    current_version_id      uuid,
     latest_version_id       uuid
         constraint fk_resumes_latest_version
             references resume_versions
@@ -67,6 +70,12 @@ create table resumes
 );
 
 comment on column resumes.based_on_snapshot_id is '当前编辑内容基于的快照ID';
+
+comment on column resumes.current_version_id is '当前可变编辑版本 ID，由应用层校验归属';
+
+comment on column resume_versions.version is '版本正文修订号；current 用于乐观锁，命名快照编辑时递增';
+
+comment on column resume_versions.updated_at is '版本正文或标签最后更新时间';
 
 comment on column resumes.snapshot_drafts is '快照专属草稿 Map<snapshotId, DraftContent>';
 
@@ -87,6 +96,13 @@ create index idx_resumes_user_created_at
 
 create index idx_resume_versions_user_created_at
     on resume_versions (user_id asc, created_at desc);
+
+create unique index idx_resume_versions_one_current
+    on resume_versions (resume_id)
+    where ((snapshot_type)::text = 'current'::text);
+
+create index idx_resume_versions_owner_resume
+    on resume_versions (user_id asc, resume_id asc, created_at desc);
 
 create index idx_resume_versions_manual
     on resume_versions (resume_id asc, snapshot_type asc, created_at desc)

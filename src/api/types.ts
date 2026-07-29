@@ -115,7 +115,8 @@ export interface ResumeDetail {
   styleSettings: ResumeStyleSettings
   modules: unknown[]
   personalData?: Record<string, unknown>
-  latestVersionId: string
+  currentVersionId?: string
+  latestVersionId?: string
   latestSnapshotId?: string
   basedOnSnapshotId?: string
   snapshotDrafts?: Record<string, unknown>
@@ -152,7 +153,8 @@ export interface UpdateResumeRequest {
 export interface ResumeUpdateResponse {
   id: string
   updatedAt: number
-  latestVersionId: string
+  currentVersionId?: string
+  latestVersionId?: string
   latestSnapshotId?: string
   version: number
   snapshotDraftsVersion: number

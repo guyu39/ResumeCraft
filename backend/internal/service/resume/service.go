@@ -14,6 +14,7 @@ var (
 	ErrDuplicateLabel   = errors.New("snapshot label already exists")
 	ErrVersionConflict  = errors.New("version conflict")
 	ErrCommentForbidden = errors.New("comment not found or not owned by visitor")
+	ErrSnapshotActive   = errors.New("active snapshot must be switched before deletion")
 	ErrSnapshotInUse    = errors.New("snapshot is referenced by job applications")
 )
 
@@ -26,13 +27,13 @@ type Service interface {
 	RestoreVersion(ctx context.Context, userID, resumeID, versionID string, expectedVersion *int64) (*model.ResumeUpdateResponse, error)
 
 	// 版本快照
-	ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error)
+	ListSnapshots(ctx context.Context, userID, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error)
 	CreateManualSnapshot(ctx context.Context, userID, resumeID string, label string) (*model.VersionSnapshot, error)
 	CreateSnapshotWithContent(ctx context.Context, userID, resumeID string, contentJSON []byte, label string) (string, error)
-	UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error
-	DeleteSnapshot(ctx context.Context, snapshotID, userID string) error
-	GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error)
-	DiffSnapshots(ctx context.Context, userID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error)
+	UpdateSnapshotLabel(ctx context.Context, userID, resumeID, snapshotID, label string) error
+	DeleteSnapshot(ctx context.Context, userID, resumeID, snapshotID string) error
+	GetSnapshotDetail(ctx context.Context, userID, resumeID, snapshotID string) (*model.VersionSnapshot, []byte, error)
+	DiffSnapshots(ctx context.Context, userID, resumeID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error)
 	SyncAvatarToPersonalData(ctx context.Context, userID, avatarURL string) error
 
 	// 分享链接
@@ -140,17 +141,7 @@ func (s *service) Delete(ctx context.Context, userID, resumeID string) error {
 }
 
 func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionID string, expectedVersion *int64) (*model.ResumeUpdateResponse, error) {
-	// 获取版本内容
-	versionContent, err := s.repo.GetVersionContent(ctx, versionID)
-	if err != nil {
-		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
-			return nil, ErrResumeNotFound
-		}
-		return nil, err
-	}
-
-	// 恢复简历（expectedVersion 非 nil 时启用乐观锁）
-	resp, err := s.repo.RestoreFromVersion(ctx, userID, resumeID, versionID, versionContent, expectedVersion)
+	resp, err := s.repo.RestoreFromVersion(ctx, userID, resumeID, versionID, expectedVersion)
 	if err != nil {
 		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, ErrResumeNotFound
@@ -165,12 +156,15 @@ func (s *service) RestoreVersion(ctx context.Context, userID, resumeID, versionI
 
 // ---------- 版本快照 Service 实现 ----------
 
-func (s *service) ListSnapshots(ctx context.Context, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error) {
+func (s *service) ListSnapshots(ctx context.Context, userID, resumeID string, limit int, includeAuto bool) (*model.SnapshotListResponse, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	items, total, err := s.repo.ListSnapshots(ctx, resumeID, limit, includeAuto)
+	items, total, err := s.repo.ListSnapshots(ctx, userID, resumeID, limit, includeAuto)
 	if err != nil {
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
+			return nil, ErrResumeNotFound
+		}
 		return nil, err
 	}
 	return &model.SnapshotListResponse{
@@ -203,21 +197,8 @@ func (s *service) CreateSnapshotWithContent(ctx context.Context, userID, resumeI
 	return id, nil
 }
 
-func (s *service) UpdateSnapshotLabel(ctx context.Context, snapshotID, userID string, label string) error {
-	return s.repo.UpdateSnapshotLabel(ctx, snapshotID, userID, label)
-}
-
-func (s *service) DeleteSnapshot(ctx context.Context, snapshotID, userID string) error {
-	// 该快照若已被投递记录引用（job_applications.snapshot_version_id 为 NOT NULL 且外键 RESTRICT），
-	// 直接删除会被 PG 拒绝。主动拦截并返回明确错误，避免退回 500。
-	inUse, err := s.repo.IsSnapshotInUse(ctx, snapshotID, userID)
-	if err != nil {
-		return err
-	}
-	if inUse {
-		return ErrSnapshotInUse
-	}
-	if err := s.repo.DeleteSnapshot(ctx, snapshotID, userID); err != nil {
+func (s *service) UpdateSnapshotLabel(ctx context.Context, userID, resumeID, snapshotID, label string) error {
+	if err := s.repo.UpdateSnapshotLabel(ctx, userID, resumeID, snapshotID, label); err != nil {
 		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return ErrResumeNotFound
 		}
@@ -226,8 +207,24 @@ func (s *service) DeleteSnapshot(ctx context.Context, snapshotID, userID string)
 	return nil
 }
 
-func (s *service) GetSnapshotDetail(ctx context.Context, snapshotID, userID string) (*model.VersionSnapshot, []byte, error) {
-	snapshot, content, err := s.repo.GetSnapshotDetail(ctx, snapshotID)
+func (s *service) DeleteSnapshot(ctx context.Context, userID, resumeID, snapshotID string) error {
+	if err := s.repo.DeleteSnapshot(ctx, userID, resumeID, snapshotID); err != nil {
+		if errors.Is(err, resumeRepo.ErrSnapshotActive) {
+			return ErrSnapshotActive
+		}
+		if errors.Is(err, resumeRepo.ErrSnapshotInUse) {
+			return ErrSnapshotInUse
+		}
+		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
+			return ErrResumeNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *service) GetSnapshotDetail(ctx context.Context, userID, resumeID, snapshotID string) (*model.VersionSnapshot, []byte, error) {
+	snapshot, content, err := s.repo.GetSnapshotDetail(ctx, userID, resumeID, snapshotID)
 	if err != nil {
 		if errors.Is(err, resumeRepo.ErrResumeNotFound) {
 			return nil, nil, ErrResumeNotFound
@@ -237,8 +234,12 @@ func (s *service) GetSnapshotDetail(ctx context.Context, snapshotID, userID stri
 	return snapshot, content, nil
 }
 
-func (s *service) DiffSnapshots(ctx context.Context, userID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error) {
-	return s.repo.DiffSnapshots(ctx, req.SnapshotAID, req.SnapshotBID, req.CurrentModules, req.ComparisonModules)
+func (s *service) DiffSnapshots(ctx context.Context, userID, resumeID string, req model.DiffSnapshotsRequest) (*model.DiffResult, error) {
+	result, err := s.repo.DiffSnapshots(ctx, userID, resumeID, req.SnapshotAID, req.SnapshotBID, req.CurrentModules, req.ComparisonModules)
+	if errors.Is(err, resumeRepo.ErrResumeNotFound) {
+		return nil, ErrResumeNotFound
+	}
+	return result, err
 }
 
 func (s *service) SyncAvatarToPersonalData(ctx context.Context, userID, avatarURL string) error {

@@ -106,9 +106,10 @@ export const resumeApi = {
       `/resumes/${resumeId}/snapshots/${snapshotId}`
     ),
 
-  restoreFromSnapshot: (resumeId: string, snapshotId: string) =>
+  restoreFromSnapshot: (resumeId: string, snapshotId: string, version?: number) =>
     apiClient.post<ResumeUpdateResponse>(
-      `/resumes/${resumeId}/snapshots/${snapshotId}/restore`
+      `/resumes/${resumeId}/snapshots/${snapshotId}/restore`,
+      version === undefined ? {} : { version }
     ),
 
   diffSnapshots: (resumeId: string, aId: string, bId: string, currentModules?: unknown[], comparisonModules?: unknown[]) =>
@@ -136,6 +137,7 @@ export interface SnapshotListItem {
   snapshotType: SnapshotType
   label?: string
   createdAt: number
+  updatedAt: number
   isCurrent: boolean
 }
 
@@ -145,6 +147,8 @@ export interface SnapshotDetail {
   snapshotType: SnapshotType
   label?: string
   createdAt: number
+  updatedAt: number
+  version: number
   isCurrent: boolean
 }
 

@@ -368,9 +368,7 @@ function loadDraftFromStorage(): Resume | null {
       return null
     }
     // 恢复 basedOnSnapshotId
-    if (payload.basedOnSnapshotId) {
-      useResumeStore.getState().setBasedOnSnapshotId(payload.basedOnSnapshotId)
-    }
+    useResumeStore.getState().setBasedOnSnapshotIdFromStorage(payload.basedOnSnapshotId ?? null)
     if (payload.personalData) {
       useResumeStore.getState().setPersonalDataFromStorage(payload.personalData)
     }
@@ -567,6 +565,7 @@ interface ResumeStoreActions {
   clearPreviewResume: () => void
   setActiveSnapshotId: (id: string | null) => void
   setBasedOnSnapshotId: (id: string | null) => void
+  setBasedOnSnapshotIdFromStorage: (id: string | null) => void
   setSnapshots: (items: Array<{ id: string; label?: string; snapshotType: string }>) => void
   triggerSnapshotRefresh: () => void
   // 同步状态机
@@ -927,11 +926,23 @@ export const useResumeStore = create<ResumeStore>((set) => ({
   clearPreviewResume: () => set({ previewResume: null, activeSnapshotId: null }),
   setActiveSnapshotId: (id: string | null) => set({ activeSnapshotId: id }),
   setBasedOnSnapshotId: (id: string | null) => {
+    set((state) => {
+      if (state.basedOnSnapshotId === id) return state
+      const nextRevision = state.localRevision + 1
+      return { basedOnSnapshotId: id, activeSnapshotId: id, localRevision: nextRevision, syncStatus: 'dirty' as SyncStatus }
+    })
+    saveToStorage(useResumeStore.getState().resume)
+    try {
+      if (id) localStorage.setItem('resumecraft_active_snapshot_id', id)
+      else localStorage.removeItem('resumecraft_active_snapshot_id')
+    } catch { /* ignore */ }
+  },
+  setBasedOnSnapshotIdFromStorage: (id: string | null) => {
     set({ basedOnSnapshotId: id, activeSnapshotId: id })
-    // 持久化到 localStorage，作为云端列缺失时的 fallback
-    if (id) {
-      try { localStorage.setItem('resumecraft_active_snapshot_id', id) } catch { /* ignore */ }
-    }
+    try {
+      if (id) localStorage.setItem('resumecraft_active_snapshot_id', id)
+      else localStorage.removeItem('resumecraft_active_snapshot_id')
+    } catch { /* ignore */ }
   },
   setSnapshots: (items: Array<{ id: string; label?: string; snapshotType: string }>) => set({ snapshots: items }),
   triggerSnapshotRefresh: () => set((s) => ({ snapshotVersion: s.snapshotVersion + 1 })),

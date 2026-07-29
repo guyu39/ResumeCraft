@@ -87,7 +87,7 @@ const renderModuleForm = (
 
 // ---------- 右栏主组件 ----------
 const RightPanel: React.FC = () => {
-    const { resume, activeModuleId, setActiveModule, activeSnapshotId, triggerSnapshotRefresh, setBasedOnSnapshotId, snapshots } = useResumeStore()
+    const { resume, activeModuleId, setActiveModule, activeSnapshotId, triggerSnapshotRefresh, setBasedOnSnapshotIdFromStorage, snapshots } = useResumeStore()
     const { isAuthenticated } = useAuthStore()
     const formRef = useRef<HTMLDivElement>(null)
     const [showSettings, setShowSettings] = useState(false)
@@ -108,12 +108,17 @@ const RightPanel: React.FC = () => {
         setSnapshotSaving(true)
         setSnapshotError('')
         try {
+            const flushed = await flushToCloud()
+            if (!flushed) {
+                setSnapshotError('当前修改尚未保存到云端，请重试')
+                return
+            }
             const resp = await resumeApi.createSnapshot(resume.id, snapshotLabel.trim())
             setShowSnapshotDialog(false)
             setSnapshotLabel('')
             // 创建快照成功后，设置 basedOnSnapshotId 指向新快照
             if (resp?.id) {
-                setBasedOnSnapshotId(resp.id)
+                setBasedOnSnapshotIdFromStorage(resp.id)
             }
             triggerSnapshotRefresh()
         } catch (error) {

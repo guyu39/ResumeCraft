@@ -260,12 +260,14 @@ func (r *repository) Create(ctx context.Context, params CreateApplicationParams)
 			user_id, resume_id, snapshot_version_id, company_name, department, target_title,
 			jd_text, jd_hash, source, preferred_city, application_url, next_action, match_score, jd_score
 		)
-		SELECT $1, $2, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8, $9, NULLIF($10, ''), NULLIF($11, ''), NULLIF($12, ''), $13, $14
-		WHERE EXISTS (
-			SELECT 1
-			FROM resumes r
-			WHERE r.id = $2 AND r.user_id = $1 AND r.deleted_at IS NULL
-		)
+		SELECT $1, $2, rv.id, $4, $5, $6, $7, $8, $9, NULLIF($10, ''), NULLIF($11, ''), NULLIF($12, ''), $13, $14
+		FROM resumes r
+		JOIN resume_versions rv
+		  ON rv.id = NULLIF($3, '')::uuid
+		 AND rv.resume_id = r.id
+		 AND rv.user_id = r.user_id
+		 AND rv.snapshot_type <> 'current'
+		WHERE r.id = $2 AND r.user_id = $1 AND r.deleted_at IS NULL
 		RETURNING id
 	`, params.UserID, params.ResumeID, params.SnapshotVersionID, params.CompanyName, params.Department, params.TargetTitle,
 		params.JDText, params.JDHash, params.Source, params.PreferredCity, params.ApplicationURL, params.NextAction,
@@ -388,7 +390,7 @@ func (r *repository) Update(ctx context.Context, userID, applicationID string, p
 			AND EXISTS (
 				SELECT 1
 				FROM resumes r
-				JOIN resume_versions rv ON rv.id = $%d AND rv.resume_id = r.id AND rv.user_id = r.user_id
+				JOIN resume_versions rv ON rv.id = $%d AND rv.resume_id = r.id AND rv.user_id = r.user_id AND rv.snapshot_type <> 'current'
 				WHERE r.id = $%d AND r.user_id = $%d AND r.deleted_at IS NULL
 			)
 		`, len(args), len(args)-1, len(args)-2)

@@ -38,14 +38,17 @@ func (h *Handler) ListSnapshots(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	includeAuto := c.DefaultQuery("includeAuto", "true") == "true"
 
-	result, err := h.resumeService.ListSnapshots(c.Request.Context(), resumeID, limit, includeAuto)
+	result, err := h.resumeService.ListSnapshots(c.Request.Context(), userID.(string), resumeID, limit, includeAuto)
 	if err != nil {
 		log.Printf("[snapshot] ListSnapshots error: %v", err)
+		if errors.Is(err, resume.ErrResumeNotFound) {
+			response.JSONError(c, http.StatusNotFound, "RESUME_NOT_FOUND", "简历不存在或无权限")
+			return
+		}
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "获取快照列表失败")
 		return
 	}
 
-	_ = userID // 后续可能需要校验 userID 有权访问该 resumeID
 	response.JSONSuccess(c, result)
 }
 
@@ -108,6 +111,7 @@ func (h *Handler) UpdateSnapshotLabel(c *gin.Context) {
 	}
 
 	snapshotID := c.Param("snapshotId")
+	resumeID := c.Param("id")
 	if snapshotID == "" {
 		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "快照ID不能为空")
 		return
@@ -119,7 +123,7 @@ func (h *Handler) UpdateSnapshotLabel(c *gin.Context) {
 		return
 	}
 
-	if err := h.resumeService.UpdateSnapshotLabel(c.Request.Context(), snapshotID, userID.(string), req.Label); err != nil {
+	if err := h.resumeService.UpdateSnapshotLabel(c.Request.Context(), userID.(string), resumeID, snapshotID, req.Label); err != nil {
 		log.Printf("[snapshot] UpdateSnapshotLabel error: %v", err)
 		if errors.Is(err, resume.ErrResumeNotFound) {
 			response.JSONError(c, http.StatusNotFound, "SNAPSHOT_NOT_FOUND", "快照不存在")
@@ -147,14 +151,18 @@ func (h *Handler) DeleteSnapshot(c *gin.Context) {
 	}
 
 	snapshotID := c.Param("snapshotId")
+	resumeID := c.Param("id")
 	if snapshotID == "" {
 		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "快照ID不能为空")
 		return
 	}
 
-	if err := h.resumeService.DeleteSnapshot(c.Request.Context(), snapshotID, userID.(string)); err != nil {
+	if err := h.resumeService.DeleteSnapshot(c.Request.Context(), userID.(string), resumeID, snapshotID); err != nil {
 		log.Printf("[snapshot] DeleteSnapshot error: %v", err)
 		switch {
+		case errors.Is(err, resume.ErrSnapshotActive):
+			response.JSONError(c, http.StatusConflict, "SNAPSHOT_ACTIVE", "请先切换到其他分支再删除")
+			return
 		case errors.Is(err, resume.ErrSnapshotInUse):
 			response.JSONError(c, http.StatusConflict, "SNAPSHOT_IN_USE", "该快照已被投递记录使用，无法删除")
 			return
@@ -184,12 +192,13 @@ func (h *Handler) GetSnapshotDetail(c *gin.Context) {
 	}
 
 	snapshotID := c.Param("snapshotId")
+	resumeID := c.Param("id")
 	if snapshotID == "" {
 		response.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "快照ID不能为空")
 		return
 	}
 
-	snapshot, content, err := h.resumeService.GetSnapshotDetail(c.Request.Context(), snapshotID, userID.(string))
+	snapshot, content, err := h.resumeService.GetSnapshotDetail(c.Request.Context(), userID.(string), resumeID, snapshotID)
 	if err != nil {
 		log.Printf("[snapshot] GetSnapshotDetail error: %v", err)
 		if errors.Is(err, resume.ErrResumeNotFound) {
@@ -279,9 +288,14 @@ func (h *Handler) DiffSnapshots(c *gin.Context) {
 		return
 	}
 
-	result, err := h.resumeService.DiffSnapshots(c.Request.Context(), userID.(string), req)
+	resumeID := c.Param("id")
+	result, err := h.resumeService.DiffSnapshots(c.Request.Context(), userID.(string), resumeID, req)
 	if err != nil {
 		log.Printf("[snapshot] DiffSnapshots error: %v", err)
+		if errors.Is(err, resume.ErrResumeNotFound) {
+			response.JSONError(c, http.StatusNotFound, "SNAPSHOT_NOT_FOUND", "快照不存在")
+			return
+		}
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "对比快照失败")
 		return
 	}

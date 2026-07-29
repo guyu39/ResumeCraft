@@ -49,6 +49,7 @@ type ResumeDetail struct {
 	StyleSettings         ResumeStyleSettings        `json:"styleSettings"`
 	Modules               []map[string]interface{}   `json:"modules"`
 	PersonalData          json.RawMessage            `json:"personalData,omitempty"`
+	CurrentVersionID      *string                    `json:"currentVersionId,omitempty"`
 	LatestVersionID       *string                    `json:"latestVersionId"`
 	LatestSnapshotID      *string                    `json:"latestSnapshotId,omitempty"`
 	BasedOnSnapshotID     *string                    `json:"basedOnSnapshotId,omitempty"`
@@ -104,6 +105,7 @@ type ResumeListResponse struct {
 type ResumeUpdateResponse struct {
 	ID                    string  `json:"id"`
 	UpdatedAt             int64   `json:"updatedAt"`
+	CurrentVersionID      *string `json:"currentVersionId,omitempty"`
 	LatestVersionID       *string `json:"latestVersionId"`
 	LatestSnapshotID      *string `json:"latestSnapshotId,omitempty"`
 	Version               int64   `json:"version"`
@@ -116,6 +118,7 @@ type ResumeUpdateResponse struct {
 type SnapshotType string
 
 const (
+	SnapshotTypeCurrent SnapshotType = "current"
 	SnapshotTypeAuto    SnapshotType = "auto"
 	SnapshotTypeManual  SnapshotType = "manual"
 	SnapshotTypeDefault SnapshotType = "default"
@@ -129,6 +132,8 @@ type VersionSnapshot struct {
 	SnapshotType SnapshotType `json:"snapshotType"`
 	Label        *string      `json:"label,omitempty"`
 	CreatedAt    int64        `json:"createdAt"`
+	UpdatedAt    int64        `json:"updatedAt"`
+	Version      int64        `json:"version"`
 	IsCurrent    bool         `json:"isCurrent"`
 }
 
@@ -138,6 +143,7 @@ type SnapshotListItem struct {
 	SnapshotType SnapshotType `json:"snapshotType"`
 	Label        *string      `json:"label,omitempty"`
 	CreatedAt    int64        `json:"createdAt"`
+	UpdatedAt    int64        `json:"updatedAt"`
 	IsCurrent    bool         `json:"isCurrent"`
 }
 

@@ -28,8 +28,9 @@ interface CenterPanelProps {
 }
 
 const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveStatus, onRetrySave }) => {
-  const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, basedOnSnapshotId, snapshotVersion, syncStatus, setSnapshots: setStoreSnapshots } = useResumeStore()
+  const { resume, initResume, setActiveModule, setActiveSnapshotId, setBasedOnSnapshotIdFromStorage, activeSnapshotId, snapshotVersion, setSnapshots: setStoreSnapshots } = useResumeStore()
   const viewportRef = useRef<HTMLDivElement>(null)
+  const snapshotSwitchingRef = useRef(false)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null)
   const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([])
@@ -155,34 +156,49 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveSt
     }
   }, [resume.id])
 
-  // 点击节点 → 切换快照。快照正文权威在 resume_versions.content_snapshot：
-  // - 切走时：先把当前编辑 flush 到云端（更新当前快照行）
-  // - 切入时：从云端加载目标快照的 content_snapshot
+  // 选择命名分支前先确认当前分支已落库，再由服务端复制目标分支到 current。
   const handleSelectSnapshot = useCallback(async (snapshot: SnapshotListItem) => {
-    if (snapshot.id === activeSnapshotId) return
+    if (snapshot.id === activeSnapshotId || snapshotSwitchingRef.current) return
+    snapshotSwitchingRef.current = true
 
-    // ① 离开当前快照：先把当前编辑 flush 到云端（更新当前快照 resume_versions.content_snapshot）
-    if (syncStatus !== 'idle') {
-      await flushToCloud()
-    }
-
-    // ② 从云端加载目标快照原始内容
     try {
-      const { content } = await resumeApi.getSnapshotDetail(resume.id, snapshot.id)
-      const c = content as { modules?: unknown[]; themeColor?: string; styleSettings?: unknown }
-      if (c && c.modules) {
+      // 事件闭包里的 revision/version 可能落后于刚发生的输入或保存响应，切换时必须读取最新 store。
+      const beforeSwitch = useResumeStore.getState()
+      if (beforeSwitch.localRevision > beforeSwitch.ackedRevision) {
+        const flushed = await flushToCloud()
+        if (!flushed) return
+      }
+
+      const expectedVersion = useResumeStore.getState().resumeVersion
+      const restored = await resumeApi.restoreFromSnapshot(resume.id, snapshot.id, expectedVersion)
+      const current = await resumeApi.get(resume.id)
+      if (current.modules) {
+        // 先更新关联，确保 initResume 写入 localStorage 时不会残留上一个分支 ID。
+        setBasedOnSnapshotIdFromStorage(current.basedOnSnapshotId || snapshot.id)
         initResume({
           ...resume,
-          modules: c.modules as Resume['modules'],
-          themeColor: (c.themeColor as Resume['themeColor']) ?? resume.themeColor,
-          styleSettings: (c.styleSettings as Resume['styleSettings']) ?? resume.styleSettings,
+          title: current.title,
+          locale: current.locale as Resume['locale'],
+          template: current.template as Resume['template'],
+          modules: current.modules as Resume['modules'],
+          themeColor: current.themeColor as Resume['themeColor'],
+          styleSettings: current.styleSettings as Resume['styleSettings'],
+          updatedAt: current.updatedAt,
         })
-        setActiveSnapshotId(snapshot.id)
-        setBasedOnSnapshotId(snapshot.id)
-        void flushToCloud()
+        // 同时更新 Zustand 和 useCloudSync 内部 CAS ref，避免切换后的首次保存先 409。
+        ;(window as any).__cloudSyncAlignVersion?.(
+          current.id,
+          current.version ?? restored.version,
+          current.snapshotDraftsVersion ?? restored.snapshotDraftsVersion,
+        )
+        ;(window as any).__cloudSyncMarkSyncedWith?.()
       }
-    } catch { /* ignore */ }
-  }, [resume, initResume, setActiveSnapshotId, setBasedOnSnapshotId, activeSnapshotId, syncStatus])
+    } catch (error) {
+      console.error('[CenterPanel] 恢复快照失败:', error)
+    } finally {
+      snapshotSwitchingRef.current = false
+    }
+  }, [resume, initResume, setBasedOnSnapshotIdFromStorage, activeSnapshotId])
 
   // 对比：tooltip 点击「对比」触发
   const handleCompareSnapshot = useCallback(async (snapshotId: string) => {
@@ -204,22 +220,15 @@ const CenterPanel: React.FC<CenterPanelProps> = ({ workspaceNotices = [], saveSt
     setSnapshotsLoaded(true)
     // 同步到全局 store，供 AI 面板查找快照标签
     setStoreSnapshots(items.map((s) => ({ id: s.id, label: s.label, snapshotType: s.snapshotType })))
-    if (items.length > 0) {
-      const currentValid = activeSnapshotId && items.some((s) => s.id === activeSnapshotId)
-
-      // 确定目标快照 ID
-      let targetId: string
-      if (currentValid) {
-        targetId = activeSnapshotId!
-      } else {
-        const preferredId = basedOnSnapshotId || activeSnapshotId
-        const preferredValid = preferredId && items.some((s) => s.id === preferredId)
-        targetId = preferredValid ? preferredId! : items[0].id
-        setActiveSnapshotId(targetId)
-        setBasedOnSnapshotId(targetId)
-      }
+    const currentBaselineID = useResumeStore.getState().basedOnSnapshotId
+    const baselineValid = currentBaselineID && items.some((s) => s.id === currentBaselineID)
+    if (baselineValid) {
+      setActiveSnapshotId(currentBaselineID)
+    } else {
+      setActiveSnapshotId(null)
+      if (currentBaselineID) setBasedOnSnapshotIdFromStorage(null)
     }
-  }, [activeSnapshotId, basedOnSnapshotId, setActiveSnapshotId, setBasedOnSnapshotId, setStoreSnapshots])
+  }, [setActiveSnapshotId, setBasedOnSnapshotIdFromStorage, setStoreSnapshots])
 
   return (
     <div className="flex flex-col h-full relative">

@@ -94,7 +94,7 @@ export function useCloudSync() {
   const localRevision = useResumeStore((s) => s.localRevision)
   const ackedRevision = useResumeStore((s) => s.ackedRevision)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  const setBasedOnSnapshotId = useResumeStore((s) => s.setBasedOnSnapshotId)
+  const setBasedOnSnapshotIdFromStorage = useResumeStore((s) => s.setBasedOnSnapshotIdFromStorage)
   const setResumeVersion = useResumeStore((s) => s.setResumeVersion)
   const setDraftsVersion = useResumeStore((s) => s.setDraftsVersion)
   const setAckedRevision = useResumeStore((s) => s.setAckedRevision)
@@ -237,6 +237,8 @@ export function useCloudSync() {
             }
           } else {
             const store = useResumeStore.getState()
+            // 先切换分支关联，确保 initResume 写入的本地草稿与云端 current 属于同一分支。
+            setBasedOnSnapshotIdFromStorage(cloud.basedOnSnapshotId || null)
             store.initResume({
               id: cloud.id,
               title: cloud.title,
@@ -248,7 +250,6 @@ export function useCloudSync() {
               updatedAt: cloud.updatedAt,
             })
             store.setPersonalDataFromStorage(cloud.personalData || {})
-            setBasedOnSnapshotId(cloud.basedOnSnapshotId || null)
             lastSyncedHashRef.current = cloudHash
             setSyncRevisions(current.localRevision, current.localRevision)
             setSaveStatus('synced')
@@ -277,15 +278,17 @@ export function useCloudSync() {
       }
     } finally {
       isSavingRef.current = false
-      const latestPayloadChanged = serializePayload(buildPayload()) !== lastSyncedHashRef.current
-      if (retryImmediatelyRef.current || pendingRef.current || latestPayloadChanged || (useResumeStore.getState().localRevision > useResumeStore.getState().ackedRevision && saved)) {
-        pendingRef.current = false
-        retryImmediatelyRef.current = false
+      const latestRevision = useResumeStore.getState().localRevision
+      const retryImmediately = retryImmediatelyRef.current
+      const saveNewRevision = saved && latestRevision > targetRevision
+      pendingRef.current = false
+      retryImmediatelyRef.current = false
+      if (retryImmediately || saveNewRevision) {
         void saveToCloud()
       }
     }
     return saved
-  }, [isAuthenticated, scheduleRetry, setAckedRevision, setBasedOnSnapshotId, setSyncRevisions, setSyncStatus, updateVersions])
+  }, [isAuthenticated, scheduleRetry, setAckedRevision, setBasedOnSnapshotIdFromStorage, setSyncRevisions, setSyncStatus, updateVersions])
 
   const flushCurrentRevision = useCallback((): Promise<boolean> => {
     return saveToCloud()
