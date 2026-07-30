@@ -467,8 +467,8 @@ setPendingCreateName(defaultTitle)
     return (
         <>
             <ToastContainer />
-            <div className="min-h-screen bg-canvas px-4 py-10 sm:px-8">
-                <div className="mx-auto max-w-5xl space-y-6">
+            <div className="flex min-h-screen flex-col bg-canvas px-4 py-10 sm:px-8">
+                <div className="mx-auto w-full max-w-5xl flex-1 space-y-6">
                     {/* 头部 */}
                     <div className="rounded-2xl border border-line bg-surface p-6 sm:p-8">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -630,7 +630,21 @@ setPendingCreateName(defaultTitle)
                             ))}
                         </div>
                     )}
+
                 </div>
+
+                {/* 页脚：备案号与版权说明（吸底） */}
+                <footer className="mx-auto w-full max-w-5xl border-t border-line pt-6 mt-10 text-center text-xs text-muted">
+                    <a
+                        href="https://beian.miit.gov.cn/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="transition-colors hover:text-primary"
+                    >
+                        豫ICP备2026032169号-1
+                    </a>
+                    <p className="mt-2">© 2026 guyu 版权所有</p>
+                </footer>
             </div>
             {deleteConfirmDialog}
             {renameDialog}
