@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Search, SlidersHorizontal, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import StyledSelect from '@/components/common/StyledSelect'
 
 export interface JobFilterValue {
@@ -19,8 +19,6 @@ interface JobFilterBarProps {
   onChange: (next: JobFilterValue) => void
   industries: string[]
   types: string[]
-  /** 当前结果总数（可选，用于展示「共 N 条」） */
-  total?: number
 }
 
 const toOptions = (all: string[], emptyLabel: string) => [
@@ -33,7 +31,6 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({
   onChange,
   industries,
   types,
-  total,
 }) => {
   const [keywordInput, setKeywordInput] = useState(value.keyword)
   const debounceRef = useRef<number | undefined>(undefined)
@@ -56,13 +53,8 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({
   const hasActiveFilter = value.industry || value.type || value.keyword
 
   return (
-    <div className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm backdrop-blur sm:px-6">
-      <div className="mx-auto flex max-w-[1680px] flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-          <SlidersHorizontal className="h-4 w-4 text-blue-600" />
-          筛选
-        </div>
-
+    <div className="w-full">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
         {/* 行业 */}
         <StyledSelect
           value={value.industry}
@@ -71,7 +63,8 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({
           placeholder="全部行业"
           searchable
           searchPlaceholder="搜索行业..."
-          className="min-w-[160px]"
+          modal={false}
+          className="min-w-0 sm:w-36 sm:shrink-0"
         />
 
         {/* 招聘类型 */}
@@ -82,11 +75,12 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({
           placeholder="全部类型"
           searchable
           searchPlaceholder="搜索类型..."
-          className="min-w-[160px]"
+          modal={false}
+          className="min-w-0 sm:w-36 sm:shrink-0"
         />
 
         {/* 关键词搜索 */}
-        <div className="relative flex-1 lg:max-w-md">
+        <div className="relative col-span-2 min-w-0 sm:flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -112,18 +106,10 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({
           <button
             type="button"
             onClick={() => onChange({ industry: '', type: '', keyword: '' })}
-            className="text-[13px] text-slate-500 transition hover:text-red-600"
+            className="col-span-2 justify-self-start whitespace-nowrap text-[13px] text-slate-500 transition hover:text-red-600"
           >
             清除筛选
           </button>
-        )}
-
-        {/* 结果计数 */}
-        {typeof total === 'number' && (
-          <span className="ml-auto whitespace-nowrap text-[13px] text-slate-400">
-            共 <span className="font-semibold text-slate-600">{total}</span> 条
-            <span className="ml-1 text-slate-300">（仅显示 2026 年及以后）</span>
-          </span>
         )}
       </div>
     </div>

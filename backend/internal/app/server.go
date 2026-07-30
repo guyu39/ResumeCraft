@@ -162,15 +162,15 @@ func NewServer() *http.Server {
 	h := handler.New(pdfService, authService, resumeService, exportService, aiService, applicationService, jobPostingService, objectStorage, cfg.Parser.ServiceURL)
 	router.Register(engine, h, cfg.Server.FrontendDistDir, authLimiter, aiLimiter)
 
-	// 招聘数据定时同步调度器（默认每分钟，JOB_SYNC_INTERVAL 可覆盖，如 "30s" 便于本地验证）
+	// 招聘数据定时同步调度器（默认每小时，JOB_SYNC_INTERVAL 可覆盖）
 	var jobScheduler *cron.JobSyncScheduler
 	if jobPostingService != nil {
-		interval := 6 * time.Hour
+		interval := cron.DefaultJobSyncInterval
 		if v := getEnv("JOB_SYNC_INTERVAL", ""); v != "" {
 			if d, err := time.ParseDuration(v); err == nil {
 				interval = d
 			} else {
-				log.Printf("[cron] invalid JOB_SYNC_INTERVAL=%q, fallback to 6h", v)
+				log.Printf("[cron] invalid JOB_SYNC_INTERVAL=%q, fallback to %s", v, cron.DefaultJobSyncInterval)
 			}
 		}
 		jobScheduler = cron.NewJobSyncScheduler(jobPostingService, interval)

@@ -37,6 +37,9 @@ services:
 
       PARSER_SERVICE_URL: "http://python-parser:9002"
 
+      # 招聘数据自动同步
+      JOB_SYNC_INTERVAL: "${JOB_SYNC_INTERVAL:-1h}"
+
       # Redis
       REDIS_ENABLED: "true"
       REDIS_ADDR: "redis:6379"

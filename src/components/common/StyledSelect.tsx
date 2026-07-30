@@ -31,6 +31,8 @@ interface StyledSelectProps {
   searchable?: boolean
   /** 搜索框占位文案 */
   searchPlaceholder?: string
+  /** 是否启用 Headless UI 的模态行为，默认启用 */
+  modal?: boolean
 }
 
 const SIZE_BUTTON: Record<string, string> = {
@@ -55,6 +57,7 @@ const StyledSelect: React.FC<StyledSelectProps> = ({
   direction = 'bottom',
   searchable = false,
   searchPlaceholder = '搜索...',
+  modal = true,
 }) => {
   const [query, setQuery] = useState('')
   const selected = options.find((o) => o.value === value) ?? null
@@ -94,7 +97,10 @@ const StyledSelect: React.FC<StyledSelectProps> = ({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <Listbox.Options className={`absolute z-50 ${panelPosition} max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-950/8 outline-none thin-scrollbar`}>
+          <Listbox.Options
+            modal={modal}
+            className={`absolute z-50 ${panelPosition} max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-950/8 outline-none thin-scrollbar`}
+          >
             {searchable && (
               <div className="sticky top-0 z-10 border-b border-slate-100 bg-white px-2 pb-1.5 pt-1.5">
                 <div className="relative">

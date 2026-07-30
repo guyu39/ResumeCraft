@@ -50,10 +50,10 @@ const JobPagination: React.FC<JobPaginationProps> = ({ pagination, onChange, dis
   if (total === 0) return null
 
   return (
-    <div className="flex shrink-0 flex-col items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-sm sm:flex-row sm:px-6">
+    <div className="flex shrink-0 flex-col items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm sm:flex-row sm:px-6">
       <div className="flex items-center gap-3">
-        <span className="text-xs text-slate-500">
-          第 {page} / {totalPages} 页 · 共 {total} 条
+        <span className="text-xs font-medium text-slate-600">
+          第 {page} / {totalPages} 页 · 共 <span className="text-slate-900">{total}</span> 条
         </span>
         <div className="w-28">
           <StyledSelect
@@ -74,7 +74,7 @@ const JobPagination: React.FC<JobPaginationProps> = ({ pagination, onChange, dis
           type="button"
           onClick={() => go(page - 1)}
           disabled={disabled || page <= 1}
-          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
           上一页
@@ -91,10 +91,10 @@ const JobPagination: React.FC<JobPaginationProps> = ({ pagination, onChange, dis
               type="button"
               onClick={() => go(p)}
               disabled={disabled}
-              className={`h-8 min-w-[2rem] rounded-xl border px-2 text-xs transition ${
+              className={`h-8 min-w-[2rem] rounded-lg border px-2 text-xs font-medium transition ${
                 p === page
-                  ? 'border-blue-600 bg-blue-600 text-white'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900'
               } disabled:cursor-not-allowed disabled:opacity-40`}
               aria-label={`第 ${p} 页`}
               aria-current={p === page ? 'page' : undefined}
@@ -108,7 +108,7 @@ const JobPagination: React.FC<JobPaginationProps> = ({ pagination, onChange, dis
           type="button"
           onClick={() => go(page + 1)}
           disabled={disabled || page >= totalPages}
-          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
         >
           下一页
           <ChevronRight className="h-3.5 w-3.5" />

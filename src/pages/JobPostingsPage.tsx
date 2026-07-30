@@ -3,16 +3,15 @@
 // 默认按开启时间新→旧排序；行业/类型筛选复用 StyledSelect 下拉
 // ============================================================
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw, Inbox, AlertTriangle } from 'lucide-react'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Inbox, AlertTriangle, BriefcaseBusiness, FileText } from 'lucide-react'
 import { jobPostingApi, type JobFilters, type JobPostingListResponse } from '@/api/jobPosting'
-import { getToken } from '@/api/client'
-import { toast } from '@/components/common/Toast'
 import JobTableRow from '@/components/job/JobTableRow'
 import JobFilterBar, { type JobFilterValue } from '@/components/job/JobFilterBar'
 import JobPagination from '@/components/job/JobPagination'
 
 const PAGE_SIZE = 20
+const AUTO_REFRESH_INTERVAL_MS = 60 * 60 * 1000
 
 const JobPostingsPage: React.FC = () => {
   const [filterValue, setFilterValue] = useState<JobFilterValue>({
@@ -26,34 +25,21 @@ const JobPostingsPage: React.FC = () => {
   const [filters, setFilters] = useState<JobFilters>({ industries: [], types: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [cooldownSec, setCooldownSec] = useState(0)
-  const cooldownTimer = useRef<number | null>(null)
-
-  // 手动同步后前端倒计时禁用：与后端 1 分钟限流对齐，避免按钮被狂点
-  useEffect(() => {
-    if (cooldownSec <= 0) return
-    cooldownTimer.current = window.setTimeout(() => setCooldownSec((s) => s - 1), 1000)
-    return () => {
-      if (cooldownTimer.current) window.clearTimeout(cooldownTimer.current)
-    }
-  }, [cooldownSec])
-
-  const isAuthed = !!getToken()
 
   // 加载筛选枚举
-  useEffect(() => {
-    jobPostingApi
-      .getJobFilters()
-      .then(setFilters)
-      .catch(() => {
-        /* 筛选枚举失败不影响列表展示 */
-      })
+  const loadFilters = useCallback(async () => {
+    try {
+      setFilters(await jobPostingApi.getJobFilters())
+    } catch {
+      // 筛选枚举失败不影响列表展示。
+    }
   }, [])
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true)
+      setError(null)
+    }
     try {
       const res = await jobPostingApi.getJobPostings({
         industry: filterValue.industry || undefined,
@@ -64,15 +50,27 @@ const JobPostingsPage: React.FC = () => {
       })
       setData(res)
     } catch (e) {
-      setError(e instanceof Error ? e.message : '招聘数据加载失败')
+      if (!silent) setError(e instanceof Error ? e.message : '招聘数据加载失败')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [filterValue, page, pageSize])
 
   useEffect(() => {
-    loadData()
+    void loadFilters()
+  }, [loadFilters])
+
+  useEffect(() => {
+    void loadData()
   }, [loadData])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadData(true)
+      void loadFilters()
+    }, AUTO_REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [loadData, loadFilters])
 
   const handleFilterChange = (next: JobFilterValue) => {
     setFilterValue(next)
@@ -84,88 +82,57 @@ const JobPostingsPage: React.FC = () => {
     if (ps !== pageSize) setPageSize(ps)
   }
 
-  const handleSync = async () => {
-    if (syncing) return
-    if (cooldownSec > 0) {
-      toast(`同步冷却中，请 ${cooldownSec}s 后再试`, 'info')
-      return
-    }
-    setSyncing(true)
-    try {
-      const r = await jobPostingApi.syncJobPostings()
-      toast(
-        `同步完成：新增 ${r.inserted} · 更新 ${r.updated} · 失效 ${r.deactivated}`,
-        'success',
-      )
-      await Promise.all([loadData(), jobPostingApi.getJobFilters().then(setFilters)])
-      setCooldownSec(60) // 同步成功后锁定 60s，与后端限流一致
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '同步失败'
-      // 后端限流时把剩余秒数同步到前端倒计时，按钮进入可见冷却，避免再次秒点
-      const m = msg.match(/请\s*(\d+)\s*[s秒]\s*后重试/)
-      if (m) setCooldownSec(parseInt(m[1], 10))
-      const limited = msg.includes('过于频繁') || msg.includes('正在进行中')
-      toast(msg, limited ? 'info' : 'error')
-    } finally {
-      setSyncing(false)
-    }
-  }
-
   const items = data?.items ?? []
   const pagination = data?.pagination ?? { page: 1, pageSize, total: 0, totalPages: 0 }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_48%,#f8fafc_100%)] text-slate-900">
+    <div className="flex h-screen h-[100dvh] min-h-0 flex-col overflow-hidden bg-slate-50 text-slate-900">
       {/* 头部 */}
-      <header className="border-b border-slate-200/80 bg-white/85 backdrop-blur">
-        <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">校招 / 实习招聘聚合</h1>
-            <p className="mt-1 text-[13px] text-slate-500">
-              汇总公开招聘文档，按行业、类型与开启时间一站式浏览（默认新→旧）。
-            </p>
+      <header className="relative z-10 shrink-0 border-b border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+          <h1 className="w-full shrink-0 text-lg font-semibold text-slate-900 sm:w-auto">
+            校招 招聘聚合
+          </h1>
+
+          <div className="order-3 w-full min-w-0 xl:order-none xl:flex-1">
+            <JobFilterBar
+              value={filterValue}
+              onChange={handleFilterChange}
+              industries={filters.industries}
+              types={filters.types}
+            />
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={() => (window.location.href = '/')}
-              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-lg shadow-blue-600/10 transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-100"
+              className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-3 text-[13px] font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100"
             >
-              返回简历
+              <FileText className="h-4 w-4" />
+              我的简历
             </button>
-            {isAuthed && (
-              <button
-                type="button"
-                onClick={handleSync}
-                disabled={syncing}
-                className={`inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-blue-600/30 disabled:cursor-not-allowed disabled:opacity-60 ${cooldownSec > 0 ? 'cursor-not-allowed opacity-60 hover:translate-y-0 hover:bg-blue-600' : ''}`}
-              >
-                <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                {cooldownSec > 0 ? `${cooldownSec}s 后可同步` : syncing ? '同步中...' : '手动同步'}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => (window.location.href = '/applications')}
+              className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+            >
+              <BriefcaseBusiness className="h-4 w-4" />
+              投递管理
+            </button>
           </div>
         </div>
       </header>
 
-      {/* 筛选栏 */}
-      <JobFilterBar
-        value={filterValue}
-        onChange={handleFilterChange}
-        industries={filters.industries}
-        types={filters.types}
-        total={pagination.total}
-      />
-
       {/* 内容区 */}
-      <main className="w-full flex-1 px-4 py-6 sm:px-6">
+      <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
         {error && (
-          <div className="mb-4 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+          <div className="m-4 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700 sm:mx-6">
             <AlertTriangle className="h-5 w-5 shrink-0" />
             <span className="flex-1">{error}</span>
             <button
               type="button"
-              onClick={loadData}
+              onClick={() => void loadData()}
               className="rounded-lg border border-red-300 px-3 py-1 font-medium transition hover:bg-red-100"
             >
               重试
@@ -175,7 +142,7 @@ const JobPostingsPage: React.FC = () => {
 
         {/* 加载骨架 */}
         {loading && !data && (
-          <div className="thin-scrollbar overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-auto border-y border-slate-200 bg-white">
             <table className="w-full min-w-[1100px]">
               <tbody>
                 {Array.from({ length: 8 }).map((_, i) => (
@@ -210,7 +177,7 @@ const JobPostingsPage: React.FC = () => {
 
         {/* 空态 */}
         {!loading && !error && data && items.length === 0 && (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center border-y border-dashed border-slate-200 bg-white px-6 py-16 text-center">
             <Inbox className="h-10 w-10 text-slate-300" />
             <p className="mt-4 text-base text-slate-500">暂无匹配的招聘信息</p>
             <button
@@ -225,10 +192,10 @@ const JobPostingsPage: React.FC = () => {
 
         {/* 表格 */}
         {!loading && !error && items.length > 0 && (
-          <div className="thin-scrollbar overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-auto border-y border-slate-200 bg-white">
             <table className="w-full min-w-[1100px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <thead className="sticky top-0 z-[1] bg-gray-100/95 shadow-[0_1px_0_0_rgb(229_231_235)] backdrop-blur-sm">
+                <tr className="border-b border-gray-200 text-left text-xs font-semibold text-gray-700">
                   <th className="px-3 py-3">企业</th>
                   <th className="px-3 py-3">行业</th>
                   <th className="px-3 py-3">招聘岗位</th>

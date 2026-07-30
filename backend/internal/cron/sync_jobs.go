@@ -8,17 +8,20 @@ import (
 	jobposting "resumecraft-pdf-backend/internal/service/job_posting"
 )
 
-// JobSyncScheduler 定时同步招聘数据（默认每 6 小时一次）
+// DefaultJobSyncInterval 是招聘数据的默认自动同步周期。
+const DefaultJobSyncInterval = time.Hour
+
+// JobSyncScheduler 定时同步招聘数据（默认每小时一次）
 type JobSyncScheduler struct {
 	service  jobposting.Service
 	interval time.Duration
 	stop     chan struct{}
 }
 
-// NewJobSyncScheduler 构造调度器。interval<=0 时使用默认 6 小时。
+// NewJobSyncScheduler 构造调度器。interval<=0 时使用默认一小时。
 func NewJobSyncScheduler(service jobposting.Service, interval time.Duration) *JobSyncScheduler {
 	if interval <= 0 {
-		interval = 6 * time.Hour
+		interval = DefaultJobSyncInterval
 	}
 	return &JobSyncScheduler{
 		service:  service,
