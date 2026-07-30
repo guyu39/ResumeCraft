@@ -2,7 +2,8 @@
 // 认证 API
 // ============================================================
 
-import { apiClient, setTokens, clearTokens, getToken } from './client'
+import { apiClient, setTokens, getToken } from './client'
+import { getRefreshToken as readRefreshToken } from './authSession'
 import type {
   LoginRequest,
   RegisterRequest,
@@ -62,10 +63,10 @@ export const authApi = {
 
   logout: async (refreshToken: string) => {
     const accessToken = getToken()
-    clearTokens()
     return apiClient.post<{ loggedOut: boolean }>(
       '/auth/logout',
-      { refreshToken, accessToken } as LogoutRequest
+      { refreshToken, accessToken } as LogoutRequest,
+      { auth: false },
     )
   },
 
@@ -81,9 +82,9 @@ export function getAccessToken(): string | null {
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem('refreshToken')
+  return readRefreshToken()
 }
 
 export function isAuthenticated(): boolean {
-  return !!getAccessToken()
+  return !!(getAccessToken() || getRefreshToken())
 }

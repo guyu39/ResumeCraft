@@ -126,9 +126,12 @@ func (h *Handler) Refresh(c *gin.Context) {
 
 	payload, err := h.authService.Refresh(c.Request.Context(), req.RefreshToken, clientIP(c), c.GetHeader("User-Agent"))
 	if err != nil {
-		switch err {
-		case auth.ErrTokenRevoked:
+		switch {
+		case errors.Is(err, auth.ErrTokenRevoked):
 			response.JSONError(c, http.StatusUnauthorized, "TOKEN_REVOKED", "令牌已撤销")
+		case errors.Is(err, auth.ErrSessionStoreUnavailable):
+			log.Printf("[auth] Refresh session store unavailable: %v", err)
+			response.JSONError(c, http.StatusServiceUnavailable, "AUTH_SESSION_UNAVAILABLE", "登录服务暂时不可用，请稍后重试")
 		default:
 			response.JSONError(c, http.StatusUnauthorized, "INVALID_REFRESH_TOKEN", "刷新令牌无效")
 		}

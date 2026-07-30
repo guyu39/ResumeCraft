@@ -10,6 +10,7 @@ import {
 } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { resumeApi } from '@/api'
+import { BEFORE_SESSION_END_EVENT } from '@/api/authSession'
 import type { Resume } from '@/types/resume'
 import type { ResumeDetail, UpdateResumeRequest } from '@/api/types'
 
@@ -165,6 +166,8 @@ export function useCloudSync() {
     }
 
     if (useBeacon) {
+      // 页面卸载阶段没有可靠时间完成 Token 刷新；未确认内容已由本地草稿兜底，
+      // 下次进入页面后会通过正常鉴权同步链路重试。
       const body = JSON.stringify(toUpdateRequest(payload, serverVersionRef.current, draftsVersionRef.current))
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       const token = localStorage.getItem('accessToken')
@@ -318,19 +321,19 @@ export function useCloudSync() {
       setSaveStatus('idle')
       void saveToCloud()
     }
-    const onBeforeKick = () => {
+    const onBeforeSessionEnd = () => {
       flushDraft()
       void saveToCloud(true)
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     window.addEventListener('beforeunload', onBeforeUnload)
     window.addEventListener('online', onOnline)
-    window.addEventListener('resumecraft:before-kick', onBeforeKick)
+    window.addEventListener(BEFORE_SESSION_END_EVENT, onBeforeSessionEnd)
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange)
       window.removeEventListener('beforeunload', onBeforeUnload)
       window.removeEventListener('online', onOnline)
-      window.removeEventListener('resumecraft:before-kick', onBeforeKick)
+      window.removeEventListener(BEFORE_SESSION_END_EVENT, onBeforeSessionEnd)
     }
   }, [isAuthenticated, saveToCloud])
 

@@ -2,10 +2,13 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -113,5 +116,107 @@ func TestHasOtherDeviceSession(t *testing.T) {
 	// 不同 UA 检测 → true（他设备，需确认）
 	if !svc.hasOtherDeviceSession(ctx, u.ID, "ua2") {
 		t.Fatalf("different-UA session must be detected as other device")
+	}
+}
+
+func TestRefreshRejectsExpiredToken(t *testing.T) {
+	now := time.Now()
+	svc := &service{
+		jwtSecret:       []byte("test-secret"),
+		accessTokenTTL:  15 * time.Minute,
+		refreshTokenTTL: 7 * 24 * time.Hour,
+	}
+	token, err := svc.signClaims(tokenClaims{
+		UserID:    "expired-user",
+		SessionID: generateSessionID(),
+		Type:      "refresh",
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(-time.Hour)),
+		},
+	})
+	if err != nil {
+		t.Fatalf("sign expired token: %v", err)
+	}
+
+	if _, err := svc.Refresh(context.Background(), token, "", ""); !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("expired refresh token error = %v, want ErrInvalidToken", err)
+	}
+}
+
+func TestConsumeRefreshSessionRejectsRevoked(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	u := userRow{ID: "revoked-" + generateSessionID(), Email: "revoked@example.com", DisplayName: "Revoked"}
+	payload, err := svc.createSessionAndTokens(ctx, u, "1.1.1.1", "ua")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	claims, err := svc.parseToken(payload.Tokens.RefreshToken, "refresh")
+	if err != nil {
+		t.Fatalf("parse refresh token: %v", err)
+	}
+	tokenHash := hashToken(payload.Tokens.RefreshToken)
+
+	if err := svc.consumeRefreshSession(ctx, claims.SessionID, u.ID, tokenHash); err != nil {
+		t.Fatalf("first consume: %v", err)
+	}
+	if err := svc.consumeRefreshSession(ctx, claims.SessionID, u.ID, tokenHash); !errors.Is(err, ErrTokenRevoked) {
+		t.Fatalf("second consume error = %v, want ErrTokenRevoked", err)
+	}
+
+	atKey := "auth:at:" + hashToken(payload.Tokens.AccessToken)
+	if exists, err := svc.rdb.Exists(ctx, atKey).Result(); err != nil || exists != 0 {
+		t.Fatalf("old access token key exists = %d, err = %v; want deleted", exists, err)
+	}
+}
+
+func TestConsumeRefreshSessionConcurrent(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	u := userRow{ID: "concurrent-" + generateSessionID(), Email: "concurrent@example.com", DisplayName: "Concurrent"}
+	payload, err := svc.createSessionAndTokens(ctx, u, "1.1.1.1", "ua")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	claims, err := svc.parseToken(payload.Tokens.RefreshToken, "refresh")
+	if err != nil {
+		t.Fatalf("parse refresh token: %v", err)
+	}
+
+	const workers = 8
+	results := make(chan error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results <- svc.consumeRefreshSession(
+				ctx,
+				claims.SessionID,
+				u.ID,
+				hashToken(payload.Tokens.RefreshToken),
+			)
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	revoked := 0
+	for err := range results {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrTokenRevoked):
+			revoked++
+		default:
+			t.Fatalf("unexpected consume error: %v", err)
+		}
+	}
+	if successes != 1 || revoked != workers-1 {
+		t.Fatalf("successes = %d, revoked = %d; want 1 and %d", successes, revoked, workers-1)
 	}
 }

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import ToastContainer, { toast } from '@/components/common/Toast'
 import { ApiError } from '@/api'
+import { getSafeReturnUrl } from '@/api/authSession'
 
 type Mode = 'login' | 'register'
 type LoginTab = 'password' | 'code'
@@ -52,8 +53,7 @@ const LoginPage: React.FC = () => {
   const [sending, setSending] = useState(false)
   const timerRef = useRef<number | null>(null)
 
-  // 被其他设备顶号后跳转而来（client.ts 注入 ?reason=kicked），展示常驻提示横幅
-  const [kickedNotice, setKickedNotice] = useState(false)
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null)
 
   // 桌面端两屏相位：'brand'(品牌首屏) ⇄ 'features'(功能介绍)；滚轮一次翻转 + CSS 过渡
   const [phase, setPhase] = useState<'brand' | 'features'>('brand')
@@ -70,8 +70,13 @@ const LoginPage: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('reason') === 'kicked') {
-      setKickedNotice(true)
+    const reason = params.get('reason')
+    if (reason === 'kicked' || reason === 'expired') {
+      setSessionNotice(
+        reason === 'kicked'
+          ? '您的账号已在其他设备登录，当前会话已失效，请重新登录。'
+          : '登录状态已失效，请重新登录。登录后将返回之前的页面。',
+      )
       // 清理 URL 参数，避免刷新后重复提示
       const newUrl = new URL(window.location.href)
       newUrl.searchParams.delete('reason')
@@ -191,7 +196,7 @@ const LoginPage: React.FC = () => {
           ? await loginWithPassword(email, password)
           : await loginWithCode(email, code)
         const params = new URLSearchParams(window.location.search)
-        const returnUrl = params.get('return') || '/'
+        const returnUrl = getSafeReturnUrl(params.get('return'))
         // 单设备登录两阶段：检测到他设备 → 后端未签发 token、未踢旧设备，只返回 loginTicket。
         // 暂存 ticket 弹二次确认；用户「是我，继续」才用 ticket 完成登录（此时踢旧设备）。
         if (result.requiresKickConfirm && result.loginTicket) {
@@ -365,11 +370,10 @@ const LoginPage: React.FC = () => {
               </p>
             </div>
 
-            {/* 被其他设备顶号后跳回登录页的常驻提示 */}
-            {kickedNotice && (
-              <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span>您的账号已在其他设备登录，当前会话已失效，请重新登录。</span>
+            {sessionNotice && (
+              <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>{sessionNotice}</span>
               </div>
             )}
 

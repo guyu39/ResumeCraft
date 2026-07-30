@@ -13,6 +13,11 @@ import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
 import KickConfirmModal from '@/components/common/KickConfirmModal'
 import { resumeApi, authApi } from '@/api'
+import {
+  AUTH_SESSION_EVENT,
+  startAuthSessionLifecycle,
+  type AuthSessionEventDetail,
+} from '@/api/authSession'
 import type { ResumeLocale, TemplateType, Module, ResumeStyleSettings } from '@/types/resume'
 
 function isValidUUID(id: string): boolean {
@@ -134,6 +139,24 @@ const App: React.FC = () => {
       else newUrl.searchParams.delete('return')
       window.history.replaceState({}, '', newUrl.pathname + newUrl.search)
     }
+  }, [])
+
+  // 统一认证生命周期：主动刷新、跨标签页同步和终态退出。
+  useEffect(() => startAuthSessionLifecycle(), [])
+
+  useEffect(() => {
+    const onAuthSession = (event: Event) => {
+      const detail = (event as CustomEvent<AuthSessionEventDetail>).detail
+      if (detail?.type === 'terminated') {
+        useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false })
+        return
+      }
+      if (detail?.type === 'tokens-updated') {
+        void useAuthStore.getState().checkAuth()
+      }
+    }
+    window.addEventListener(AUTH_SESSION_EVENT, onAuthSession)
+    return () => window.removeEventListener(AUTH_SESSION_EVENT, onAuthSession)
   }, [])
 
   // 启动时检查认证状态

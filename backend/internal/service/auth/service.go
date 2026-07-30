@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -27,16 +26,17 @@ import (
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidToken       = errors.New("invalid token")
-	ErrEmailExists        = errors.New("email already exists")
-	ErrTokenRevoked       = errors.New("token revoked")
-	ErrCodeInvalid        = errors.New("verification code invalid or expired")
-	ErrCodeTooFrequent    = errors.New("verification code requested too frequently")
-	ErrEmailNotRegistered = errors.New("email not registered")
-	ErrSMTPNotConfigured  = errors.New("email service not configured")
-	ErrCodeUnavailable    = errors.New("verification code service unavailable")
-	ErrSessionKicked      = errors.New("session kicked by new login")
+	ErrInvalidCredentials      = errors.New("invalid credentials")
+	ErrInvalidToken            = errors.New("invalid token")
+	ErrEmailExists             = errors.New("email already exists")
+	ErrTokenRevoked            = errors.New("token revoked")
+	ErrCodeInvalid             = errors.New("verification code invalid or expired")
+	ErrCodeTooFrequent         = errors.New("verification code requested too frequently")
+	ErrEmailNotRegistered      = errors.New("email not registered")
+	ErrSMTPNotConfigured       = errors.New("email service not configured")
+	ErrCodeUnavailable         = errors.New("verification code service unavailable")
+	ErrSessionKicked           = errors.New("session kicked by new login")
+	ErrSessionStoreUnavailable = errors.New("auth session store unavailable")
 )
 
 type Service interface {
@@ -92,11 +92,35 @@ type tokenClaims struct {
 
 // Redis key 模式
 const (
-	keyAccessToken  = "auth:at:%s"             // auth:at:{sha256(accessToken)} → userID（即时撤销）
-	keySession      = "auth:session:%s"        // auth:session:{sessionID} → JSON{sessionData}（refresh 校验）
-	keyUserSessions = "auth:us:%s"             // auth:us:{userID} → Set{sessionID, ...}（会话索引）
-	keyUserSession  = "auth:user_session:%s"   // auth:user_session:{userID} → 当前生效的 sessionID（单设备登录的「顶号」判据）
+	keyAccessToken  = "auth:at:%s"           // auth:at:{sha256(accessToken)} → userID（即时撤销）
+	keySession      = "auth:session:%s"      // auth:session:{sessionID} → JSON{sessionData}（refresh 校验）
+	keyUserSessions = "auth:us:%s"           // auth:us:{userID} → Set{sessionID, ...}（会话索引）
+	keyUserSession  = "auth:user_session:%s" // auth:user_session:{userID} → 当前生效的 sessionID（单设备登录的「顶号」判据）
 )
+
+// 原子校验并消费旧 Refresh Session。旧 Access Token 一并撤销，避免并发轮换时
+// 两个请求都通过“先查后删”的校验窗口。
+var consumeRefreshSessionScript = redis.NewScript(`
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+  return 0
+end
+
+local ok, session = pcall(cjson.decode, raw)
+if not ok then
+  return -2
+end
+if session.uid ~= ARGV[1] or session.th ~= ARGV[2] then
+  return -1
+end
+
+redis.call('DEL', KEYS[1])
+redis.call('SREM', KEYS[2], ARGV[3])
+if session.ath and session.ath ~= '' then
+  redis.call('DEL', ARGV[4] .. session.ath)
+end
+return 1
+`)
 
 func NewService(pool *pgxpool.Pool, rdb *redis.Client, cfg config.AuthConfig, mailer *mail.Sender) Service {
 	return &service{
@@ -408,46 +432,56 @@ func (s *service) Refresh(ctx context.Context, refreshToken, ip, ua string) (*mo
 		return nil, ErrInvalidToken
 	}
 
-	// 从 Redis 验证会话
 	if s.rdb != nil {
-		sessKey := fmt.Sprintf(keySession, claims.SessionID)
-		val, err := s.rdb.Get(ctx, sessKey).Result()
-		if err == redis.Nil {
-			// 会话明确不存在（被踢 / 被登出 / refresh rotation 删旧）→ 拒绝刷新
-			return nil, ErrTokenRevoked
-		}
+		// 消费前先完成用户读取，减少旧 Token 已消费但新会话未创建的失败窗口。
+		u := userRow{ID: claims.UserID}
+		err = s.pool.QueryRow(ctx,
+			`SELECT email, display_name FROM users WHERE id = $1 AND deleted_at IS NULL`,
+			claims.UserID,
+		).Scan(&u.Email, &u.DisplayName)
 		if err != nil {
-			// Redis 故障：与 ParseAccessToken 一致 fail-open，不因 redis 抖动把人踢下线。
-			// 无法校验 refresh hash，但仍签发新会话（createSessionAndTokens 会重建 redis 状态）。
-			log.Printf("[auth] refresh: redis get session error: %v (fail-open)", err)
-		} else {
-			var sess sessionData
-			if err := json.Unmarshal([]byte(val), &sess); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, ErrInvalidToken
 			}
-			// 验证 refresh token hash
-			if sess.TokenHash != hashToken(refreshToken) {
-				return nil, ErrInvalidToken
-			}
-			// 删除旧会话（refresh token rotation）
-			s.deleteSessionFromRedis(ctx, claims.SessionID, sess.UserID)
+			return nil, fmt.Errorf("%w: query refresh user: %v", ErrSessionStoreUnavailable, err)
 		}
-	} else {
-		// Redis 不可用，回退到 PostgreSQL
-		return s.refreshFromPostgres(ctx, claims, refreshToken)
+
+		if err := s.consumeRefreshSession(ctx, claims.SessionID, claims.UserID, hashToken(refreshToken)); err != nil {
+			return nil, err
+		}
+		payload, err := s.createSessionAndTokens(ctx, u, ip, ua)
+		if err != nil {
+			return nil, fmt.Errorf("%w: create rotated redis session: %v", ErrSessionStoreUnavailable, err)
+		}
+		return payload, nil
 	}
 
-	u := userRow{ID: claims.UserID}
-	// 从 PostgreSQL 获取用户信息
-	err = s.pool.QueryRow(ctx,
-		`SELECT email, display_name FROM users WHERE id = $1 AND deleted_at IS NULL`,
-		claims.UserID,
-	).Scan(&u.Email, &u.DisplayName)
+	return s.refreshFromPostgres(ctx, claims, refreshToken, ip, ua)
+}
+
+func (s *service) consumeRefreshSession(ctx context.Context, sessionID, userID, tokenHash string) error {
+	sessKey := fmt.Sprintf(keySession, sessionID)
+	userSessionsKey := fmt.Sprintf(keyUserSessions, userID)
+	status, err := consumeRefreshSessionScript.Run(
+		ctx,
+		s.rdb,
+		[]string{sessKey, userSessionsKey},
+		userID,
+		tokenHash,
+		sessionID,
+		"auth:at:",
+	).Int64()
 	if err != nil {
-		return nil, ErrInvalidToken
+		return fmt.Errorf("%w: consume redis refresh session: %v", ErrSessionStoreUnavailable, err)
 	}
-
-	return s.createSessionAndTokens(ctx, u, ip, ua)
+	switch status {
+	case 1:
+		return nil
+	case 0:
+		return ErrTokenRevoked
+	default:
+		return ErrInvalidToken
+	}
 }
 
 func (s *service) Logout(ctx context.Context, accessToken, refreshToken string) error {
@@ -780,39 +814,42 @@ func (s *service) evictOtherSessions(ctx context.Context, userID, exceptSessionI
 }
 
 // refreshFromPostgres 当 Redis 不可用时回退到 PostgreSQL 验证 refresh
-func (s *service) refreshFromPostgres(ctx context.Context, claims *tokenClaims, refreshToken string) (*model.AuthPayload, error) {
+func (s *service) refreshFromPostgres(ctx context.Context, claims *tokenClaims, refreshToken, ip, ua string) (*model.AuthPayload, error) {
 	var (
-		userID      string
-		expiresAt   time.Time
-		revokedAt   sql.NullTime
-		tokenHash   string
 		userEmail   string
 		displayName string
 	)
 
 	err := s.pool.QueryRow(ctx,
-		`SELECT s.user_id, s.expires_at, s.revoked_at, s.refresh_token_hash, u.email, u.display_name
-		 FROM auth_sessions s
-		 JOIN users u ON u.id = s.user_id
-		 WHERE s.id = $1 AND u.deleted_at IS NULL`,
-		claims.SessionID,
-	).Scan(&userID, &expiresAt, &revokedAt, &tokenHash, &userEmail, &displayName)
+		`WITH consumed AS (
+			UPDATE auth_sessions
+			SET revoked_at = NOW(), updated_at = NOW()
+			WHERE id = $1
+			  AND user_id = $2
+			  AND refresh_token_hash = $3
+			  AND revoked_at IS NULL
+			  AND expires_at > NOW()
+			RETURNING user_id
+		)
+		SELECT u.email, u.display_name
+		FROM consumed c
+		JOIN users u ON u.id = c.user_id
+		WHERE u.deleted_at IS NULL`,
+		claims.SessionID, claims.UserID, hashToken(refreshToken),
+	).Scan(&userEmail, &displayName)
 	if err != nil {
-		return nil, ErrInvalidToken
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrTokenRevoked
+		}
+		return nil, fmt.Errorf("%w: consume postgres refresh session: %v", ErrSessionStoreUnavailable, err)
 	}
 
-	if revokedAt.Valid || time.Now().After(expiresAt) {
-		return nil, ErrInvalidToken
+	u := userRow{ID: claims.UserID, Email: userEmail, DisplayName: displayName}
+	payload, err := s.createSessionAndTokens(ctx, u, ip, ua)
+	if err != nil {
+		return nil, fmt.Errorf("%w: create rotated postgres session: %v", ErrSessionStoreUnavailable, err)
 	}
-	if tokenHash != hashToken(refreshToken) {
-		return nil, ErrInvalidToken
-	}
-
-	// 撤销旧会话
-	_, _ = s.pool.Exec(ctx, `UPDATE auth_sessions SET revoked_at = NOW() WHERE id = $1`, claims.SessionID)
-
-	u := userRow{ID: userID, Email: userEmail, DisplayName: displayName}
-	return s.createSessionAndTokens(ctx, u, "", "")
+	return payload, nil
 }
 
 func (s *service) parseToken(tokenValue string, expectType string) (*tokenClaims, error) {

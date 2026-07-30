@@ -1,6 +1,8 @@
 // ============================================================
+
+import { authenticatedFetch } from './authenticatedFetch'
 // streamSSE — 统一的 SSE 流式请求工具
-// 取代此前 5 处 AI 流式接口各自复制的 XHR + 行缓冲 + event:done 解析逻辑。
+// 使用 Fetch Stream 复用统一鉴权，并集中处理行缓冲与 event:done。
 // 提供：跨分片行缓冲、可选 AbortSignal 取消、统一的 done/错误处理。
 // ============================================================
 
@@ -24,48 +26,51 @@ export interface StreamSSEOptions<TEvent, TResult> {
  * - 按 `\n` 切分，保留未结束的尾行到下次（跨网络分片安全）
  * - `data: {json}` → onEvent
  * - `event: done` 的下一行 `data:` → parseDone → resolve（边收边记录，不在 onload 重扫全文）
- * - signal.abort() → xhr.abort() 并 reject(AbortError)
+ * - signal.abort() → 中断 fetch/reader 并 reject(AbortError)
  * - 超过 timeoutMs 无完成 → reject 超时错误
  */
-export function streamSSE<TEvent = unknown, TResult = void>(
+export async function streamSSE<TEvent = unknown, TResult = void>(
   opts: StreamSSEOptions<TEvent, TResult>,
 ): Promise<TResult> {
   const { url, body, onEvent, parseDone, signal, errorLabel = '请求失败', timeoutMs = 120000 } = opts
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
-  return new Promise<TResult>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException('Aborted', 'AbortError'))
-      return
+  const controller = new AbortController()
+  let timedOut = false
+  const onAbort = () => controller.abort()
+  signal?.addEventListener('abort', onAbort, { once: true })
+  const timer = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  try {
+    const response = await authenticatedFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      let message = `${errorLabel} (${response.status})`
+      try {
+        const errorBody = await response.json() as { message?: string; error?: { message?: string } }
+        message = errorBody.error?.message || errorBody.message || message
+      } catch { /* keep default */ }
+      throw new Error(message)
     }
+    if (!response.body) throw new Error(`${errorLabel}：浏览器不支持流式响应`)
 
-    const token = localStorage.getItem('accessToken')
-    if (!token) {
-      reject(new Error('请登录使用'))
-      return
-    }
-
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', url, true)
-    xhr.setRequestHeader('Content-Type', 'application/json')
-    xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-    // 浏览器原生超时：到点触发 ontimeout（即便流中途卡死也能解除等待）
-    xhr.timeout = timeoutMs
-
-    const onAbort = () => {
-      try { xhr.abort() } catch { /* ignore */ }
-      reject(new DOMException('Aborted', 'AbortError'))
-    }
-    if (signal) signal.addEventListener('abort', onAbort, { once: true })
-    const cleanup = () => { if (signal) signal.removeEventListener('abort', onAbort) }
-
-    let lastPos = 0
+    reader = response.body.getReader()
+    const decoder = new TextDecoder()
     let buffer = ''
-    // 边收边解析 done：解析阶段标记下一条 data 行为最终结果，避免 onload 重切全文
     let doneResult: TResult | undefined
     let hasDone = false
     let expectDoneData = false
 
-    const handleLine = (line: string) => {
+    const handleLine = (rawLine: string) => {
+      const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
       if (line.startsWith('event: done')) {
         expectDoneData = true
         return
@@ -83,55 +88,38 @@ export function streamSSE<TEvent = unknown, TResult = void>(
         try {
           doneResult = parseDone(content)
           hasDone = true
-        } catch { /* 解析失败，留待 onload 兜底报错 */ }
+        } catch { /* 解析失败，结束后统一提示 */ }
         return
       }
       try {
         onEvent(JSON.parse(content) as TEvent)
       } catch {
-        // 非 JSON 数据行，忽略
+        // 非 JSON 数据行不属于业务事件。
       }
     }
 
-    xhr.onprogress = () => {
-      if (xhr.status >= 400) return
-      const text = xhr.responseText
-      buffer += text.slice(lastPos)
-      lastPos = text.length
-
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      buffer += decoder.decode(chunk.value, { stream: true })
       const lines = buffer.split('\n')
-      // 保留最后一段未以 \n 结束的内容，等下次分片拼接，避免半截 JSON 被丢弃
       buffer = lines.pop() ?? ''
       for (const line of lines) handleLine(line)
     }
+    buffer += decoder.decode()
+    if (buffer) handleLine(buffer)
 
-    xhr.onload = () => {
-      cleanup()
-      if (xhr.status >= 400) {
-        let msg = `${errorLabel} (${xhr.status})`
-        try {
-          const b = JSON.parse(xhr.responseText)
-          msg = b?.error?.message || b?.message || msg
-        } catch { /* keep default */ }
-        reject(new Error(msg))
-        return
-      }
-      // 处理最后一段未以 \n 结束的缓冲行
-      if (buffer) handleLine(buffer)
-      if (!parseDone) {
-        resolve(undefined as TResult)
-        return
-      }
-      if (hasDone) {
-        resolve(doneResult as TResult)
-        return
-      }
-      reject(new Error('未收到结果'))
-    }
-
-    xhr.onerror = () => { cleanup(); reject(new Error('网络错误')) }
-    xhr.ontimeout = () => { cleanup(); reject(new Error(`${errorLabel}：请求超时，请重试`)) }
-
-    xhr.send(JSON.stringify(body))
-  })
+    if (!parseDone) return undefined as TResult
+    if (hasDone) return doneResult as TResult
+    throw new Error('未收到结果')
+  } catch (error) {
+    if (timedOut) throw new Error(`${errorLabel}：请求超时，请重试`)
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    if (error instanceof TypeError) throw new Error('网络错误')
+    throw error
+  } finally {
+    window.clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
+    reader?.releaseLock()
+  }
 }

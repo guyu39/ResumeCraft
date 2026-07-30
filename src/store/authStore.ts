@@ -5,6 +5,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { authApi, getAccessToken, isAuthenticated, ApiError } from '@/api'
+import { clearTokens, isTerminalAuthError } from '@/api/authSession'
 import type { AuthPayload } from '@/api/types'
 
 interface AuthUser {
@@ -116,8 +117,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             // 忽略登出 API 错误
           }
         }
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
+        clearTokens()
         set({ user: null, isAuthenticated: false })
       },
 
@@ -130,10 +130,13 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         try {
           const user = await authApi.me()
           set({ user, isAuthenticated: true, isLoading: false })
-        } catch {
-          localStorage.removeItem('accessToken')
-          localStorage.removeItem('refreshToken')
-          set({ user: null, isAuthenticated: false, isLoading: false })
+        } catch (error) {
+          if (isTerminalAuthError(error)) {
+            set({ user: null, isAuthenticated: false, isLoading: false })
+            return
+          }
+          console.warn('[auth] 认证检查暂时失败，保留当前登录态:', error)
+          set({ isLoading: false })
         }
       },
 

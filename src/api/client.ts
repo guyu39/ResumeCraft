@@ -3,7 +3,12 @@
 // ============================================================
 
 import type { ApiResponse } from './types'
-import { toast } from '@/components/common/Toast'
+import { authenticatedFetch } from './authenticatedFetch'
+import {
+  clearTokens,
+  getAccessToken,
+  setTokens,
+} from './authSession'
 
 const API_BASE = '/api'
 
@@ -37,73 +42,7 @@ function resolveErrorMessage(json: unknown, status: number): string {
 }
 
 function getToken(): string | null {
-  return localStorage.getItem('accessToken')
-}
-
-function setTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem('accessToken', accessToken)
-  localStorage.setItem('refreshToken', refreshToken)
-}
-
-function clearTokens() {
-  localStorage.removeItem('accessToken')
-  localStorage.removeItem('refreshToken')
-}
-
-// 并发 401 时共享同一次刷新，避免多个请求各自刷新导致 refresh token 互相失效
-let refreshPromise: Promise<string | null> | null = null
-
-// 单设备登录：被其他设备顶号时，清空本地会话并跳转到登录页（仅执行一次，避免并发请求重复跳转）
-let kickedHandled = false
-function handleKicked() {
-  if (kickedHandled) return
-  kickedHandled = true
-  // 1. 先派发事件让编辑器用 beacon 把未落库的改动送出（此时 token 还在，beacon 能带上鉴权头，
-  //    keepalive 请求可在跳转后继续送达，避免被踢瞬间丢失编辑内容）
-  window.dispatchEvent(new CustomEvent('resumecraft:before-kick'))
-  // 2. 再清本地 token，避免后续请求继续带旧 token
-  clearTokens()
-  // 3. 记下原页面，便于重新登录后回到原处（例如 /edit/xxx）
-  const current = window.location.pathname + window.location.search
-  toast('账号已在其他设备登录，您已退出', 'error')
-  setTimeout(() => {
-    // 带 reason=kicked（登录页常驻横幅）+ return=<原路径>（重登后回到原处）
-    const url = new URL(window.location.href)
-    url.searchParams.set('reason', 'kicked')
-    url.searchParams.set('return', current)
-    window.location.href = url.pathname + url.search
-  }, 800)
-}
-
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem('refreshToken')
-  if (!refreshToken) return null
-
-  if (!refreshPromise) {
-    refreshPromise = (async () => {
-      try {
-        const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        })
-        const refreshJson = await refreshRes.json()
-        if (refreshJson.code === 'OK') {
-          const { accessToken, refreshToken: newRefresh } = refreshJson.data.tokens
-          setTokens(accessToken, newRefresh)
-          return accessToken as string
-        }
-        return null
-      } catch {
-        return null
-      } finally {
-        // 无论成功失败都释放，下次 401 可重新发起
-        refreshPromise = null
-      }
-    })()
-  }
-
-  return refreshPromise
+  return getAccessToken()
 }
 
 async function request<T>(
@@ -112,64 +51,27 @@ async function request<T>(
   body?: unknown,
   options: { auth?: boolean } = {}
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+  const init: RequestInit = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
   }
+  const res = options.auth === false
+    ? await fetch(`${API_BASE}${path}`, init)
+    : await authenticatedFetch(`${API_BASE}${path}`, init)
 
-  if (options.auth !== false && getToken()) {
-    headers['Authorization'] = `Bearer ${getToken()}`
-  }
-
-  const doRequest = async (): Promise<T> => {
-    const res = await fetch(`${API_BASE}${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    })
-
-    let json: ApiResponse<T>
-    try {
-      json = await res.json()
-    } catch {
-      // 后端 / 代理返回了非 JSON 响应（如 token 无效时 nginx 的 HTML 错误页）
-      throw new ApiError('PARSE_ERROR', res.statusText || `请求失败: ${res.status}`, res.status)
-    }
-
-    if (json.code !== 'OK') {
-      throw new ApiError(json.code, resolveErrorMessage(json, res.status), res.status)
-    }
-
-    return json.data as T
-  }
-
+  let json: ApiResponse<T>
   try {
-    return await doRequest()
-  } catch (err) {
-    // 被其他设备顶号：直接清理并跳转，不再尝试刷新（刷新必然失败）
-    if (err instanceof ApiError && err.code === 'SESSION_KICKED') {
-      handleKicked()
-      throw err
-    }
-    // 401 且是认证请求，尝试刷新 token 后重试一次
-    if (err instanceof ApiError && err.status === 401 && options.auth !== false) {
-      const accessToken = await refreshAccessToken()
-      if (accessToken) {
-        // 重试：带上新 token
-        headers['Authorization'] = `Bearer ${accessToken}`
-        const res = await fetch(`${API_BASE}${path}`, {
-          method,
-          headers,
-          body: body ? JSON.stringify(body) : undefined,
-        })
-        const json: ApiResponse<T> = await res.json()
-        if (json.code !== 'OK') {
-          throw new ApiError(json.code, resolveErrorMessage(json, res.status), res.status)
-        }
-        return json.data as T
-      }
-    }
-    throw err
+    json = await res.json()
+  } catch {
+    throw new ApiError('PARSE_ERROR', res.statusText || `请求失败: ${res.status}`, res.status)
   }
+
+  if (json.code !== 'OK') {
+    throw new ApiError(json.code, resolveErrorMessage(json, res.status), res.status)
+  }
+
+  return json.data as T
 }
 
 // 导出供外部使用

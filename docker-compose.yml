@@ -16,6 +16,8 @@ services:
       # 认证
       AUTH_ENABLED: "true"
       AUTH_JWT_SECRET: "${JWT_SECRET:-change-this-in-production-32ch}"
+      AUTH_ACCESS_TTL_MIN: "${AUTH_ACCESS_TTL_MIN:-30}"
+      AUTH_REFRESH_TTL_MIN: "${AUTH_REFRESH_TTL_MIN:-43200}"
 
       # PDF/Chromium 配置
       CHROMIUM_HEADLESS: "true"
@@ -55,7 +57,13 @@ services:
       S3_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
       S3_BUCKET: "resumecraft"
       S3_USE_SSL: "false"
-
+      # 邮件服务
+      SMTP_HOST: "${SMTP_HOST:?SMTP_HOST 未配置}"
+      SMTP_PORT: "${SMTP_PORT:-465}"
+      SMTP_USERNAME: "${SMTP_USERNAME:?SMTP_USERNAME 未配置}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:?SMTP_PASSWORD 未配置}"
+      SMTP_FROM: "${SMTP_FROM:?SMTP_FROM 未配置}"
+      SMTP_FROM_NAME: "${SMTP_FROM_NAME:-ResumeCraft}"
 
       TZ: Asia/Shanghai
     depends_on:

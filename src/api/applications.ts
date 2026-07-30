@@ -1,4 +1,5 @@
-import { apiClient, getToken } from './client'
+import { apiClient } from './client'
+import { authenticatedFetch } from './authenticatedFetch'
 import type { JDMatchResponse, JDScoreResponse } from './ai'
 import type { Pagination } from './types'
 
@@ -272,14 +273,10 @@ export const applicationsApi = {
     apiClient.delete<{ deleted: boolean }>(`/applications/${id}/interviews/${interviewId}`),
 
   uploadInterviewRecording: async (id: string, interviewId: string, file: File) => {
-    const headers: Record<string, string> = {}
-    const token = getToken()
-    if (token) headers.Authorization = `Bearer ${token}`
     const formData = new FormData()
     formData.append('file', file)
-    const res = await fetch(`/api/applications/${id}/interviews/${interviewId}/recording`, {
+    const res = await authenticatedFetch(`/api/applications/${id}/interviews/${interviewId}/recording`, {
       method: 'POST',
-      headers,
       body: formData,
     })
     const json = await res.json().catch(() => null)
@@ -290,10 +287,7 @@ export const applicationsApi = {
   },
 
   getInterviewRecording: async (id: string, interviewId: string) => {
-    const headers: Record<string, string> = {}
-    const token = getToken()
-    if (token) headers.Authorization = `Bearer ${token}`
-    const res = await fetch(`/api/applications/${id}/interviews/${interviewId}/recording`, { headers })
+    const res = await authenticatedFetch(`/api/applications/${id}/interviews/${interviewId}/recording`)
     const json = await res.json().catch(() => null)
     if (!res.ok) {
       throw new Error(json?.message || '获取面试录音失败')
@@ -302,10 +296,7 @@ export const applicationsApi = {
   },
 
   exportExcel: async (params?: ListApplicationsParams) => {
-    const headers: Record<string, string> = {}
-    const token = getToken()
-    if (token) headers.Authorization = `Bearer ${token}`
-    const res = await fetch(`/api/applications/export${buildQuery(params)}`, { headers })
+    const res = await authenticatedFetch(`/api/applications/export${buildQuery(params)}`)
     if (!res.ok) {
       throw new Error('导出失败')
     }

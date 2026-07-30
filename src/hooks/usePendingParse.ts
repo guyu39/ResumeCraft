@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useResumeStore } from '@/store/resumeStore'
 import { useAuthStore } from '@/store/authStore'
 import { resumeApi } from '@/api'
+import { authenticatedFetch } from '@/api/authenticatedFetch'
 
 interface PendingParseData {
     filename: string
@@ -65,16 +66,8 @@ export function usePendingParse() {
             const formData = new FormData()
             formData.append('file', file)
 
-            const token = localStorage.getItem('accessToken')
-            if (!token) {
-                setError('请先登录')
-                setStatus('error')
-                return
-            }
-
-            const res = await fetch('/api/resumes/parse', {
+            const res = await authenticatedFetch('/api/resumes/parse', {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
                 body: formData,
             })
 
