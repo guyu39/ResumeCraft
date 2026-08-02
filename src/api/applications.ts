@@ -24,7 +24,7 @@ export interface JobApplicationListItem {
   id: string
   resumeId: string
   resumeTitle?: string
-  snapshotVersionId: string
+  snapshotVersionId?: string | null
   snapshotLabel?: string
   companyName: string
   department?: string
@@ -142,7 +142,7 @@ export interface JobApplicationListResponse {
 
 export interface CreateApplicationRequest {
   resumeId: string
-  snapshotVersionId: string
+  snapshotVersionId?: string
   companyName?: string
   department?: string
   targetTitle: string
@@ -211,7 +211,7 @@ export interface FunnelStats {
 
 // 单个简历版本的转化数据（A/B 对比）
 export interface SnapshotConversion {
-  snapshotVersionId: string
+  snapshotVersionId?: string | null
   snapshotLabel: string
   resumeId: string
   resumeTitle: string

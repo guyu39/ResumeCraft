@@ -22,7 +22,7 @@ type JobApplication struct {
 	UserID            string                        `json:"userId"`
 	ResumeID          string                        `json:"resumeId"`
 	ResumeTitle       string                        `json:"resumeTitle,omitempty"`
-	SnapshotVersionID string                        `json:"snapshotVersionId"`
+	SnapshotVersionID *string                       `json:"snapshotVersionId"`
 	SnapshotLabel     string                        `json:"snapshotLabel,omitempty"`
 	SnapshotType      string                        `json:"snapshotType,omitempty"`
 	CompanyName       string                        `json:"companyName"`
@@ -54,7 +54,7 @@ type JobApplicationListItem struct {
 	ID                string                         `json:"id"`
 	ResumeID          string                         `json:"resumeId"`
 	ResumeTitle       string                         `json:"resumeTitle,omitempty"`
-	SnapshotVersionID string                         `json:"snapshotVersionId"`
+	SnapshotVersionID *string                        `json:"snapshotVersionId"`
 	SnapshotLabel     string                         `json:"snapshotLabel,omitempty"`
 	CompanyName       string                         `json:"companyName"`
 	Department        string                         `json:"department,omitempty"`
@@ -170,7 +170,7 @@ type JobApplicationListResponse struct {
 
 type CreateJobApplicationRequest struct {
 	ResumeID          string                             `json:"resumeId" binding:"required"`
-	SnapshotVersionID string                             `json:"snapshotVersionId" binding:"required"`
+	SnapshotVersionID *string                            `json:"snapshotVersionId"`
 	CompanyName       string                             `json:"companyName"`
 	Department        string                             `json:"department"`
 	TargetTitle       string                             `json:"targetTitle" binding:"required,max=200"`
@@ -186,7 +186,7 @@ type CreateJobApplicationRequest struct {
 
 type UpdateJobApplicationRequest struct {
 	ResumeID          string               `json:"resumeId"`
-	SnapshotVersionID string               `json:"snapshotVersionId"`
+	SnapshotVersionID *string              `json:"snapshotVersionId"`
 	CompanyName       string               `json:"companyName"`
 	Department        string               `json:"department"`
 	TargetTitle       string               `json:"targetTitle"`
@@ -286,7 +286,7 @@ type FunnelStats struct {
 
 // SnapshotConversion 单个简历版本的转化数据（A/B 对比用）
 type SnapshotConversion struct {
-	SnapshotVersionID string  `json:"snapshotVersionId"`
+	SnapshotVersionID *string `json:"snapshotVersionId"`
 	SnapshotLabel     string  `json:"snapshotLabel"`
 	ResumeID          string  `json:"resumeId"`
 	ResumeTitle       string  `json:"resumeTitle"`

@@ -133,7 +133,7 @@ const FunnelAnalytics: React.FC = () => {
     return [...(data.bySnapshot ?? [])]
       .sort((a, b) => b.replyRate - a.replyRate)
       .map((s) => ({
-        name: s.snapshotLabel || `${s.snapshotVersionId.slice(0, 8)}…`,
+        name: s.snapshotLabel || (s.snapshotVersionId ? `${s.snapshotVersionId.slice(0, 8)}…` : '未关联版本'),
         resumeTitle: s.resumeTitle || '未命名简历',
         submitted: s.submitted,
         interview: s.interview,

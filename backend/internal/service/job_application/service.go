@@ -114,15 +114,16 @@ func (s *service) GetByID(ctx context.Context, userID, applicationID string) (*m
 }
 
 func (s *service) Create(ctx context.Context, userID string, req model.CreateJobApplicationRequest) (*model.JobApplication, error) {
-	if strings.TrimSpace(req.ResumeID) == "" || strings.TrimSpace(req.SnapshotVersionID) == "" || strings.TrimSpace(req.TargetTitle) == "" || strings.TrimSpace(req.JDText) == "" {
+	if strings.TrimSpace(req.ResumeID) == "" || strings.TrimSpace(req.TargetTitle) == "" || strings.TrimSpace(req.JDText) == "" {
 		return nil, ErrInvalidPayload
 	}
 	jdText := strings.TrimSpace(req.JDText)
+	snapshotVersionID := trimmedOptionalString(req.SnapshotVersionID)
 	matchScore, jdScore := extractScores(req)
 	app, err := s.repo.Create(ctx, appRepo.CreateApplicationParams{
 		UserID:            userID,
 		ResumeID:          strings.TrimSpace(req.ResumeID),
-		SnapshotVersionID: strings.TrimSpace(req.SnapshotVersionID),
+		SnapshotVersionID: snapshotVersionID,
 		CompanyName:       strings.TrimSpace(req.CompanyName),
 		Department:        strings.TrimSpace(req.Department),
 		TargetTitle:       strings.TrimSpace(req.TargetTitle),
@@ -151,7 +152,7 @@ func (s *service) Create(ctx context.Context, userID string, req model.CreateJob
 	}
 	for _, run := range req.AIRuns {
 		if run.SourceSnapshotVersionID == "" {
-			run.SourceSnapshotVersionID = req.SnapshotVersionID
+			run.SourceSnapshotVersionID = snapshotVersionID
 		}
 		if run.ResumeID == "" {
 			run.ResumeID = req.ResumeID
@@ -161,7 +162,7 @@ func (s *service) Create(ctx context.Context, userID string, req model.CreateJob
 		}
 	}
 
-	checklist := deriveChecklist(req.SnapshotVersionID, req.MatchResult, req.ScoreResult)
+	checklist := deriveChecklist(snapshotVersionID, req.MatchResult, req.ScoreResult)
 	if len(checklist) > 0 {
 		if _, err := s.repo.ReplaceChecklistItems(ctx, userID, app.ID, checklist); err != nil {
 			return nil, mapRepoError(err)
@@ -191,21 +192,22 @@ func (s *service) Update(ctx context.Context, userID, applicationID string, req 
 		clearWrittenTestAt = true
 	}
 	params := appRepo.UpdateApplicationParams{
-		ResumeID:           strings.TrimSpace(req.ResumeID),
-		SnapshotVersionID:  strings.TrimSpace(req.SnapshotVersionID),
-		CompanyName:        strings.TrimSpace(req.CompanyName),
-		Department:         strings.TrimSpace(req.Department),
-		TargetTitle:        strings.TrimSpace(req.TargetTitle),
-		JDText:             strings.TrimSpace(req.JDText),
-		Source:             strings.TrimSpace(req.Source),
-		PreferredCity:      strings.TrimSpace(req.PreferredCity),
-		ApplicationURL:     strings.TrimSpace(req.ApplicationURL),
-		NextAction:         strings.TrimSpace(req.NextAction),
-		SubmittedAt:        submittedAt,
-		ClearSubmittedAt:   clearSubmittedAt,
-		WrittenTestAt:      writtenTestAt,
-		ClearWrittenTestAt: clearWrittenTestAt,
-		Status:             req.Status,
+		ResumeID:                  strings.TrimSpace(req.ResumeID),
+		SnapshotVersionID:         trimmedOptionalString(req.SnapshotVersionID),
+		SnapshotVersionIDProvided: req.SnapshotVersionID != nil,
+		CompanyName:               strings.TrimSpace(req.CompanyName),
+		Department:                strings.TrimSpace(req.Department),
+		TargetTitle:               strings.TrimSpace(req.TargetTitle),
+		JDText:                    strings.TrimSpace(req.JDText),
+		Source:                    strings.TrimSpace(req.Source),
+		PreferredCity:             strings.TrimSpace(req.PreferredCity),
+		ApplicationURL:            strings.TrimSpace(req.ApplicationURL),
+		NextAction:                strings.TrimSpace(req.NextAction),
+		SubmittedAt:               submittedAt,
+		ClearSubmittedAt:          clearSubmittedAt,
+		WrittenTestAt:             writtenTestAt,
+		ClearWrittenTestAt:        clearWrittenTestAt,
+		Status:                    req.Status,
 	}
 	if params.JDText != "" {
 		params.JDHash = hashJD(params.JDText)
@@ -273,7 +275,7 @@ func (s *service) RegenerateChecklist(ctx context.Context, userID, applicationID
 			}
 		}
 	}
-	items := deriveChecklist(app.SnapshotVersionID, match, score)
+	items := deriveChecklist(optionalStringValue(app.SnapshotVersionID), match, score)
 	result, err := s.repo.ReplaceChecklistItems(ctx, userID, applicationID, items)
 	return result, mapRepoError(err)
 }
@@ -434,13 +436,17 @@ func (s *service) ExportExcel(ctx context.Context, userID string, filters model.
 	}
 
 	for row, item := range resp.Items {
+		snapshotLabel := item.SnapshotLabel
+		if item.SnapshotVersionID == nil {
+			snapshotLabel = "未关联版本"
+		}
 		values := []string{
 			item.CompanyName,
 			item.TargetTitle,
 			item.Department,
 			item.ApplicationURL,
 			item.ResumeTitle,
-			item.SnapshotLabel,
+			snapshotLabel,
 			formatTimePtr(item.SubmittedAt),
 			item.PreferredCity,
 		}
@@ -520,7 +526,7 @@ func buildMatchRun(req model.CreateJobApplicationRequest) model.CreateJobApplica
 	summary, _ := json.Marshal(compactMatchSummary(req.MatchResult))
 	return model.CreateJobApplicationAIRunRequest{
 		ResumeID:                req.ResumeID,
-		SourceSnapshotVersionID: req.SnapshotVersionID,
+		SourceSnapshotVersionID: trimmedOptionalString(req.SnapshotVersionID),
 		ResultType:              "jd_match",
 		Summary:                 summary,
 		Model:                   req.MatchResult.Model,
@@ -532,7 +538,7 @@ func buildScoreRun(req model.CreateJobApplicationRequest) model.CreateJobApplica
 	summary, _ := json.Marshal(compactScoreSummary(req.ScoreResult))
 	return model.CreateJobApplicationAIRunRequest{
 		ResumeID:                req.ResumeID,
-		SourceSnapshotVersionID: req.SnapshotVersionID,
+		SourceSnapshotVersionID: trimmedOptionalString(req.SnapshotVersionID),
 		ResultType:              "jd_score",
 		Summary:                 summary,
 		Model:                   req.ScoreResult.Model,
@@ -715,6 +721,20 @@ func statusLabel(status model.JobApplicationStatus) string {
 	default:
 		return string(status)
 	}
+}
+
+func trimmedOptionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func optionalStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 // isFinalStatus 判断是否终态（offer/rejected/withdrawn）

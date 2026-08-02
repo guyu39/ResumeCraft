@@ -477,10 +477,9 @@ const ApplicationsPage: React.FC = () => {
       .then((res) => {
         const nextSnapshots = res.items || []
         setCreateSnapshots(nextSnapshots)
-        setCreateForm((current) => current.snapshotVersionId ? current : { ...current, snapshotVersionId: nextSnapshots[0]?.id || '' })
       })
       .catch(() => setCreateSnapshots([]))
-  }, [createForm.resumeId, createForm.snapshotVersionId, createOpen])
+  }, [createForm.resumeId, createOpen])
 
   const timelineItems = useMemo(() => {
     if (!detail) return []
@@ -545,7 +544,7 @@ const ApplicationsPage: React.FC = () => {
       setEditingId(id)
       setCreateForm({
         resumeId: app.resumeId,
-        snapshotVersionId: app.snapshotVersionId,
+        snapshotVersionId: app.snapshotVersionId || '',
         companyName: app.companyName || '',
         department: app.department || '',
         targetTitle: app.targetTitle || '',
@@ -574,11 +573,6 @@ const ApplicationsPage: React.FC = () => {
   const saveApplication = async () => {
     if (!createForm.resumeId) {
       toast('请选择关联简历')
-      return
-    }
-    const hasSnapshots = createSnapshots.length > 0
-    if (hasSnapshots && !createForm.snapshotVersionId) {
-      toast('请选择关联快照')
       return
     }
     if (!createForm.targetTitle.trim() || !createForm.jdText.trim()) {
@@ -612,7 +606,7 @@ const ApplicationsPage: React.FC = () => {
       } else {
         const created = await applicationsApi.create({
           resumeId: createForm.resumeId,
-          snapshotVersionId: createForm.snapshotVersionId,
+          snapshotVersionId: createForm.snapshotVersionId || undefined,
           companyName: createForm.companyName.trim(),
           department: createForm.department.trim(),
           targetTitle: createForm.targetTitle.trim(),
@@ -706,13 +700,13 @@ const ApplicationsPage: React.FC = () => {
       mode: 'transcript',
       applicationId: detail.id,
       resumeId: detail.resumeId,
-      snapshotId: detail.snapshotVersionId,
       interviewId: editingInterviewId,
       interviewRound: interviewForm.round || '',
       companyName: detail.companyName || '',
       targetTitle: detail.targetTitle || '',
       jdText: detail.jdText || '',
     })
+    if (detail.snapshotVersionId) params.set('snapshotId', detail.snapshotVersionId)
     // 将当前面试记录文本作为 fallback 暂存，便于 edit 页预填
     sessionStorage.setItem('interview_analysis_transcript', interviewForm.notes || '')
     sessionStorage.setItem('interview_analysis_source', '面试记录')
@@ -1388,7 +1382,7 @@ const ApplicationsPage: React.FC = () => {
                 <h2 className="mt-5 text-2xl font-semibold tracking-tight">{editingId ? "编辑投递" : "新增投递"}</h2>
                 <div className="mt-8 space-y-4 text-sm">
                   <div className="flex items-start gap-3"><FileText className="mt-0.5 h-4 w-4 text-blue-300" /><span className="text-slate-300">职位信息与 JD 集中归档</span></div>
-                  <div className="flex items-start gap-3"><Layers3 className="mt-0.5 h-4 w-4 text-blue-300" /><span className="text-slate-300">绑定简历快照，便于后续复盘</span></div>
+                  <div className="flex items-start gap-3"><Layers3 className="mt-0.5 h-4 w-4 text-blue-300" /><span className="text-slate-300">快照可后续关联，便于按版本复盘</span></div>
                   <div className="flex items-start gap-3"><CalendarClock className="mt-0.5 h-4 w-4 text-blue-300" /><span className="text-slate-300">投递时间会进入时间线</span></div>
                 </div>
               </div>
@@ -1440,21 +1434,18 @@ const ApplicationsPage: React.FC = () => {
                           className="mt-1"
                         />
                       </label>
-                      <label className={fieldLabelClass}>关联快照
-                        {createForm.resumeId && createSnapshots.length === 0 ? (
-                          <div className="mt-1 rounded-xl border border-dashed border-amber-200 bg-amber-50/60 px-3 py-2.5">
-                            <p className="text-xs text-amber-700">该简历暂无快照版本</p>
-                            <p className="mt-1 text-[11px] text-amber-500">请先在编辑页为该简历创建快照，才能关联到此投递记录</p>
-                          </div>
-                        ) : (
-                          <StyledSelect
-                            value={createForm.snapshotVersionId}
-                            onChange={(v) => setCreateForm({ ...createForm, snapshotVersionId: v })}
-                            placeholder="请选择快照"
-                            options={createSnapshots.map((snapshot) => ({ label: snapshot.label || snapshot.snapshotType || snapshot.id.slice(0, 8), value: snapshot.id }))}
-                            className="mt-1"
-                          />
-                        )}
+                      <label className={fieldLabelClass}>关联快照（可选）
+                        <StyledSelect
+                          value={createForm.snapshotVersionId}
+                          onChange={(v) => setCreateForm({ ...createForm, snapshotVersionId: v })}
+                          placeholder="暂不关联版本"
+                          options={[
+                            { label: '暂不关联版本', value: '' },
+                            ...createSnapshots.map((snapshot) => ({ label: snapshot.label || snapshot.snapshotType || snapshot.id.slice(0, 8), value: snapshot.id })),
+                          ]}
+                          disabled={!createForm.resumeId}
+                          className="mt-1"
+                        />
                       </label>
                     </div>
                   </section>

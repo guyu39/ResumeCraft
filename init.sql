@@ -670,7 +670,7 @@ create table if not exists job_applications
     resume_id           uuid                                                               not null
         references resumes
             on delete cascade,
-    snapshot_version_id uuid                                                               not null
+    snapshot_version_id uuid
         references resume_versions
             on delete restrict,
     company_name        varchar(200)             default ''::character varying             not null,

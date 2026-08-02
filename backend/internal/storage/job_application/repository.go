@@ -46,22 +46,23 @@ type CreateApplicationParams struct {
 }
 
 type UpdateApplicationParams struct {
-	ResumeID           string
-	SnapshotVersionID  string
-	CompanyName        string
-	TargetTitle        string
-	Department         string
-	JDText             string
-	JDHash             string
-	Source             string
-	PreferredCity      string
-	ApplicationURL     string
-	NextAction         string
-	SubmittedAt        *time.Time
-	ClearSubmittedAt   bool
-	WrittenTestAt      *time.Time
-	ClearWrittenTestAt bool
-	Status             model.JobApplicationStatus
+	ResumeID                  string
+	SnapshotVersionID         string
+	SnapshotVersionIDProvided bool
+	CompanyName               string
+	TargetTitle               string
+	Department                string
+	JDText                    string
+	JDHash                    string
+	Source                    string
+	PreferredCity             string
+	ApplicationURL            string
+	NextAction                string
+	SubmittedAt               *time.Time
+	ClearSubmittedAt          bool
+	WrittenTestAt             *time.Time
+	ClearWrittenTestAt        bool
+	Status                    model.JobApplicationStatus
 }
 
 type CreateInterviewAttachmentParams struct {
@@ -260,14 +261,21 @@ func (r *repository) Create(ctx context.Context, params CreateApplicationParams)
 			user_id, resume_id, snapshot_version_id, company_name, department, target_title,
 			jd_text, jd_hash, source, preferred_city, application_url, next_action, match_score, jd_score
 		)
-		SELECT $1, $2, rv.id, $4, $5, $6, $7, $8, $9, NULLIF($10, ''), NULLIF($11, ''), NULLIF($12, ''), $13, $14
+		SELECT $1, $2, NULLIF($3::text, '')::uuid, $4, $5, $6, $7, $8, $9,
+		       NULLIF($10, ''), NULLIF($11, ''), NULLIF($12, ''), $13, $14
 		FROM resumes r
-		JOIN resume_versions rv
-		  ON rv.id = NULLIF($3, '')::uuid
-		 AND rv.resume_id = r.id
-		 AND rv.user_id = r.user_id
-		 AND rv.snapshot_type <> 'current'
 		WHERE r.id = $2 AND r.user_id = $1 AND r.deleted_at IS NULL
+		  AND (
+		      NULLIF($3::text, '') IS NULL
+		      OR EXISTS (
+		          SELECT 1
+		          FROM resume_versions rv
+		          WHERE rv.id = NULLIF($3::text, '')::uuid
+		            AND rv.resume_id = r.id
+		            AND rv.user_id = r.user_id
+		            AND rv.snapshot_type <> 'current'
+		      )
+		  )
 		RETURNING id
 	`, params.UserID, params.ResumeID, params.SnapshotVersionID, params.CompanyName, params.Department, params.TargetTitle,
 		params.JDText, params.JDHash, params.Source, params.PreferredCity, params.ApplicationURL, params.NextAction,
@@ -302,20 +310,71 @@ func (r *repository) Create(ctx context.Context, params CreateApplicationParams)
 }
 
 func (r *repository) Update(ctx context.Context, userID, applicationID string, params UpdateApplicationParams) (*model.JobApplication, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin update application tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var currentResumeID string
+	var currentSnapshot sql.NullString
+	err = tx.QueryRow(ctx, `
+		SELECT resume_id, snapshot_version_id
+		FROM job_applications
+		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+		FOR UPDATE
+	`, applicationID, userID).Scan(&currentResumeID, &currentSnapshot)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrApplicationNotFound
+		}
+		return nil, fmt.Errorf("lock job application: %w", err)
+	}
+
 	updates := []string{}
 	args := []interface{}{}
 	argIdx := 1
 
-	if params.ResumeID != "" || params.SnapshotVersionID != "" {
-		if params.ResumeID == "" || params.SnapshotVersionID == "" {
+	if params.ResumeID != "" || params.SnapshotVersionIDProvided {
+		targetResumeID, targetSnapshotID := resolveAssociationUpdate(currentResumeID, optionalString(currentSnapshot), params)
+		var validAssociation bool
+		if targetSnapshotID == nil {
+			err = tx.QueryRow(ctx, `
+				SELECT EXISTS(
+					SELECT 1 FROM resumes
+					WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+				)
+			`, targetResumeID, userID).Scan(&validAssociation)
+		} else {
+			err = tx.QueryRow(ctx, `
+				SELECT EXISTS(
+					SELECT 1
+					FROM resumes r
+					JOIN resume_versions rv
+					  ON rv.id = $3
+					 AND rv.resume_id = r.id
+					 AND rv.user_id = r.user_id
+					 AND rv.snapshot_type <> 'current'
+					WHERE r.id = $1 AND r.user_id = $2 AND r.deleted_at IS NULL
+				)
+			`, targetResumeID, userID, *targetSnapshotID).Scan(&validAssociation)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("validate application association: %w", err)
+		}
+		if !validAssociation {
 			return nil, ErrInvalidAssociation
 		}
 		updates = append(updates, fmt.Sprintf("resume_id = $%d", argIdx))
-		args = append(args, params.ResumeID)
+		args = append(args, targetResumeID)
 		argIdx++
-		updates = append(updates, fmt.Sprintf("snapshot_version_id = $%d", argIdx))
-		args = append(args, params.SnapshotVersionID)
-		argIdx++
+		if targetSnapshotID == nil {
+			updates = append(updates, "snapshot_version_id = NULL")
+		} else {
+			updates = append(updates, fmt.Sprintf("snapshot_version_id = $%d", argIdx))
+			args = append(args, *targetSnapshotID)
+			argIdx++
+		}
 	}
 	if params.CompanyName != "" {
 		updates = append(updates, fmt.Sprintf("company_name = $%d", argIdx))
@@ -376,6 +435,9 @@ func (r *repository) Update(ctx context.Context, userID, applicationID string, p
 		argIdx++
 	}
 	if len(updates) == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("commit unchanged application: %w", err)
+		}
 		return r.GetByID(ctx, userID, applicationID)
 	}
 	updates = append(updates, "updated_at = NOW()")
@@ -383,43 +445,17 @@ func (r *repository) Update(ctx context.Context, userID, applicationID string, p
 	args = append(args, applicationID, userID)
 	applicationIDArg := len(args) - 1
 	userIDArg := len(args)
-	whereAssociation := ""
-	if params.ResumeID != "" && params.SnapshotVersionID != "" {
-		args = append(args, params.ResumeID, params.SnapshotVersionID)
-		whereAssociation = fmt.Sprintf(`
-			AND EXISTS (
-				SELECT 1
-				FROM resumes r
-				JOIN resume_versions rv ON rv.id = $%d AND rv.resume_id = r.id AND rv.user_id = r.user_id AND rv.snapshot_type <> 'current'
-				WHERE r.id = $%d AND r.user_id = $%d AND r.deleted_at IS NULL
-			)
-		`, len(args), len(args)-1, len(args)-2)
-	}
 	query := fmt.Sprintf(`
 		UPDATE job_applications
 		SET %s
 		WHERE id = $%d AND user_id = $%d AND deleted_at IS NULL
-		%s
-	`, strings.Join(updates, ", "), applicationIDArg, userIDArg, whereAssociation)
-
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin update application tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
+	`, strings.Join(updates, ", "), applicationIDArg, userIDArg)
 
 	result, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("update job application: %w", err)
 	}
 	if result.RowsAffected() == 0 {
-		if params.ResumeID != "" && params.SnapshotVersionID != "" {
-			var exists bool
-			_ = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM job_applications WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL)`, applicationID, userID).Scan(&exists)
-			if exists {
-				return nil, ErrInvalidAssociation
-			}
-		}
 		return nil, ErrApplicationNotFound
 	}
 	if err := r.audit.AppendTx(ctx, tx, audit.Entry{
@@ -1103,7 +1139,10 @@ func (r *repository) GetConversionBySnapshot(ctx context.Context, userID string)
 	rows, err := r.pool.Query(ctx, `
 		SELECT
 			ja.snapshot_version_id,
-			COALESCE(rv.label, ''),
+			CASE
+				WHEN ja.snapshot_version_id IS NULL THEN '未关联版本'
+				ELSE COALESCE(NULLIF(rv.label, ''), '未命名版本')
+			END,
 			ja.resume_id,
 			COALESCE(r.title, ''),
 			COUNT(*) FILTER (WHERE ja.submitted_at IS NOT NULL) AS submitted,
@@ -1125,9 +1164,11 @@ func (r *repository) GetConversionBySnapshot(ctx context.Context, userID string)
 	items := make([]model.SnapshotConversion, 0)
 	for rows.Next() {
 		var it model.SnapshotConversion
-		if err := rows.Scan(&it.SnapshotVersionID, &it.SnapshotLabel, &it.ResumeID, &it.ResumeTitle, &it.Submitted, &it.Interview, &it.Offer); err != nil {
+		var snapshotVersionID sql.NullString
+		if err := rows.Scan(&snapshotVersionID, &it.SnapshotLabel, &it.ResumeID, &it.ResumeTitle, &it.Submitted, &it.Interview, &it.Offer); err != nil {
 			return nil, fmt.Errorf("scan conversion row: %w", err)
 		}
+		it.SnapshotVersionID = optionalString(snapshotVersionID)
 		if it.Submitted > 0 {
 			it.ReplyRate = float64(it.Interview) / float64(it.Submitted)
 		}
@@ -1142,7 +1183,7 @@ func (r *repository) GetConversionBySnapshot(ctx context.Context, userID string)
 func (r *repository) getBaseByID(ctx context.Context, userID, applicationID string) (*model.JobApplication, error) {
 	var app model.JobApplication
 	var submittedAt, writtenTestAt sql.NullTime
-	var applicationURL, nextAction, snapshotLabel, snapshotType sql.NullString
+	var applicationURL, nextAction, snapshotVersionID, snapshotLabel, snapshotType sql.NullString
 	var createdAt, updatedAt time.Time
 	err := r.pool.QueryRow(ctx, `
 		SELECT ja.id, ja.user_id, ja.resume_id, rs.title, ja.snapshot_version_id,
@@ -1162,7 +1203,7 @@ func (r *repository) getBaseByID(ctx context.Context, userID, applicationID stri
 		) progress ON progress.application_id = ja.id
 		WHERE ja.id = $1 AND ja.user_id = $2 AND ja.deleted_at IS NULL
 	`, applicationID, userID).Scan(
-		&app.ID, &app.UserID, &app.ResumeID, &app.ResumeTitle, &app.SnapshotVersionID,
+		&app.ID, &app.UserID, &app.ResumeID, &app.ResumeTitle, &snapshotVersionID,
 		&snapshotLabel, &snapshotType, &app.CompanyName, &app.Department, &app.TargetTitle, &app.JDText,
 		&app.JDHash, &app.Source, &app.PreferredCity, &applicationURL, &app.Status, &app.MatchScore,
 		&app.JDScore, &app.ChecklistDone, &app.ChecklistTotal, &nextAction,
@@ -1177,6 +1218,7 @@ func (r *repository) getBaseByID(ctx context.Context, userID, applicationID stri
 	if applicationURL.Valid {
 		app.ApplicationURL = applicationURL.String
 	}
+	app.SnapshotVersionID = optionalString(snapshotVersionID)
 	if nextAction.Valid {
 		app.NextAction = nextAction.String
 	}
@@ -1234,9 +1276,10 @@ func scanApplicationListRows(rows pgx.Rows) ([]model.JobApplicationListItem, err
 	for rows.Next() {
 		var item model.JobApplicationListItem
 		var submittedAt, writtenTestAt sql.NullTime
+		var snapshotVersionID sql.NullString
 		var updatedAt, createdAt time.Time
 		if err := rows.Scan(
-			&item.ID, &item.ResumeID, &item.ResumeTitle, &item.SnapshotVersionID,
+			&item.ID, &item.ResumeID, &item.ResumeTitle, &snapshotVersionID,
 			&item.SnapshotLabel, &item.CompanyName, &item.Department, &item.TargetTitle, &item.Source,
 			&item.PreferredCity, &item.ApplicationURL, &item.Status, &item.MatchScore, &item.JDScore,
 			&item.ChecklistDone, &item.ChecklistTotal, &item.NextAction, &submittedAt, &writtenTestAt,
@@ -1244,6 +1287,7 @@ func scanApplicationListRows(rows pgx.Rows) ([]model.JobApplicationListItem, err
 		); err != nil {
 			return nil, fmt.Errorf("scan job application: %w", err)
 		}
+		item.SnapshotVersionID = optionalString(snapshotVersionID)
 		if submittedAt.Valid {
 			ms := submittedAt.Time.UnixMilli()
 			item.SubmittedAt = &ms
@@ -1363,6 +1407,32 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func optionalString(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	result := value.String
+	return &result
+}
+
+func resolveAssociationUpdate(currentResumeID string, currentSnapshotID *string, params UpdateApplicationParams) (string, *string) {
+	targetResumeID := currentResumeID
+	if params.ResumeID != "" {
+		targetResumeID = params.ResumeID
+	}
+	if params.SnapshotVersionIDProvided {
+		if params.SnapshotVersionID == "" {
+			return targetResumeID, nil
+		}
+		targetSnapshotID := params.SnapshotVersionID
+		return targetResumeID, &targetSnapshotID
+	}
+	if targetResumeID != currentResumeID {
+		return targetResumeID, nil
+	}
+	return targetResumeID, currentSnapshotID
 }
 
 func IsCheckViolation(err error) bool {

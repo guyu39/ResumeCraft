@@ -60,9 +60,10 @@ func TestUpdateStatusRejectsInvalidStatus(t *testing.T) {
 func TestCreateDoesNotCreateSnapshotAndPersistsDerivedChecklist(t *testing.T) {
 	repo := &mockRepo{created: &model.JobApplication{ID: "app-1"}}
 	svc := NewService(repo)
+	snapshotID := "snapshot-1"
 	_, err := svc.Create(context.Background(), "user-1", model.CreateJobApplicationRequest{
 		ResumeID:          "resume-1",
-		SnapshotVersionID: "snapshot-1",
+		SnapshotVersionID: &snapshotID,
 		TargetTitle:       "前端工程师",
 		JDText:            "负责 React 开发",
 		MatchResult: &model.JDMatchResponse{
@@ -87,6 +88,77 @@ func TestCreateDoesNotCreateSnapshotAndPersistsDerivedChecklist(t *testing.T) {
 	}
 }
 
+func TestCreateAllowsMissingSnapshotAndLeavesAISourcesEmpty(t *testing.T) {
+	repo := &mockRepo{created: &model.JobApplication{ID: "app-1"}}
+	svc := NewService(repo)
+
+	_, err := svc.Create(context.Background(), "user-1", model.CreateJobApplicationRequest{
+		ResumeID:    "resume-1",
+		TargetTitle: "前端工程师",
+		JDText:      "负责 React 开发",
+		MatchResult: &model.JDMatchResponse{
+			MatchScore: 81,
+			Gaps:       []model.JDGap{{Requirement: "React", Suggestion: "补充 React 项目"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if repo.createParams.SnapshotVersionID != "" {
+		t.Fatalf("snapshot id = %q, want empty", repo.createParams.SnapshotVersionID)
+	}
+	if len(repo.aiRuns) != 1 || repo.aiRuns[0].SourceSnapshotVersionID != "" {
+		t.Fatalf("AI runs = %#v, want one run without source snapshot", repo.aiRuns)
+	}
+	if len(repo.replacedChecklist) != 1 || repo.replacedChecklist[0].SourceSnapshotVersionID != "" {
+		t.Fatalf("checklist = %#v, want source snapshot empty", repo.replacedChecklist)
+	}
+}
+
+func TestCreateStillRejectsMissingRequiredFields(t *testing.T) {
+	tests := []struct {
+		name string
+		req  model.CreateJobApplicationRequest
+	}{
+		{name: "resume", req: model.CreateJobApplicationRequest{TargetTitle: "工程师", JDText: "JD"}},
+		{name: "title", req: model.CreateJobApplicationRequest{ResumeID: "resume-1", JDText: "JD"}},
+		{name: "jd", req: model.CreateJobApplicationRequest{ResumeID: "resume-1", TargetTitle: "工程师"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewService(&mockRepo{}).Create(context.Background(), "user-1", tt.req)
+			if !errors.Is(err, ErrInvalidPayload) {
+				t.Fatalf("err = %v, want ErrInvalidPayload", err)
+			}
+		})
+	}
+}
+
+func TestUpdateForwardsSnapshotTriState(t *testing.T) {
+	repo := &mockRepo{}
+	svc := NewService(repo)
+	emptySnapshot := ""
+
+	if _, err := svc.Update(context.Background(), "user-1", "app-1", model.UpdateJobApplicationRequest{
+		SnapshotVersionID: &emptySnapshot,
+	}); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	if !repo.updateParams.SnapshotVersionIDProvided || repo.updateParams.SnapshotVersionID != "" {
+		t.Fatalf("update params = %#v, want explicit empty snapshot", repo.updateParams)
+	}
+
+	if _, err := svc.Update(context.Background(), "user-1", "app-1", model.UpdateJobApplicationRequest{
+		ResumeID: "resume-2",
+	}); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	if repo.updateParams.SnapshotVersionIDProvided {
+		t.Fatalf("update params = %#v, want snapshot omitted", repo.updateParams)
+	}
+}
+
 func TestExportExcelUsesConciseFields(t *testing.T) {
 	repo := &mockRepo{
 		listItems: []model.JobApplicationListItem{{
@@ -99,7 +171,7 @@ func TestExportExcelUsesConciseFields(t *testing.T) {
 			SnapshotLabel:     "投递版",
 			ApplicationURL:    "https://example.com/job",
 			UpdatedAt:         1720000000000,
-			SnapshotVersionID: "snapshot-1",
+			SnapshotVersionID: stringPtr("snapshot-1"),
 		}},
 		interviews: []model.JobApplicationInterview{
 			{Round: "一面", Result: "通过", ScheduledAt: int64Ptr(1720000000000)},
@@ -144,16 +216,47 @@ func TestExportExcelUsesConciseFields(t *testing.T) {
 	}
 }
 
-func int64Ptr(v int64) *int64 { return &v }
+func TestExportExcelLabelsMissingSnapshot(t *testing.T) {
+	repo := &mockRepo{listItems: []model.JobApplicationListItem{{
+		ID:          "app-1",
+		CompanyName: "Acme",
+		TargetTitle: "前端工程师",
+		ResumeTitle: "主简历",
+		Status:      model.JobApplicationStatusPendingAdaptation,
+	}}}
+
+	data, err := NewService(repo).ExportExcel(context.Background(), "user-1", model.JobApplicationFilters{})
+	if err != nil {
+		t.Fatalf("ExportExcel returned error: %v", err)
+	}
+	f, err := excelize.OpenReader(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("failed to open generated excel: %v", err)
+	}
+	defer f.Close()
+	value, err := f.GetCellValue("投递记录", "F2")
+	if err != nil {
+		t.Fatalf("failed to read snapshot cell: %v", err)
+	}
+	if value != "未关联版本" {
+		t.Fatalf("snapshot cell = %q, want 未关联版本", value)
+	}
+}
+
+func int64Ptr(v int64) *int64    { return &v }
+func stringPtr(v string) *string { return &v }
 
 type mockRepo struct {
 	created                *model.JobApplication
 	createParams           appRepo.CreateApplicationParams
+	updateParams           appRepo.UpdateApplicationParams
 	listItems              []model.JobApplicationListItem
 	replacedChecklistCount int
 	createdSnapshot        bool
 	interviews             []model.JobApplicationInterview
 	status                 model.JobApplicationStatus
+	aiRuns                 []model.CreateJobApplicationAIRunRequest
+	replacedChecklist      []model.CreateChecklistItemRequest
 }
 
 func (m *mockRepo) List(ctx context.Context, userID string, filters model.JobApplicationFilters) ([]model.JobApplicationListItem, int, error) {
@@ -173,6 +276,7 @@ func (m *mockRepo) Create(ctx context.Context, params appRepo.CreateApplicationP
 }
 
 func (m *mockRepo) Update(ctx context.Context, userID, applicationID string, params appRepo.UpdateApplicationParams) (*model.JobApplication, error) {
+	m.updateParams = params
 	return &model.JobApplication{ID: applicationID}, nil
 }
 
@@ -208,10 +312,12 @@ func (m *mockRepo) DeleteChecklistItem(ctx context.Context, userID, applicationI
 
 func (m *mockRepo) ReplaceChecklistItems(ctx context.Context, userID, applicationID string, items []model.CreateChecklistItemRequest) ([]model.JobApplicationChecklistItem, error) {
 	m.replacedChecklistCount = len(items)
+	m.replacedChecklist = append([]model.CreateChecklistItemRequest(nil), items...)
 	return nil, nil
 }
 
 func (m *mockRepo) CreateAIRun(ctx context.Context, userID, applicationID string, req model.CreateJobApplicationAIRunRequest) (*model.JobApplicationAIRun, error) {
+	m.aiRuns = append(m.aiRuns, req)
 	return &model.JobApplicationAIRun{ApplicationID: applicationID, ResultType: req.ResultType}, nil
 }
 
