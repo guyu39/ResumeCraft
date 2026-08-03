@@ -33,6 +33,7 @@ const YearMonthPicker: React.FC<YearMonthPickerProps> = ({
   const [panelPosition, setPanelPosition] = useState<{ top: number; left: number } | null>(null)
   const [step, setStep] = useState<Step>("year")
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
   const [pageStart, setPageStart] = useState<number | null>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -61,6 +62,7 @@ const YearMonthPicker: React.FC<YearMonthPickerProps> = ({
     const initialYear = parsed?.year ?? currentYear
     setPageStart(min + Math.floor((initialYear - min) / YEARS_PER_PAGE) * YEARS_PER_PAGE)
     setSelectedYear(parsed?.year ?? initialYear)
+    setSelectedMonth(parsed?.month ?? null)
     setStep(enableDay && defaultStep === "day" ? "day" : defaultStep)
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
@@ -77,15 +79,15 @@ const YearMonthPicker: React.FC<YearMonthPickerProps> = ({
   const closeCalendar = () => { setIsOpen(false); setStep("year") }
   const prevPage = () => { if (pageStart !== null) setPageStart(Math.max(min, pageStart - YEARS_PER_PAGE)) }
   const nextPage = () => { if (pageStart !== null && pageStart + YEARS_PER_PAGE <= max) setPageStart(pageStart + YEARS_PER_PAGE) }
-  const selectYear = (year: number) => { setSelectedYear(year); setStep("month") }
+  const selectYear = (year: number) => { setSelectedYear(year); setSelectedMonth(null); setStep("month") }
   const selectMonth = (month: number) => {
     if (selectedYear === null) return
-    if (enableDay) { setStep("day") }
+    if (enableDay) { setSelectedMonth(month); setStep("day") }
     else { onChange(selectedYear + "-" + String(month).padStart(2, "0")); closeCalendar() }
   }
   const selectDay = (day: number) => {
     if (selectedYear === null) return
-    const month = activeYearMonth?.month ?? parsed?.month ?? 1
+    const month = selectedMonth ?? activeYearMonth?.month ?? parsed?.month ?? 1
     onChange(selectedYear + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0"))
     closeCalendar()
   }
@@ -130,11 +132,11 @@ const YearMonthPicker: React.FC<YearMonthPickerProps> = ({
 
   const activeYearMonth = useMemo(() => {
     if (step !== "day") return null
+    if (selectedYear !== null && selectedMonth !== null) return { year: selectedYear, month: selectedMonth }
     if (parsed?.year && parsed?.month) return { year: parsed.year, month: parsed.month }
-    if (selectedYear !== null && parsed?.month) return { year: selectedYear, month: parsed.month }
     if (selectedYear !== null) return { year: selectedYear, month: new Date().getMonth() + 1 }
     return null
-  }, [step, parsed, selectedYear])
+  }, [step, parsed, selectedYear, selectedMonth])
 
   const panelContent = isOpen ? (
     <div ref={panelRef} className="fixed z-[9999] bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 w-[300px]"
