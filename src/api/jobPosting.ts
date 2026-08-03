@@ -24,6 +24,7 @@ export interface JobPosting {
   createdAt: string
   updatedAt: string
   scrapedAt: string
+  applied: boolean // 当前用户是否已标记「已投递」；未登录时始终为 false
 }
 
 export interface JobFilters {
@@ -47,6 +48,7 @@ export interface JobListParams {
   industry?: string
   type?: string
   keyword?: string
+  applied?: 'true' | 'false'
   page?: number
   pageSize?: number
 }
@@ -61,6 +63,8 @@ export const jobPostingApi = {
     apiClient.get<JobPostingListResponse>(`/job-postings?${buildQuery(params)}`),
   getJobFilters: () => apiClient.get<JobFilters>('/job-postings/filters'),
   syncJobPostings: () => apiClient.post<SyncResult>('/job-postings/sync', {}, { auth: true }),
+  setJobPostingMark: (id: string, applied: boolean) =>
+    apiClient.put<{ applied: boolean }>(`/job-postings/${id}/mark`, { applied }, { auth: true }),
 }
 
 function buildQuery(params: JobListParams): string {
@@ -68,6 +72,7 @@ function buildQuery(params: JobListParams): string {
   if (params.industry) qs.set('industry', params.industry)
   if (params.type) qs.set('type', params.type)
   if (params.keyword) qs.set('keyword', params.keyword)
+  if (params.applied) qs.set('applied', params.applied)
   if (params.page) qs.set('page', String(params.page))
   if (params.pageSize) qs.set('pageSize', String(params.pageSize))
   return qs.toString()

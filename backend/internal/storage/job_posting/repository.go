@@ -20,6 +20,8 @@ type Repository interface {
 	ListJobPostings(ctx context.Context, filters model.JobPostingFilters) ([]model.JobPosting, int, error)
 	// GetFilters 返回去重后的行业 / 招聘类型枚举
 	GetFilters(ctx context.Context) (*model.JobPostingFiltersResponse, error)
+	// SetMark 设置/取消当前用户对某条招聘信息的「已投递」标记
+	SetMark(ctx context.Context, userID, jobPostingID string, applied bool) error
 }
 
 type repository struct {
@@ -175,6 +177,24 @@ func (r *repository) ListJobPostings(ctx context.Context, filters model.JobPosti
 		args = append(args, "%"+filters.Keyword+"%")
 		argIdx++
 	}
+
+	// 「是否投递」筛选依赖 job_posting_marks 中是否存在当前用户的标记行；
+	// 未登录（UserID 为空）时该筛选不生效，交由前端隐藏该选项。
+	var markUserIdx int
+	if filters.Applied != "" && filters.UserID != "" {
+		markUserIdx = argIdx
+		args = append(args, filters.UserID)
+		argIdx++
+		existsClause := fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM job_posting_marks m WHERE m.user_id = $%d AND m.job_posting_id = job_postings.id)",
+			markUserIdx,
+		)
+		if filters.Applied == "true" {
+			where = append(where, existsClause)
+		} else {
+			where = append(where, "NOT "+existsClause)
+		}
+	}
 	whereClause := strings.Join(where, " AND ")
 
 	var total int
@@ -191,16 +211,29 @@ func (r *repository) ListJobPostings(ctx context.Context, filters model.JobPosti
 	listArgs := append([]interface{}{}, args...)
 	listArgs = append(listArgs, pageSize, offset)
 
+	// 是否已投递（applied）始终随列表一起返回，供表格展示标记状态；
+	// 未登录时 filters.UserID 为空，applied 一律为 false。
+	appliedExpr := "false"
+	appliedArgs := []interface{}{}
+	if filters.UserID != "" {
+		appliedExpr = fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM job_posting_marks m WHERE m.user_id = $%d AND m.job_posting_id = job_postings.id)",
+			argIdx+2,
+		)
+		appliedArgs = append(appliedArgs, filters.UserID)
+	}
+	listArgs = append(listArgs, appliedArgs...)
+
 	listSQL := fmt.Sprintf(`
 		SELECT id, source, source_id, company_name, industry, industry_category,
 		       recruitment_type, recruitment_category,
 		       open_date, location, positions, application_url, referral_code, notes,
-		       is_active, created_at, updated_at, scraped_at
+		       is_active, created_at, updated_at, scraped_at, %s AS applied
 		FROM job_postings
 		WHERE %s
 		ORDER BY %s
 		LIMIT $%d OFFSET $%d
-	`, whereClause, sortClause, argIdx, argIdx+1)
+	`, appliedExpr, whereClause, sortClause, argIdx, argIdx+1)
 
 	rows, err := r.pool.Query(ctx, listSQL, listArgs...)
 	if err != nil {
@@ -217,7 +250,7 @@ func (r *repository) ListJobPostings(ctx context.Context, filters model.JobPosti
 			&jp.ID, &jp.Source, &sourceID, &jp.CompanyName, &industry, &indCategory,
 			&recType, &recCategory,
 			&openDate, &location, &positions, &appURL, &referral, &notes,
-			&jp.IsActive, &jp.CreatedAt, &jp.UpdatedAt, &jp.ScrapedAt,
+			&jp.IsActive, &jp.CreatedAt, &jp.UpdatedAt, &jp.ScrapedAt, &jp.Applied,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan job_posting: %w", err)
 		}
@@ -241,6 +274,29 @@ func (r *repository) ListJobPostings(ctx context.Context, filters model.JobPosti
 		return nil, 0, fmt.Errorf("iterate job_postings: %w", err)
 	}
 	return items, total, nil
+}
+
+// SetMark 设置/取消当前用户对某条招聘信息的「已投递」标记；
+// applied=true 时幂等插入（存在则忽略），applied=false 时删除标记。
+func (r *repository) SetMark(ctx context.Context, userID, jobPostingID string, applied bool) error {
+	if applied {
+		_, err := r.pool.Exec(ctx, `
+			INSERT INTO job_posting_marks (user_id, job_posting_id)
+			VALUES ($1, $2)
+			ON CONFLICT (user_id, job_posting_id) DO NOTHING
+		`, userID, jobPostingID)
+		if err != nil {
+			return fmt.Errorf("insert job_posting_mark: %w", err)
+		}
+		return nil
+	}
+	_, err := r.pool.Exec(ctx, `
+		DELETE FROM job_posting_marks WHERE user_id = $1 AND job_posting_id = $2
+	`, userID, jobPostingID)
+	if err != nil {
+		return fmt.Errorf("delete job_posting_mark: %w", err)
+	}
+	return nil
 }
 
 func (r *repository) GetFilters(ctx context.Context) (*model.JobPostingFiltersResponse, error) {

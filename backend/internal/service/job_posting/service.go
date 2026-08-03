@@ -28,6 +28,8 @@ type Service interface {
 	ListJobPostings(ctx context.Context, filters model.JobPostingFilters) (*model.JobPostingListResponse, error)
 	// GetFilters 透传 Repository，返回筛选枚举
 	GetFilters(ctx context.Context) (*model.JobPostingFiltersResponse, error)
+	// SetMark 设置/取消当前用户对某条招聘信息的「已投递」标记
+	SetMark(ctx context.Context, userID, jobPostingID string, applied bool) error
 }
 
 // syncCooldown 手动同步最小间隔：两次同步（含自动调度触发）至少间隔 1 分钟，防止频繁爬取源文档。
@@ -254,6 +256,10 @@ func (s *service) GetFilters(ctx context.Context) (*model.JobPostingFiltersRespo
 	return s.repo.GetFilters(ctx)
 }
 
+func (s *service) SetMark(ctx context.Context, userID, jobPostingID string, applied bool) error {
+	return s.repo.SetMark(ctx, userID, jobPostingID, applied)
+}
+
 // ---------- 抓取脚本输出结构 ----------
 
 type scraperOutput struct {
@@ -334,6 +340,10 @@ func normalizeFilters(f *model.JobPostingFilters) {
 	f.Keyword = strings.TrimSpace(f.Keyword)
 	f.Industry = strings.TrimSpace(f.Industry)
 	f.RecruitmentType = strings.TrimSpace(f.RecruitmentType)
+	f.Applied = strings.TrimSpace(f.Applied)
+	if f.Applied != "true" && f.Applied != "false" {
+		f.Applied = ""
+	}
 }
 
 func finishErr(result *model.SyncResult, start time.Time, err error) (*model.SyncResult, error) {

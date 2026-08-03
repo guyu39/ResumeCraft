@@ -6,7 +6,7 @@
 // ============================================================
 
 import React from 'react'
-import { ExternalLink, Copy } from 'lucide-react'
+import { ExternalLink, Copy, CheckCircle2, Circle } from 'lucide-react'
 import { toast } from '@/components/common/Toast'
 import type { JobPosting } from '@/api/jobPosting'
 
@@ -44,7 +44,13 @@ const INDUSTRY_COLORS: Record<string, string> = {
 const defaultBadge = 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'
 const formatDate = (iso?: string) => (iso ? iso.slice(0, 10) : '—')
 
-const JobTableRow: React.FC<{ job: JobPosting }> = ({ job }) => {
+interface JobTableRowProps {
+  job: JobPosting
+  isAuthenticated: boolean
+  onToggleApplied: (job: JobPosting) => void
+}
+
+const JobTableRow: React.FC<JobTableRowProps> = ({ job, isAuthenticated, onToggleApplied }) => {
   const copyReferral = async () => {
     if (!job.referralCode) return
     try {
@@ -53,6 +59,14 @@ const JobTableRow: React.FC<{ job: JobPosting }> = ({ job }) => {
     } catch {
       toast('复制失败，请手动复制', 'error')
     }
+  }
+
+  const handleToggleApplied = () => {
+    if (!isAuthenticated) {
+      toast('请先登录后再标记投递状态', 'error')
+      return
+    }
+    onToggleApplied(job)
   }
 
   return (
@@ -103,6 +117,22 @@ const JobTableRow: React.FC<{ job: JobPosting }> = ({ job }) => {
         <div className="truncate text-slate-600" title={job.location || undefined}>
           {job.location || '—'}
         </div>
+      </td>
+
+      {/* 是否投递 */}
+      <td className="px-3 py-3">
+        <button
+          type="button"
+          onClick={handleToggleApplied}
+          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition ${
+            job.applied
+              ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100'
+              : 'bg-slate-50 text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100 hover:text-slate-700'
+          }`}
+        >
+          {job.applied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+          {job.applied ? '投递' : '投递'}
+        </button>
       </td>
 
       {/* 操作 */}

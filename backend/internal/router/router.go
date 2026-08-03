@@ -213,9 +213,10 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 		if h.JobPostingService() != nil {
 			jobGroup := api.Group("/job-postings")
 			{
-				jobGroup.GET("", h.ListJobPostings)
+				jobGroup.GET("", middleware.OptionalAuth(h.AuthService()), h.ListJobPostings)
 				jobGroup.GET("/filters", h.GetJobPostingFilters)
 				jobGroup.POST("/sync", middleware.AuthRequired(h.AuthService()), h.SyncJobPostings)
+				jobGroup.PUT("/:id/mark", middleware.AuthRequired(h.AuthService()), h.SetJobPostingMark)
 			}
 		}
 	}

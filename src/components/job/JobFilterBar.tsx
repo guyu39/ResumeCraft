@@ -12,6 +12,7 @@ export interface JobFilterValue {
   industry: string
   type: string
   keyword: string
+  applied: '' | 'true' | 'false'
 }
 
 interface JobFilterBarProps {
@@ -19,6 +20,8 @@ interface JobFilterBarProps {
   onChange: (next: JobFilterValue) => void
   industries: string[]
   types: string[]
+  /** 是否登录：未登录时隐藏「是否投递」筛选，因为该状态与账号绑定 */
+  isAuthenticated: boolean
 }
 
 const toOptions = (all: string[], emptyLabel: string) => [
@@ -26,11 +29,18 @@ const toOptions = (all: string[], emptyLabel: string) => [
   ...all.map((it) => ({ label: it, value: it })),
 ]
 
+const APPLIED_OPTIONS = [
+  { label: '全部投递状态', value: '' },
+  { label: '已投递', value: 'true' },
+  { label: '未投递', value: 'false' },
+]
+
 const JobFilterBar: React.FC<JobFilterBarProps> = ({
   value,
   onChange,
   industries,
   types,
+  isAuthenticated,
 }) => {
   const [keywordInput, setKeywordInput] = useState(value.keyword)
   const debounceRef = useRef<number | undefined>(undefined)
@@ -50,7 +60,8 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({
     setKeywordInput(value.keyword)
   }, [value.keyword])
 
-  const hasActiveFilter = value.industry || value.type || value.keyword
+  const hasActiveFilter = value.industry || value.type || value.keyword || value.applied
+  const emptyValue: JobFilterValue = { industry: '', type: '', keyword: '', applied: '' }
 
   return (
     <div className="w-full">
@@ -79,6 +90,18 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({
           className="min-w-0 sm:w-36 sm:shrink-0"
         />
 
+        {/* 是否投递：未登录时该状态无意义（不与账号绑定），隐藏此项 */}
+        {isAuthenticated && (
+          <StyledSelect
+            value={value.applied}
+            onChange={(v) => onChange({ ...value, applied: v as JobFilterValue['applied'] })}
+            options={APPLIED_OPTIONS}
+            placeholder="全部投递状态"
+            modal={false}
+            className="min-w-0 sm:w-32 sm:shrink-0"
+          />
+        )}
+
         {/* 关键词搜索 */}
         <div className="relative col-span-2 min-w-0 sm:flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -105,7 +128,7 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({
         {hasActiveFilter && (
           <button
             type="button"
-            onClick={() => onChange({ industry: '', type: '', keyword: '' })}
+            onClick={() => onChange(emptyValue)}
             className="col-span-2 justify-self-start whitespace-nowrap text-[13px] text-slate-500 transition hover:text-red-600"
           >
             清除筛选

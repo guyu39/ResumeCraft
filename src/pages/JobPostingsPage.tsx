@@ -6,18 +6,23 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Inbox, AlertTriangle, BriefcaseBusiness, FileText } from 'lucide-react'
 import { jobPostingApi, type JobFilters, type JobPostingListResponse } from '@/api/jobPosting'
+import type { JobPosting } from '@/api/jobPosting'
 import JobTableRow from '@/components/job/JobTableRow'
 import JobFilterBar, { type JobFilterValue } from '@/components/job/JobFilterBar'
 import JobPagination from '@/components/job/JobPagination'
+import { useAuthStore } from '@/store/authStore'
+import { toast } from '@/components/common/Toast'
 
 const PAGE_SIZE = 20
 const AUTO_REFRESH_INTERVAL_MS = 60 * 60 * 1000
 
 const JobPostingsPage: React.FC = () => {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [filterValue, setFilterValue] = useState<JobFilterValue>({
     industry: '',
     type: '',
     keyword: '',
+    applied: '',
   })
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
@@ -45,6 +50,7 @@ const JobPostingsPage: React.FC = () => {
         industry: filterValue.industry || undefined,
         type: filterValue.type || undefined,
         keyword: filterValue.keyword || undefined,
+        applied: filterValue.applied || undefined,
         page,
         pageSize,
       })
@@ -82,6 +88,26 @@ const JobPostingsPage: React.FC = () => {
     if (ps !== pageSize) setPageSize(ps)
   }
 
+  // 本地乐观更新「已投递」标记，失败时回滚，避免整页重新加载抢先跳动
+  const handleToggleApplied = async (job: JobPosting) => {
+    const nextApplied = !job.applied
+    setData((prev) =>
+      prev
+        ? { ...prev, items: prev.items.map((it) => (it.id === job.id ? { ...it, applied: nextApplied } : it)) }
+        : prev,
+    )
+    try {
+      await jobPostingApi.setJobPostingMark(job.id, nextApplied)
+    } catch (e) {
+      setData((prev) =>
+        prev
+          ? { ...prev, items: prev.items.map((it) => (it.id === job.id ? { ...it, applied: job.applied } : it)) }
+          : prev,
+      )
+      toast(e instanceof Error ? e.message : '标记失败，请重试', 'error')
+    }
+  }
+
   const items = data?.items ?? []
   const pagination = data?.pagination ?? { page: 1, pageSize, total: 0, totalPages: 0 }
 
@@ -100,6 +126,7 @@ const JobPostingsPage: React.FC = () => {
               onChange={handleFilterChange}
               industries={filters.industries}
               types={filters.types}
+              isAuthenticated={isAuthenticated}
             />
           </div>
 
@@ -166,6 +193,9 @@ const JobPostingsPage: React.FC = () => {
                       <div className="h-4 w-20 animate-pulse rounded bg-slate-100" />
                     </td>
                     <td className="px-3 py-4">
+                      <div className="h-5 w-20 animate-pulse rounded-full bg-slate-100" />
+                    </td>
+                    <td className="px-3 py-4">
                       <div className="ml-auto h-7 w-16 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
@@ -182,7 +212,7 @@ const JobPostingsPage: React.FC = () => {
             <p className="mt-4 text-base text-slate-500">暂无匹配的招聘信息</p>
             <button
               type="button"
-              onClick={() => handleFilterChange({ industry: '', type: '', keyword: '' })}
+              onClick={() => handleFilterChange({ industry: '', type: '', keyword: '', applied: '' })}
               className="mt-4 rounded-xl bg-blue-600 px-4 py-2 text-[13px] font-medium text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-blue-600/30"
             >
               清除筛选条件
@@ -202,12 +232,18 @@ const JobPostingsPage: React.FC = () => {
                   <th className="px-3 py-3">类型</th>
                   <th className="px-3 py-3">开启时间</th>
                   <th className="px-3 py-3">地点</th>
+                  <th className="px-3 py-3">是否投递</th>
                   <th className="px-3 py-3 text-right">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((job) => (
-                  <JobTableRow key={job.id} job={job} />
+                  <JobTableRow
+                    key={job.id}
+                    job={job}
+                    isAuthenticated={isAuthenticated}
+                    onToggleApplied={handleToggleApplied}
+                  />
                 ))}
               </tbody>
             </table>
