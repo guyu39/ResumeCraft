@@ -22,6 +22,7 @@ type JobPosting struct {
 	CreatedAt           time.Time  `json:"createdAt"`
 	UpdatedAt           time.Time  `json:"updatedAt"`
 	ScrapedAt           time.Time  `json:"scrapedAt"`
+	Applied             bool       `json:"applied"` // 当前用户是否已标记「已投递」；未登录时始终为 false
 }
 
 // JobPostingFilters 列表查询筛选条件
@@ -29,9 +30,11 @@ type JobPostingFilters struct {
 	Industry        string
 	RecruitmentType string
 	Keyword         string
+	Applied         string // ""(不筛选) | "true"(已投递) | "false"(未投递)
 	Sort            string // "open_date_desc"(默认) | "open_date_asc"
 	Page            int
 	PageSize        int
+	UserID          string // 当前登录用户 ID，用于关联/筛选投递标记；未登录为空
 }
 
 // JobPostingListResponse 列表响应
@@ -44,6 +47,11 @@ type JobPostingListResponse struct {
 type JobPostingFiltersResponse struct {
 	Industries []string `json:"industries"`
 	Types      []string `json:"types"`
+}
+
+// SetJobPostingMarkRequest 标记 / 取消标记「已投递」请求体
+type SetJobPostingMarkRequest struct {
+	Applied bool `json:"applied"`
 }
 
 // SyncResult 一次同步的统计结果

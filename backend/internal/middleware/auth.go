@@ -47,3 +47,29 @@ func AuthRequired(authService auth.Service) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// OptionalAuth 与 AuthRequired 类似，但未登录、Token 缺失或校验失败时不拦截请求，
+// 仅在成功解析出 userID 时写入 Context；用于「登录可用/未登录也可访问」的公开接口
+// （如招聘聚合列表，需要在登录态下带出当前用户的个性化标记）。
+func OptionalAuth(authService auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+		if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			c.Next()
+			return
+		}
+		token := strings.TrimSpace(authHeader[len("Bearer "):])
+		if token == "" {
+			c.Next()
+			return
+		}
+		userID, err := authService.ParseAccessToken(token)
+		if err != nil {
+			c.Next()
+			return
+		}
+		c.Set(ContextUserIDKey, userID)
+		c.Request = c.Request.WithContext(requestmeta.WithActor(c.Request.Context(), userID))
+		c.Next()
+	}
+}
