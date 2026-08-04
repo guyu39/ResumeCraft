@@ -54,12 +54,6 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
     const [aiError, setAiError] = useState<string | null>(null)
     const [aiHasApiKey, setAiHasApiKey] = useState(false)
 
-    // 简历解析配置
-    const [parserForm, setParserForm] = useState({ provider: 'openai', model: '', apiKey: '', baseUrl: '' })
-    const [parserStatus, setParserStatus] = useState<string | null>(null)
-    const [parserError, setParserError] = useState<string | null>(null)
-    const [parserHasApiKey, setParserHasApiKey] = useState(false)
-
     // 弹窗打开时加载后端配置
     useEffect(() => {
         if (!open || !isAuthenticated) return
@@ -73,16 +67,6 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
             })
             setAiHasApiKey(config.hasApiKey ?? false)
         }).catch(() => { })
-
-        aiApi.getParserConfig().then((cfg) => {
-            setParserForm({
-                provider: cfg.provider || 'openai',
-                model: cfg.model || '',
-                apiKey: '',
-                baseUrl: cfg.baseUrl || '',
-            })
-            setParserHasApiKey(cfg.hasApiKey ?? false)
-        }).catch(() => { })
     }, [open, isAuthenticated])
 
     // 关闭弹窗时重置状态
@@ -90,8 +74,6 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
         if (!open) {
             setAiStatus(null)
             setAiError(null)
-            setParserStatus(null)
-            setParserError(null)
         }
     }, [open])
 
@@ -101,11 +83,6 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
         const t = window.setTimeout(() => setAiStatus(null), 2000)
         return () => window.clearTimeout(t)
     }, [aiStatus])
-    useEffect(() => {
-        if (!parserStatus) return
-        const t = window.setTimeout(() => setParserStatus(null), 2000)
-        return () => window.clearTimeout(t)
-    }, [parserStatus])
 
     const updateAIForm = useCallback(<K extends keyof AIConfigForm>(key: K, value: AIConfigForm[K]) => {
         setAiForm((prev) => ({ ...prev, [key]: value }))
@@ -169,35 +146,6 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
         setAiError(null)
         setAiStatus('本地偏好已清空（服务端密钥不受影响）')
     }, [])
-
-    const saveParserConfig = useCallback(async () => {
-        const { provider, model, apiKey } = parserForm
-        if (!provider.trim() || !model.trim()) {
-            setParserError('请填写模型供应商和模型名称')
-            setParserStatus(null)
-            return
-        }
-        if (!apiKey.trim() && !parserHasApiKey) {
-            setParserError('请填写 API Key')
-            setParserStatus(null)
-            return
-        }
-        try {
-            await aiApi.saveParserConfig({
-                provider: provider.trim(),
-                model: model.trim(),
-                apiKey: apiKey.trim() || undefined,
-                baseUrl: parserForm.baseUrl.trim() || undefined,
-            })
-            setParserHasApiKey(true)
-            setParserError(null)
-            setParserStatus('解析配置已保存')
-        } catch (err) {
-            console.error('保存解析配置失败:', err)
-            setParserError('保存失败，请重试')
-            setParserStatus(null)
-        }
-    }, [parserForm, parserHasApiKey])
 
     if (!open) return null
 
@@ -298,89 +246,6 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                             {aiStatus && <p className="text-xs text-green-600">{aiStatus}</p>}
                         </>
                     )}
-                </div>
-
-                {/* 简历解析配置 */}
-                <div className="border-t border-gray-100 pt-4 mt-4 space-y-3">
-                    <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 p-3 space-y-3">
-                        <div>
-                            <h6 className="text-xs font-semibold text-gray-600">简历解析专用</h6>
-                            <p className="text-[11px] text-gray-400 mt-0.5">仅用于「新建简历 → 解析简历导入」的文件识别，与上方 AI 评估独立配置</p>
-                        </div>
-
-                        {!isAuthenticated ? (
-                            <p className="text-xs text-gray-500">请登录后配置</p>
-                        ) : (
-                            <>
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-medium text-gray-700">模型供应商</label>
-                                    <StyledSelect
-                                        value={parserForm.provider}
-                                        onChange={(v) => setParserForm((prev) => ({ ...prev, provider: v }))}
-                                        options={[
-                                            { label: 'OpenAI', value: 'openai' },
-                                            { label: '豆包 (Doubao)', value: 'doubao' },
-                                            { label: 'DeepSeek', value: 'deepseek' },
-                                            { label: '智谱 (GLM)', value: 'zhipu' },
-                                            { label: '通义千问', value: 'qwen' },
-                                            { label: 'Moonshot', value: 'moonshot' },
-                                            { label: '自定义', value: 'custom' },
-                                        ]}
-                                        size="compact"
-                                    />
-                                </div>
-
-                                {parserForm.provider === 'custom' && (
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-medium text-gray-700">Base URL（自定义必填）</label>
-                                        <input
-                                            value={parserForm.baseUrl}
-                                            onChange={(e) => setParserForm((prev) => ({ ...prev, baseUrl: e.target.value }))}
-                                            className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                            placeholder="https://api.example.com/v1"
-                                        />
-                                    </div>
-                                )}
-
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-medium text-gray-700">模型</label>
-                                    <input
-                                        value={parserForm.model}
-                                        onChange={(e) => setParserForm((prev) => ({ ...prev, model: e.target.value }))}
-                                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                        placeholder="例如 gpt-4o-mini"
-                                    />
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-medium text-gray-700">API Key</label>
-                                    <input
-                                        type="password"
-                                        value={parserForm.apiKey}
-                                        onChange={(e) => setParserForm((prev) => ({ ...prev, apiKey: e.target.value }))}
-                                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                        placeholder={parserHasApiKey ? '已保存密钥，留空则继续使用' : '输入 API Key'}
-                                    />
-                                    {parserHasApiKey && !parserForm.apiKey && (
-                                        <p className="text-[11px] text-green-600">✓ 已保存密钥</p>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center gap-2 pt-1">
-                                    <button
-                                        type="button"
-                                        onClick={saveParserConfig}
-                                        className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/90"
-                                    >
-                                        保存解析配置
-                                    </button>
-                                </div>
-
-                                {parserError && <p className="text-xs text-red-600">{parserError}</p>}
-                                {parserStatus && <p className="text-xs text-green-600">{parserStatus}</p>}
-                            </>
-                        )}
-                    </div>
                 </div>
                 </div>
             </div>

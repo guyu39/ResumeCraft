@@ -77,6 +77,10 @@ type PDFConfig struct {
 type AIConfig struct {
 	EncryptionKey   string
 	SanitizeEnabled bool // 发送前脱敏开关
+	// 系统级 AI 凭证（.env 配置，服务端内置，不由用户自定义；用于首页日报/项目推荐等后台生成）
+	ProviderAPIKey string
+	ProviderBaseURL string
+	ProviderModel   string
 }
 
 type StorageConfig struct {
@@ -189,6 +193,9 @@ func Load() Config {
 		AI: AIConfig{
 			EncryptionKey:   aiEncryptionKey,
 			SanitizeEnabled: getEnvBool("AI_SANITIZE_ENABLED", true),
+			ProviderAPIKey:  getEnv("AI_PROVIDER_API_KEY", ""),
+			ProviderBaseURL: getEnv("AI_PROVIDER_BASE_URL", ""),
+			ProviderModel:   getEnv("AI_PROVIDER_MODEL", ""),
 		},
 		Storage: StorageConfig{
 			Endpoint:  getEnv("S3_ENDPOINT", ""),

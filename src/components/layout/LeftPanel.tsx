@@ -221,9 +221,9 @@ const LeftPanel: React.FC = () => {
       <div className="flex-shrink-0 px-3 py-2.5 border-b border-line bg-surface">
         <div className="flex items-center gap-1.5">
           <a
-            href="/"
+            href="/resumes"
             className="inline-flex items-center justify-center h-7 w-7 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
-            title="回到首页"
+            title="返回简历列表"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
           </a>

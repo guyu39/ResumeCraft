@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { Inbox, AlertTriangle, BriefcaseBusiness, FileText } from 'lucide-react'
+import { Inbox, AlertTriangle, BriefcaseBusiness, FileText, ArrowLeft } from 'lucide-react'
 import { jobPostingApi, type JobFilters, type JobPostingListResponse } from '@/api/jobPosting'
 import type { JobPosting } from '@/api/jobPosting'
 import JobTableRow from '@/components/job/JobTableRow'
@@ -116,9 +116,20 @@ const JobPostingsPage: React.FC = () => {
       {/* 头部 */}
       <header className="relative z-10 shrink-0 border-b border-slate-200 bg-white">
         <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <h1 className="w-full shrink-0 text-lg font-semibold text-slate-900 sm:w-auto">
-            校招 招聘聚合
-          </h1>
+          <div className="flex shrink-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => (window.location.href = '/')}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+              title="返回首页"
+              aria-label="返回首页"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <h1 className="shrink-0 text-lg font-semibold text-slate-900">
+              校招 招聘聚合
+            </h1>
+          </div>
 
           <div className="order-3 w-full min-w-0 xl:order-none xl:flex-1">
             <JobFilterBar
@@ -133,7 +144,7 @@ const JobPostingsPage: React.FC = () => {
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <button
               type="button"
-              onClick={() => (window.location.href = '/')}
+              onClick={() => (window.location.href = '/resumes')}
               className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-3 text-[13px] font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100"
             >
               <FileText className="h-4 w-4" />

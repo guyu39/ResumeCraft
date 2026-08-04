@@ -35,6 +35,11 @@ services:
       # AI 加密密钥
       AI_ENCRYPTION_KEY: "${AI_ENCRYPTION_KEY:-change-this-32-char-key!!}"
 
+      # 系统级 AI 凭证（首页日报/项目推荐自动生成；从宿主 .env 注入）
+      AI_PROVIDER_BASE_URL: "${AI_PROVIDER_BASE_URL:-}"
+      AI_PROVIDER_API_KEY: "${AI_PROVIDER_API_KEY:-}"
+      AI_PROVIDER_MODEL: "${AI_PROVIDER_MODEL:-}"
+
       PARSER_SERVICE_URL: "http://python-parser:9002"
 
       # 招聘数据自动同步

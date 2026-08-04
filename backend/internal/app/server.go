@@ -16,6 +16,7 @@ import (
 	"resumecraft-pdf-backend/internal/service/ai"
 	"resumecraft-pdf-backend/internal/service/auth"
 	"resumecraft-pdf-backend/internal/service/export"
+	homeservice "resumecraft-pdf-backend/internal/service/home"
 	jobapplication "resumecraft-pdf-backend/internal/service/job_application"
 	jobpostingService "resumecraft-pdf-backend/internal/service/job_posting"
 	"resumecraft-pdf-backend/internal/service/mail"
@@ -25,8 +26,11 @@ import (
 	"resumecraft-pdf-backend/internal/storage/audit"
 	"resumecraft-pdf-backend/internal/storage/db"
 	exportStorage "resumecraft-pdf-backend/internal/storage/export"
+	githubStorage "resumecraft-pdf-backend/internal/storage/github"
+	homeStorage "resumecraft-pdf-backend/internal/storage/home"
 	applicationStorage "resumecraft-pdf-backend/internal/storage/job_application"
 	jobpostingStorage "resumecraft-pdf-backend/internal/storage/job_posting"
+	newsStorage "resumecraft-pdf-backend/internal/storage/news"
 	"resumecraft-pdf-backend/internal/storage/object"
 	resumeStorage "resumecraft-pdf-backend/internal/storage/resume"
 
@@ -81,6 +85,7 @@ func NewServer() *http.Server {
 	var aiService ai.Service
 	var applicationService jobapplication.Service
 	var jobPostingService jobpostingService.Service
+	var homeService homeservice.Service
 	var pool *pgxpool.Pool
 
 	if cfg.Auth.Enabled {
@@ -130,6 +135,20 @@ func NewServer() *http.Server {
 					getEnv("SCRAPER_SCRIPT", "../python-parser/scrape_smartsheet.py"),
 					getEnv("PYTHON_BIN", "python3"),
 				)
+				// 初始化首页工作台服务（待办 + AI 新闻 + GitHub 项目 + 日报 + 项目推荐 + 新岗位）
+				// 系统级 AI 凭证来自 .env（服务端内置，不由用户自定义）
+				homeService = homeservice.NewService(
+					homeStorage.NewTodoRepository(pool),
+					newsStorage.NewRepository(pool),
+					githubStorage.NewRepository(pool),
+					homeStorage.NewReportRepository(pool),
+					homeStorage.NewProjectRepository(pool),
+					homeStorage.NewSnapshotRepository(pool),
+					homeStorage.NewNewJobRepository(pool),
+					cfg.AI.ProviderAPIKey,
+					cfg.AI.ProviderBaseURL,
+					cfg.AI.ProviderModel,
+				)
 			}
 		}
 	}
@@ -159,7 +178,7 @@ func NewServer() *http.Server {
 	// 初始化对象存储（不依赖数据库）
 	objectStorage := object.NewObjectStorage(cfg.Storage)
 
-	h := handler.New(pdfService, authService, resumeService, exportService, aiService, applicationService, jobPostingService, objectStorage, cfg.Parser.ServiceURL)
+	h := handler.New(pdfService, authService, resumeService, exportService, aiService, applicationService, jobPostingService, homeService, objectStorage, cfg.Parser.ServiceURL, cfg.AI.ProviderAPIKey, cfg.AI.ProviderBaseURL, cfg.AI.ProviderModel)
 	router.Register(engine, h, cfg.Server.FrontendDistDir, authLimiter, aiLimiter)
 
 	// 招聘数据定时同步调度器（默认每小时，JOB_SYNC_INTERVAL 可覆盖）
@@ -176,6 +195,40 @@ func NewServer() *http.Server {
 		jobScheduler = cron.NewJobSyncScheduler(jobPostingService, interval)
 	}
 
+	// 首页 AI 新闻定时同步（默认每小时，NEWS_SYNC_INTERVAL 可覆盖）
+	var newsScheduler *cron.NewsSyncScheduler
+	if homeService != nil {
+		interval := cron.DefaultNewsSyncInterval
+		if v := getEnv("NEWS_SYNC_INTERVAL", ""); v != "" {
+			if d, err := time.ParseDuration(v); err == nil {
+				interval = d
+			} else {
+				log.Printf("[cron] invalid NEWS_SYNC_INTERVAL=%q, fallback to %s", v, cron.DefaultNewsSyncInterval)
+			}
+		}
+		newsScheduler = cron.NewNewsSyncScheduler(homeService, interval)
+	}
+
+	// 首页 GitHub 项目定时同步（默认 6 小时，GITHUB_SYNC_INTERVAL 可覆盖）
+	var githubScheduler *cron.GithubSyncScheduler
+	if homeService != nil {
+		interval := cron.DefaultGithubSyncInterval
+		if v := getEnv("GITHUB_SYNC_INTERVAL", ""); v != "" {
+			if d, err := time.ParseDuration(v); err == nil {
+				interval = d
+			} else {
+				log.Printf("[cron] invalid GITHUB_SYNC_INTERVAL=%q, fallback to %s", v, cron.DefaultGithubSyncInterval)
+			}
+		}
+		githubScheduler = cron.NewGithubSyncScheduler(homeService, interval)
+	}
+
+	// 首页 AI 日报定时生成（每天 0 点，跨天触发）
+	var reportScheduler *cron.DailyReportScheduler
+	if homeService != nil {
+		reportScheduler = cron.NewDailyReportScheduler(homeService)
+	}
+
 	server := &http.Server{
 		Addr:              ":" + cfg.Server.Port,
 		Handler:           engine,
@@ -189,6 +242,30 @@ func NewServer() *http.Server {
 		server.RegisterOnShutdown(func() {
 			jobScheduler.Stop()
 			log.Println("[cron] job-postings scheduler shutdown signaled")
+		})
+	}
+
+	if newsScheduler != nil {
+		go newsScheduler.Start()
+		server.RegisterOnShutdown(func() {
+			newsScheduler.Stop()
+			log.Println("[cron] ai-news scheduler shutdown signaled")
+		})
+	}
+
+	if githubScheduler != nil {
+		go githubScheduler.Start()
+		server.RegisterOnShutdown(func() {
+			githubScheduler.Stop()
+			log.Println("[cron] github-projects scheduler shutdown signaled")
+		})
+	}
+
+	if reportScheduler != nil {
+		go reportScheduler.Start()
+		server.RegisterOnShutdown(func() {
+			reportScheduler.Stop()
+			log.Println("[cron] daily-report scheduler shutdown signaled")
 		})
 	}
 

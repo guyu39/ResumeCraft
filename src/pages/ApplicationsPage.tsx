@@ -919,7 +919,7 @@ const ApplicationsPage: React.FC = () => {
       <div className="shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-[1680px] items-center justify-between gap-4 px-6 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={() => { window.location.href = '/' }} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="返回简历列表">
+            <button type="button" onClick={() => { window.location.href = '/resumes' }} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="返回简历列表">
               <ArrowLeft className="h-4 w-4" />
             </button>
             <h1 className="shrink-0 text-xl font-semibold tracking-tight">投递管理</h1>

@@ -74,15 +74,19 @@ func (h *Handler) ParseResume(c *gin.Context) {
 		return
 	}
 
-	// 获取并解密解析专用 AI 配置
-	parserCfg, err := h.aiService.ResolveParserConfig(c.Request.Context(), userID.(string))
-	if err != nil {
-		response.JSONError(c, http.StatusBadRequest, "CONFIG_NOT_FOUND", "请先在设置中配置简历解析模型")
-		return
+	// 简历解析 AI 凭证：优先系统级（.env 配置），未配置时回退用户级解析配置
+	apiBaseURL, model, apiKey := h.sysAIBaseURL, h.sysAIModel, h.sysAIAPIKey
+	if strings.TrimSpace(apiBaseURL) == "" || strings.TrimSpace(model) == "" || strings.TrimSpace(apiKey) == "" {
+		parserCfg, err := h.aiService.ResolveParserConfig(c.Request.Context(), userID.(string))
+		if err != nil {
+			response.JSONError(c, http.StatusBadRequest, "CONFIG_NOT_FOUND", "简历解析 AI 未配置（请在服务端 .env 配置 AI_PROVIDER_*）")
+			return
+		}
+		apiBaseURL, model, apiKey = parserCfg.BaseURL, parserCfg.Model, parserCfg.APIKeyEncrypted
 	}
 
 	// 转发到 Python 解析微服务
-	parsed, err := callParserService(h.parserServiceURL, fileBytes, header.Filename, contentType, parserCfg.BaseURL, parserCfg.Model, parserCfg.APIKeyEncrypted)
+	parsed, err := callParserService(h.parserServiceURL, fileBytes, header.Filename, contentType, apiBaseURL, model, apiKey)
 	if err != nil {
 		log.Printf("[parse] Python parser error: %v", err)
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "简历解析失败: "+err.Error())

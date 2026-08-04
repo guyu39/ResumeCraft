@@ -10,11 +10,19 @@ dist-ssr/
 backend/server
 backend/server.exe
 backend/server_new.exe
+backend/server_tmp.exe
 backend/.env
+
+# Python
+__pycache__/
+*.pyc
+python-parser/smartsheet_data.csv
+python-parser/smartsheet_data.json
 
 # IDE
 .idea/
 .vscode/
+.history/
 *.swp
 *.swo
 

@@ -219,6 +219,22 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 				jobGroup.PUT("/:id/mark", middleware.AuthRequired(h.AuthService()), h.SetJobPostingMark)
 			}
 		}
+
+		// 首页工作台（需认证）
+		if h.HomeService() != nil {
+			homeGroup := api.Group("/home")
+			homeGroup.Use(middleware.AuthRequired(h.AuthService()))
+			{
+				homeGroup.GET("/todos", h.ListHomeTodos)
+				homeGroup.GET("/news", h.ListHomeNews)
+				homeGroup.GET("/github-projects", h.ListHomeGithubProjects)
+				homeGroup.GET("/daily-report", h.GetHomeDailyReports)
+				homeGroup.GET("/projects", h.ListHomeProjects)
+				homeGroup.GET("/new-jobs", h.ListHomeNewJobs)
+			}
+			// 手动触发生成今日日报（系统级操作，无需登录；个人工具场景避免误用）
+			api.Group("/home").POST("/daily-report/generate", h.GenerateHomeDailyReport)
+		}
 	}
 
 	if frontendDistDir == "" {

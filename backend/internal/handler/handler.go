@@ -4,6 +4,7 @@ import (
 	"resumecraft-pdf-backend/internal/service/ai"
 	"resumecraft-pdf-backend/internal/service/auth"
 	"resumecraft-pdf-backend/internal/service/export"
+	homeservice "resumecraft-pdf-backend/internal/service/home"
 	jobapplication "resumecraft-pdf-backend/internal/service/job_application"
 	"resumecraft-pdf-backend/internal/service/job_posting"
 	"resumecraft-pdf-backend/internal/service/pdf"
@@ -19,8 +20,13 @@ type Handler struct {
 	aiService          ai.Service
 	applicationService jobapplication.Service
 	jobPostingService  job_posting.Service
+	homeService        homeservice.Service
 	objectStorage      object.ObjectStorage
 	parserServiceURL   string
+	// 系统级 AI 凭证（.env 配置，服务端内置；简历解析等后台任务使用）
+	sysAIAPIKey  string
+	sysAIBaseURL string
+	sysAIModel   string
 }
 
 func New(
@@ -31,8 +37,10 @@ func New(
 	aiService ai.Service,
 	applicationService jobapplication.Service,
 	jobPostingService job_posting.Service,
+	homeService homeservice.Service,
 	objectStorage object.ObjectStorage,
 	parserServiceURL string,
+	sysAIAPIKey, sysAIBaseURL, sysAIModel string,
 ) *Handler {
 	return &Handler{
 		pdfService:         pdfService,
@@ -42,8 +50,12 @@ func New(
 		aiService:          aiService,
 		applicationService: applicationService,
 		jobPostingService:  jobPostingService,
+		homeService:        homeService,
 		objectStorage:      objectStorage,
 		parserServiceURL:   parserServiceURL,
+		sysAIAPIKey:        sysAIAPIKey,
+		sysAIBaseURL:       sysAIBaseURL,
+		sysAIModel:         sysAIModel,
 	}
 }
 
@@ -73,6 +85,10 @@ func (h *Handler) ApplicationService() jobapplication.Service {
 
 func (h *Handler) JobPostingService() job_posting.Service {
 	return h.jobPostingService
+}
+
+func (h *Handler) HomeService() homeservice.Service {
+	return h.homeService
 }
 
 func (h *Handler) ObjectStorage() object.ObjectStorage {

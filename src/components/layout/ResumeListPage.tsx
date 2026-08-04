@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch, BriefcaseBusiness, ChevronDown, KeyRound, AlertCircle } from 'lucide-react'
+import { CalendarClock, FileText, PencilLine, Plus, SquarePen, Trash2, LogOut, User, Cloud, FileSearch, BriefcaseBusiness, ChevronDown, KeyRound, AlertCircle, Home } from 'lucide-react'
 import {
     createDefaultResume,
     getAllResumesFromStorage,
@@ -480,18 +480,18 @@ setPendingCreateName(defaultTitle)
                                     选择一份简历继续编辑，或创建新的简历版本。
                                 </p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
                                 {isAuthenticated && user && (
                                     <div className="relative">
                                         <button
                                             type="button"
                                             onClick={() => setShowAvatarMenu(!showAvatarMenu)}
-                                            className="flex items-center gap-2 text-sm text-muted hover:text-primary transition-colors cursor-pointer rounded-lg hover:bg-slate-50 px-2 py-1"
+                                            className="flex items-center gap-1.5 text-[13px] text-muted hover:text-primary transition-colors cursor-pointer rounded-lg hover:bg-slate-50 px-2 py-1.5"
                                         >
-                                            <User className="h-4 w-4" />
-                                            <span>{user.displayName || user.email}</span>
-                                            {syncing && <Cloud className="h-4 w-4 animate-pulse" />}
-                                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAvatarMenu ? 'rotate-180' : ''}`} />
+                                            <User className="h-3.5 w-3.5" />
+                                            <span className="max-w-[110px] truncate">{user.displayName || user.email}</span>
+                                            {syncing && <Cloud className="h-3.5 w-3.5 animate-pulse" />}
+                                            <ChevronDown className={`h-3 w-3 transition-transform ${showAvatarMenu ? 'rotate-180' : ''}`} />
                                         </button>
                                         {showAvatarMenu && (
                                             <>
@@ -520,34 +520,42 @@ setPendingCreateName(defaultTitle)
                                 )}
                                 <button
                                     type="button"
-                                    onClick={() => { window.location.href = '/applications' }}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:bg-slate-50"
+                                    onClick={() => { window.location.href = '/' }}
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-medium text-ink transition hover:bg-slate-50"
                                 >
-                                    <BriefcaseBusiness className="h-4 w-4" />
+                                    <Home className="h-3.5 w-3.5" />
+                                    首页
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { window.location.href = '/applications' }}
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-medium text-ink transition hover:bg-slate-50"
+                                >
+                                    <BriefcaseBusiness className="h-3.5 w-3.5" />
                                     投递管理
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => { window.location.href = '/jobs' }}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:bg-slate-50"
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-medium text-ink transition hover:bg-slate-50"
                                 >
-                                    <BriefcaseBusiness className="h-4 w-4" />
+                                    <BriefcaseBusiness className="h-3.5 w-3.5" />
                                     招聘聚合
                                 </button>
                                 <button
                                     type="button"
                                     onClick={onLogout}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:bg-slate-50"
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-medium text-ink transition hover:bg-slate-50"
                                 >
-                                    <LogOut className="h-4 w-4" />
+                                    <LogOut className="h-3.5 w-3.5" />
                                     退出登录
                                 </button>
                                 <button
                                     type="button"
                                     onClick={handleCreate}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-primary/30"
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-[13px] font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-primary/30"
                                 >
-                                    <Plus className="h-4 w-4" />
+                                    <Plus className="h-3.5 w-3.5" />
                                     新建简历
                                 </button>
                             </div>

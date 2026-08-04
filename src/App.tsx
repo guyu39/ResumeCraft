@@ -9,6 +9,7 @@ import AppShell from '@/components/layout/AppShell'
 import ShareViewPage from '@/pages/ShareViewPage'
 import ApplicationsPage from '@/pages/ApplicationsPage'
 import JobPostingsPage from '@/pages/JobPostingsPage'
+import HomePage from '@/pages/HomePage'
 import ResumeListPage from '@/components/layout/ResumeListPage'
 import LoginPage from '@/components/layout/LoginPage'
 import KickConfirmModal from '@/components/common/KickConfirmModal'
@@ -125,6 +126,7 @@ const App: React.FC = () => {
   const isApplicationsPage = pathname.startsWith('/applications')
   const isJobsPage = pathname.startsWith('/jobs')
   const isEditorPage = pathname === '/editor'
+  const isResumesPage = pathname === '/resumes'
 
   // 检查是否需要显示登录页
   useEffect(() => {
@@ -278,33 +280,43 @@ const App: React.FC = () => {
 
   if (isEditorPage) return <><AppShell /><KickConfirmModal /></>
 
-  // 简历列表页
+  // 简历列表页（/resumes）
+  if (isResumesPage) {
+    return (
+      <>
+        <ResumeListPage
+          cloudResumes={cloudResumes}
+          isAuthenticated={isAuthenticated}
+          onLogout={async () => {
+            await logout()
+            setCloudResumes([])
+            localStorage.removeItem('resumecraft_current_resume_id')
+            window.location.reload()
+          }}
+          onCloudResumeDeleted={(id) => {
+            setCloudResumes((prev) => prev.filter((r) => r.id !== id))
+          }}
+          onCloudResumeUpdated={(id, title, updatedAt) => {
+            setCloudResumes((prev) =>
+              prev.map((r) => (r.id === id ? { ...r, title, updatedAt } : r))
+            )
+          }}
+          onCloudResumeCreated={(id, title, updatedAt) => {
+            setCloudResumes((prev) => [
+              { id, title, template: 'classic', updatedAt, createdAt: updatedAt },
+              ...prev,
+            ])
+          }}
+        />
+        <KickConfirmModal />
+      </>
+    )
+  }
+
+  // 首页工作台（/ 及未匹配路径）
   return (
     <>
-      <ResumeListPage
-        cloudResumes={cloudResumes}
-        isAuthenticated={isAuthenticated}
-        onLogout={async () => {
-          await logout()
-          setCloudResumes([])
-          localStorage.removeItem('resumecraft_current_resume_id')
-          window.location.reload()
-        }}
-        onCloudResumeDeleted={(id) => {
-          setCloudResumes((prev) => prev.filter((r) => r.id !== id))
-        }}
-        onCloudResumeUpdated={(id, title, updatedAt) => {
-          setCloudResumes((prev) =>
-            prev.map((r) => (r.id === id ? { ...r, title, updatedAt } : r))
-          )
-        }}
-        onCloudResumeCreated={(id, title, updatedAt) => {
-          setCloudResumes((prev) => [
-            { id, title, template: 'classic', updatedAt, createdAt: updatedAt },
-            ...prev,
-          ])
-        }}
-      />
+      <HomePage />
       <KickConfirmModal />
     </>
   )
