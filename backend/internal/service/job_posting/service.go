@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"resumecraft-pdf-backend/internal/model"
+	homeStorage "resumecraft-pdf-backend/internal/storage/home"
 	jobpostingRepo "resumecraft-pdf-backend/internal/storage/job_posting"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,6 +38,7 @@ const syncCooldown = time.Minute
 
 type service struct {
 	repo       jobpostingRepo.Repository
+	newJobRepo homeStorage.NewJobRepository // 可为 nil：未注入时不推送 Redis「最近新增」列表
 	scriptPath string
 	pythonBin  string
 	mu         sync.Mutex   // 防止并发同步
@@ -45,13 +47,14 @@ type service struct {
 
 // NewService 构造服务。scriptPath 为抓取脚本路径（默认 "../python-parser/scrape_smartsheet.py"），
 // pythonBin 为 Python 解释器（为空时自动探测已安装 playwright 的解释器，可用 PYTHON_BIN 覆盖）。
-func NewService(repo jobpostingRepo.Repository, scriptPath, pythonBin string) Service {
+// newJobRepo 用于将本次同步新插入的岗位追加到 Redis「最近新增」列表，可传 nil（不推送）。
+func NewService(repo jobpostingRepo.Repository, newJobRepo homeStorage.NewJobRepository, scriptPath, pythonBin string) Service {
 	if scriptPath == "" {
 		scriptPath = "../python-parser/scrape_smartsheet.py"
 	}
 	pythonBin = resolvePythonBin(pythonBin)
 	log.Printf("[job_posting] resolved python interpreter: %s", pythonBin)
-	return &service{repo: repo, scriptPath: scriptPath, pythonBin: pythonBin}
+	return &service{repo: repo, newJobRepo: newJobRepo, scriptPath: scriptPath, pythonBin: pythonBin}
 }
 
 // resolvePythonBin 返回最终使用的 Python 解释器：
@@ -140,9 +143,9 @@ func canImportModule(bin, module string) bool {
 	return cmd.Run() == nil
 }
 
-// NewServiceFromPool 便捷构造：直接基于连接池创建 Repository 与服务
+// NewServiceFromPool 便捷构造：直接基于连接池创建 Repository 与服务（不推送 Redis「最近新增」列表）
 func NewServiceFromPool(pool *pgxpool.Pool, scriptPath, pythonBin string) Service {
-	return NewService(jobpostingRepo.NewRepository(pool), scriptPath, pythonBin)
+	return NewService(jobpostingRepo.NewRepository(pool), nil, scriptPath, pythonBin)
 }
 
 func (s *service) SyncFromSmartsheet(ctx context.Context) (*model.SyncResult, error) {
@@ -224,11 +227,25 @@ func (s *service) SyncFromSmartsheet(ctx context.Context) (*model.SyncResult, er
 		}
 		result.Inserted = upsertResult.Inserted
 		result.Updated = upsertResult.Updated
+		s.pushNewJobsToRedis(ctx, upsertResult.InsertedItems)
 	}
 
 	result.FinishedAt = time.Now().Format(time.RFC3339)
 	result.DurationMs = time.Since(start).Milliseconds()
 	return result, nil
+}
+
+// pushNewJobsToRedis 将本次同步真正新插入（非更新）的岗位追加到 Redis「最近新增」列表，
+// 供首页按新增时间倒序读取最近 10 条；未注入 newJobRepo 或单条写入失败仅记录日志，不影响同步主流程结果。
+func (s *service) pushNewJobsToRedis(ctx context.Context, items []model.NewJobItem) {
+	if s.newJobRepo == nil || len(items) == 0 {
+		return
+	}
+	for _, item := range items {
+		if err := s.newJobRepo.PushRecent(ctx, item); err != nil {
+			log.Printf("[job_posting] push new job %s to redis recent list failed: %v", item.ID, err)
+		}
+	}
 }
 
 func (s *service) ListJobPostings(ctx context.Context, filters model.JobPostingFilters) (*model.JobPostingListResponse, error) {

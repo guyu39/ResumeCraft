@@ -8,7 +8,7 @@ package model
 type TodoType string
 
 const (
-	TodoTypeInterview   TodoType = "interview"   // 面试
+	TodoTypeInterview   TodoType = "interview"    // 面试
 	TodoTypeWrittenTest TodoType = "written_test" // 笔试
 )
 
@@ -39,10 +39,14 @@ type AiNewsItem struct {
 
 // GithubProjectItem GitHub 开源项目
 type GithubProjectItem struct {
-	ID          int64    `json:"id"`
-	FullName    string   `json:"fullName"`
-	HtmlURL     string   `json:"htmlUrl"`
-	Description string   `json:"description"`
+	ID          int64  `json:"id"`
+	FullName    string `json:"fullName"`
+	HtmlURL     string `json:"htmlUrl"`
+	Description string `json:"description"`
+	// SummaryZh AI 中文加工后的一句话简介（未配置系统级 AI 或加工失败时为空，前端回退展示 Description）
+	SummaryZh string `json:"summaryZh,omitempty"`
+	// HighlightZh AI 生成的中文亮点点评（面向求职者：为什么值得关注/可参考）
+	HighlightZh string   `json:"highlightZh,omitempty"`
 	Language    string   `json:"language"`
 	Stars       int      `json:"stars"`
 	Forks       int      `json:"forks"`
@@ -105,12 +109,12 @@ type ResumeProject struct {
 
 // NewJobItem 首页昨日新增岗位（精简自 job_postings）
 type NewJobItem struct {
-	ID             string `json:"id"`
-	CompanyName    string `json:"companyName"`
+	ID              string `json:"id"`
+	CompanyName     string `json:"companyName"`
 	RecruitmentType string `json:"recruitmentType,omitempty"`
-	Location       string `json:"location,omitempty"`
-	Positions      string `json:"positions,omitempty"`
-	OpenDate       *int64 `json:"openDate,omitempty"`
-	ApplicationURL string `json:"applicationUrl,omitempty"`
-	Source         string `json:"source,omitempty"`
+	Location        string `json:"location,omitempty"`
+	Positions       string `json:"positions,omitempty"`
+	OpenDate        *int64 `json:"openDate,omitempty"`
+	ApplicationURL  string `json:"applicationUrl,omitempty"`
+	Source          string `json:"source,omitempty"`
 }

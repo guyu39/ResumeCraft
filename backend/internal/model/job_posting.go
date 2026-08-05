@@ -66,3 +66,12 @@ type SyncResult struct {
 	FinishedAt  string `json:"finishedAt"`
 	DurationMs  int64  `json:"durationMs"`
 }
+
+// UpsertJobPostingsResult UpsertJobPostings 的返回结果：计数 + 本次真正新插入的岗位明细
+// （InsertedItems 用于上层将新增岗位追加到 Redis「最近新增」列表，仅统计新插入，更新的不重复推送）
+type UpsertJobPostingsResult struct {
+	Total         int
+	Inserted      int
+	Updated       int
+	InsertedItems []NewJobItem
+}

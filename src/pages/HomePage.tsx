@@ -1,16 +1,19 @@
 // ============================================================
 // 首页工作台
-// 宽屏两列：左=AI日报/GitHub（Tab 切换），右=简历项目推荐（固定容器内滚动）
-// 待办 + 今日新增岗位：右下角悬浮球（可折叠展开）
+// 结构（自上而下）：问候区 → 求职概览 KPI → 待办/新增岗位（正文常驻）
+// → AI 日报/GitHub 项目（Tab 切换）→ 简历项目推荐
+// 状态与行动优先：KPI/待办/新增岗位置于首屏，资讯与素材下移一层。
 // 顶部导航固定
 // ============================================================
 
 import React from 'react'
 import { useAuthStore } from '@/store/authStore'
 import HomeHeader from '@/components/home/HomeHeader'
+import KpiOverview from '@/components/home/KpiOverview'
+import TodoBlock from '@/components/home/TodoBlock'
+import NewJobsBlock from '@/components/home/NewJobsBlock'
 import DailyReportBlock from '@/components/home/DailyReport'
 import Projects from '@/components/home/Projects'
-import FloatingActions from '@/components/home/FloatingActions'
 
 const HomePage: React.FC = () => {
   const { user, logout } = useAuthStore()
@@ -30,9 +33,9 @@ const HomePage: React.FC = () => {
       <HomeHeader onLogout={() => void handleLogout()} title="首页" />
 
       {/* 固定导航高度补偿（h-14 = 56px） */}
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-10 pt-20 sm:px-6">
+      <main className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 pb-10 pt-20 sm:px-6">
         {/* 问候区 */}
-        <div className="mb-6">
+        <div>
           <h1 className="text-2xl font-bold tracking-tight text-ink">
             {greeting}
             {user?.displayName ? `，${user.displayName}` : ''}
@@ -43,21 +46,21 @@ const HomePage: React.FC = () => {
           </p>
         </div>
 
-        {/* 布局：宽屏（内容充足）左右两列：左=日报Tab，右=项目推荐；窄屏单列堆叠 */}
-        <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-2">
-          {/* 左列：AI 日报 / GitHub 最新项目（Tab 切换，固定容器内滚动） */}
-          <div className="min-w-0">
-            <DailyReportBlock />
-          </div>
-          {/* 右列：简历项目推荐（固定容器内滚动） */}
-          <div className="min-w-0">
-            <Projects />
-          </div>
-        </div>
-      </main>
+        {/* 求职概览：已投递/笔试/面试/Offer，点击跳转数据分析 */}
+        <KpiOverview />
 
-      {/* 右下角悬浮球：待办 + 新增岗位（折叠/展开） */}
-      <FloatingActions />
+        {/* 近期待办 + 今日新增岗位：正文常驻，桌面左右并排 */}
+        <div className="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-2">
+          <TodoBlock />
+          <NewJobsBlock />
+        </div>
+
+        {/* AI 日报 / GitHub 最新项目（Tab 切换，固定容器内滚动） */}
+        <DailyReportBlock />
+
+        {/* 简历项目推荐（固定容器内滚动） */}
+        <Projects />
+      </main>
     </div>
   )
 }

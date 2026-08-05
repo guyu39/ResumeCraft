@@ -201,7 +201,15 @@ func groupProjectsByDate(items []model.ResumeProject) []model.ProjectGroup {
 	return groups
 }
 
+// ListNewJobs 首页「最近新增岗位」：优先读取 Redis 最近列表（LPUSH 头插，读取最多 10 条），
+// Redis 未启用或列表为空时回退到 job_postings 主表按 days/limit 查询。
 func (s *service) ListNewJobs(ctx context.Context, days, limit int) ([]model.NewJobItem, error) {
+	items, err := s.newJobRepo.ListRecent(ctx)
+	if err != nil {
+		log.Printf("[home] read recent new jobs from redis failed, fallback to db: %v", err)
+	} else if len(items) > 0 {
+		return items, nil
+	}
 	return s.newJobRepo.ListAddedRecently(ctx, days, limit)
 }
 
@@ -382,11 +390,11 @@ type atomFeed struct {
 	Entries []atomEntry `xml:"entry"`
 }
 type atomEntry struct {
-	Title     string    `xml:"title"`
+	Title     string     `xml:"title"`
 	Links     []atomLink `xml:"link"`
-	Updated   string    `xml:"updated"`
-	Published string    `xml:"published"`
-	Summary   string    `xml:"summary"`
+	Updated   string     `xml:"updated"`
+	Published string     `xml:"published"`
+	Summary   string     `xml:"summary"`
 }
 type atomLink struct {
 	Href string `xml:"href,attr"`
@@ -580,6 +588,10 @@ func (s *service) SyncGithubProjects(ctx context.Context) (*model.SyncResult, er
 		return result, err
 	}
 
+	// 中文加工：系统级 AI 一次批量调用，把英文项目简介转为中文一句话简介 + 求职视角亮点点评。
+	// 未配置 AI 或调用失败仅记录日志，不影响本次同步已完成的入库结果。
+	s.translateGithubProjectsZh(ctx, items)
+
 	// 写入当日同步快照（按日期覆盖，支撑近 7 天分组展示）
 	if raw, err := json.Marshal(items); err == nil {
 		if err := s.snapshotRepo.UpsertDaily(ctx, "github_sync_snapshots", time.Now().Format("2006-01-02"), raw); err != nil {
@@ -595,4 +607,35 @@ func (s *service) SyncGithubProjects(ctx context.Context) (*model.SyncResult, er
 	result.FinishedAt = time.Now().Format(time.RFC3339)
 	result.DurationMs = time.Since(started).Milliseconds()
 	return result, nil
+}
+
+// translateGithubProjectsZh 批量调用系统级 AI 将本次同步的项目简介加工为中文，
+// 成功后回写数据库（供后续 ListTop/ListRecent 直接读出中文字段）。
+// 未配置 AI 凭证或调用失败时仅记录日志并返回，不向上抛错（同步主流程已完成）。
+func (s *service) translateGithubProjectsZh(ctx context.Context, items []model.GithubProjectItem) {
+	if strings.TrimSpace(s.aiAPIKey) == "" || strings.TrimSpace(s.aiBaseURL) == "" || strings.TrimSpace(s.aiModel) == "" {
+		return
+	}
+	if len(items) == 0 {
+		return
+	}
+	inputs := make([]aiservice.GithubProjectZhInput, 0, len(items))
+	for _, it := range items {
+		inputs = append(inputs, aiservice.GithubProjectZhInput{
+			FullName:    it.FullName,
+			Description: it.Description,
+			Language:    it.Language,
+			Topics:      it.Topics,
+		})
+	}
+	results, err := aiservice.TranslateGithubProjects(ctx, s.aiAPIKey, s.aiBaseURL, s.aiModel, inputs)
+	if err != nil {
+		log.Printf("[home] github projects zh translate failed: %v", err)
+		return
+	}
+	for _, r := range results {
+		if err := s.githubRepo.UpdateZhContent(ctx, r.FullName, r.SummaryZh, r.HighlightZh); err != nil {
+			log.Printf("[home] github project %s zh content update failed: %v", r.FullName, err)
+		}
+	}
 }

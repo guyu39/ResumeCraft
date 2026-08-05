@@ -129,9 +129,13 @@ func NewServer() *http.Server {
 				applicationService = jobapplication.NewService(applicationRepo)
 
 				// 初始化招聘数据聚合服务（腾讯文档智能表格同步）
+				// newJobRepo 在此提前构造，供 job_posting（写：同步新增岗位推送 Redis）与
+				// home（读：首页展示最近新增列表）两个服务共用同一份 Redis「最近新增」存取逻辑
 				jobPostingRepo := jobpostingStorage.NewRepository(pool)
+				newJobRepo := homeStorage.NewNewJobRepository(pool, redisClient)
 				jobPostingService = jobpostingService.NewService(
 					jobPostingRepo,
+					newJobRepo,
 					getEnv("SCRAPER_SCRIPT", "../python-parser/scrape_smartsheet.py"),
 					getEnv("PYTHON_BIN", "python3"),
 				)
@@ -144,7 +148,7 @@ func NewServer() *http.Server {
 					homeStorage.NewReportRepository(pool),
 					homeStorage.NewProjectRepository(pool),
 					homeStorage.NewSnapshotRepository(pool),
-					homeStorage.NewNewJobRepository(pool),
+					newJobRepo,
 					cfg.AI.ProviderAPIKey,
 					cfg.AI.ProviderBaseURL,
 					cfg.AI.ProviderModel,

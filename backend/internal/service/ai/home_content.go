@@ -10,8 +10,8 @@ import (
 
 // HomeContentReport 首页 AI 一次生成的完整结果（日报 + 项目推荐）
 type HomeContentReport struct {
-	Report  *HomeDailyReport  `json:"report"`
-	Project []*HomeProject    `json:"projects"`
+	Report  *HomeDailyReport `json:"report"`
+	Project []*HomeProject   `json:"projects"`
 }
 
 // HomeDailyReport 首页日报（AI 生成结构）
@@ -103,4 +103,79 @@ func GenerateHomeContent(ctx context.Context, apiKey, baseURL, model string) (*H
 		return nil, fmt.Errorf("%w: invalid JSON: %v", ErrHomeAIGenerateFailed, err)
 	}
 	return &result, nil
+}
+
+// GithubProjectZhInput 待中文加工的 GitHub 项目输入
+type GithubProjectZhInput struct {
+	FullName    string   `json:"fullName"`
+	Description string   `json:"description"`
+	Language    string   `json:"language"`
+	Topics      []string `json:"topics"`
+}
+
+// GithubProjectZhResult AI 中文加工结果
+type GithubProjectZhResult struct {
+	FullName    string `json:"fullName"`
+	SummaryZh   string `json:"summaryZh"`
+	HighlightZh string `json:"highlightZh"`
+}
+
+// TranslateGithubProjects 使用系统级（.env）AI 凭证将一批 GitHub 项目的英文简介
+// 加工为中文：summaryZh（一句话简介）+ highlightZh（求职视角的亮点点评）。
+// 一次调用批量处理，减少 API 调用次数；未配置凭证或调用失败时返回错误，
+// 调用方应将其视为可降级的后处理步骤（不影响项目本身已同步入库）。
+func TranslateGithubProjects(ctx context.Context, apiKey, baseURL, model string, inputs []GithubProjectZhInput) ([]GithubProjectZhResult, error) {
+	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(baseURL) == "" || strings.TrimSpace(model) == "" {
+		return nil, ErrHomeAIConfigMissing
+	}
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+
+	raw, err := json.Marshal(inputs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal github zh inputs: %w", err)
+	}
+
+	provider := newAIProvider(nil)
+	prompt := fmt.Sprintf(`你是求职产品的技术内容编辑，面向正在准备求职的开发者。请将以下 GitHub 开源项目的英文信息加工为中文：
+
+1. summaryZh：用一句中文话（30 字以内）概括项目是做什么的，面向普通开发者，避免直译。
+2. highlightZh：1-2 句中文话点评这个项目为什么值得关注（技术亮点、行业热度或对求职简历的参考价值）。
+
+原始项目信息（JSON 数组）：
+%s
+
+只输出一个 JSON 数组，每项对应输入的 fullName，不要任何多余文字，结构：
+[{"fullName":"owner/repo","summaryZh":"...","highlightZh":"..."}]`, string(raw))
+
+	resp, err := provider.Complete(ctx, CompleteRequest{
+		APIKey:    apiKey,
+		BaseURL:   baseURL,
+		Model:     model,
+		Prompt:    prompt,
+		TimeoutMs: 60000,
+		Stream:    false,
+		MaxTokens: 4096,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrHomeAIGenerateFailed, err)
+	}
+
+	text := strings.TrimSpace(resp.Text)
+	if strings.HasPrefix(text, "```") {
+		if idx := strings.Index(text, "\n"); idx >= 0 {
+			text = text[idx+1:]
+		}
+		if idx := strings.LastIndex(text, "```"); idx >= 0 {
+			text = text[:idx]
+		}
+		text = strings.TrimSpace(text)
+	}
+
+	var results []GithubProjectZhResult
+	if err := json.Unmarshal([]byte(text), &results); err != nil {
+		return nil, fmt.Errorf("%w: invalid JSON: %v", ErrHomeAIGenerateFailed, err)
+	}
+	return results, nil
 }

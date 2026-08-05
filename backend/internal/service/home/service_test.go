@@ -170,6 +170,20 @@ func (m *mockGithubRepo) ListTop(_ context.Context, _ int) ([]model.GithubProjec
 	return m.items, nil
 }
 
+func (m *mockGithubRepo) ListRecent(_ context.Context, _, _ int) ([]model.GithubProjectItem, error) {
+	return m.items, nil
+}
+
+func (m *mockGithubRepo) UpdateZhContent(_ context.Context, fullName, summaryZh, highlightZh string) error {
+	for i := range m.items {
+		if m.items[i].FullName == fullName {
+			m.items[i].SummaryZh = summaryZh
+			m.items[i].HighlightZh = highlightZh
+		}
+	}
+	return nil
+}
+
 var _ githubStorage.Repository = (*mockGithubRepo)(nil)
 
 func TestSyncGithubProjects(t *testing.T) {

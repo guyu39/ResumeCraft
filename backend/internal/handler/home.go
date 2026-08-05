@@ -108,7 +108,8 @@ func (h *Handler) ListHomeProjects(c *gin.Context) {
 	response.JSONSuccess(c, gin.H{"groups": groups})
 }
 
-// ListHomeNewJobs 最近新增岗位（今日+昨日）
+// ListHomeNewJobs 首页最近新增岗位：优先读取 Redis 最近新增列表（最多 10 条）；
+// Redis 未启用或列表为空时回退到 days/limit 参数按 job_postings 主表查询
 // GET /api/home/new-jobs?days=2&limit=20
 func (h *Handler) ListHomeNewJobs(c *gin.Context) {
 	days, _ := strconv.Atoi(c.DefaultQuery("days", "1"))

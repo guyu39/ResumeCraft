@@ -19,6 +19,8 @@ type Repository interface {
 	ListTop(ctx context.Context, limit int) ([]model.GithubProjectItem, error)
 	// ListRecent 按同步时间倒序返回近 days 天内的仓库，最多 limit 个
 	ListRecent(ctx context.Context, days, limit int) ([]model.GithubProjectItem, error)
+	// UpdateZhContent 按 full_name 回写 AI 中文加工结果（同步流程的独立后处理步骤，失败不影响主同步）
+	UpdateZhContent(ctx context.Context, fullName, summaryZh, highlightZh string) error
 }
 
 type repository struct {
@@ -86,7 +88,7 @@ func (r *repository) ListTop(ctx context.Context, limit int) ([]model.GithubProj
 		limit = 30
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, full_name, html_url, description, language, stars, forks, topics, synced_at
+		SELECT id, full_name, html_url, description, summary_zh, highlight_zh, language, stars, forks, topics, synced_at
 		FROM github_projects
 		ORDER BY stars DESC
 		LIMIT $1
@@ -101,7 +103,7 @@ func (r *repository) ListTop(ctx context.Context, limit int) ([]model.GithubProj
 		var item model.GithubProjectItem
 		var syncedAt time.Time
 		if err := rows.Scan(&item.ID, &item.FullName, &item.HtmlURL, &item.Description,
-			&item.Language, &item.Stars, &item.Forks, &item.Topics, &syncedAt); err != nil {
+			&item.SummaryZh, &item.HighlightZh, &item.Language, &item.Stars, &item.Forks, &item.Topics, &syncedAt); err != nil {
 			return nil, fmt.Errorf("scan github project: %w", err)
 		}
 		item.SyncedAt = syncedAt.UnixMilli()
@@ -118,7 +120,7 @@ func (r *repository) ListRecent(ctx context.Context, days, limit int) ([]model.G
 		limit = 30
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, full_name, html_url, description, language, stars, forks, topics, synced_at
+		SELECT id, full_name, html_url, description, summary_zh, highlight_zh, language, stars, forks, topics, synced_at
 		FROM github_projects
 		WHERE synced_at >= NOW() - make_interval(days => $1)
 		ORDER BY synced_at DESC
@@ -134,11 +136,22 @@ func (r *repository) ListRecent(ctx context.Context, days, limit int) ([]model.G
 		var item model.GithubProjectItem
 		var syncedAt time.Time
 		if err := rows.Scan(&item.ID, &item.FullName, &item.HtmlURL, &item.Description,
-			&item.Language, &item.Stars, &item.Forks, &item.Topics, &syncedAt); err != nil {
+			&item.SummaryZh, &item.HighlightZh, &item.Language, &item.Stars, &item.Forks, &item.Topics, &syncedAt); err != nil {
 			return nil, fmt.Errorf("scan github project: %w", err)
 		}
 		item.SyncedAt = syncedAt.UnixMilli()
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *repository) UpdateZhContent(ctx context.Context, fullName, summaryZh, highlightZh string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE github_projects SET summary_zh = $2, highlight_zh = $3
+		WHERE full_name = $1
+	`, fullName, summaryZh, highlightZh)
+	if err != nil {
+		return fmt.Errorf("update github project zh content: %w", err)
+	}
+	return nil
 }

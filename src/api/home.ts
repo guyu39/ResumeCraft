@@ -34,6 +34,10 @@ export interface GithubProjectItem {
   fullName: string
   htmlUrl: string
   description: string
+  /** AI 中文加工后的一句话简介；为空时前端回退展示 description */
+  summaryZh?: string
+  /** AI 生成的求职视角亮点点评；可能为空 */
+  highlightZh?: string
   language: string
   stars: number
   forks: number
@@ -79,7 +83,7 @@ export interface ResumeProject {
   updatedAt?: number // 更新时间（ms）
 }
 
-// 昨日新增岗位
+// 最近新增岗位（后端优先读 Redis 最近新增列表，最多 10 条，按新增时间倒序）
 export interface NewJobItem {
   id: string
   companyName: string
@@ -126,7 +130,8 @@ export const homeApi = {
   // 简历项目推荐：近 7 天，按更新时间日期分组倒序
   listProjects: (days = 7) => apiClient.get<{ groups: ProjectGroup[] }>(`/home/projects?days=${days}`),
 
-  // 最近新增岗位（days 天，默认今日+昨日）
+  // 最近新增岗位：默认读取 Redis 最近新增列表（最多 10 条）；
+  // days/limit 仅在 Redis 未启用或列表为空时用作数据库兜底查询参数
   listNewJobs: (days = 2, limit = 20) =>
     apiClient.get<{ items: NewJobItem[] }>(`/home/new-jobs?days=${days}&limit=${limit}`),
 }

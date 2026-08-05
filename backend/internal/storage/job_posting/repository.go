@@ -14,8 +14,9 @@ import (
 
 // Repository 招聘数据聚合存储层
 type Repository interface {
-	// UpsertJobPostings 批量 upsert，按 (company_name, recruitment_type) 去重；返回插入/更新计数
-	UpsertJobPostings(ctx context.Context, items []model.JobPosting) (*model.SyncResult, error)
+	// UpsertJobPostings 批量 upsert，按 (company_name, recruitment_type) 去重；
+	// 返回插入/更新计数，以及本次真正新插入（非更新）的岗位明细，供上层推送到 Redis「最近新增」列表
+	UpsertJobPostings(ctx context.Context, items []model.JobPosting) (*model.UpsertJobPostingsResult, error)
 	// ListJobPostings 筛选 + 分页 + 关键词搜索，按开启时间排序
 	ListJobPostings(ctx context.Context, filters model.JobPostingFilters) ([]model.JobPosting, int, error)
 	// GetFilters 返回去重后的行业 / 招聘类型枚举
@@ -53,11 +54,11 @@ ON CONFLICT (company_name, recruitment_type) DO UPDATE SET
     notes = EXCLUDED.notes,
     is_active = true,
     scraped_at = NOW()
-RETURNING (xmax = 0) AS inserted
+RETURNING id, (xmax = 0) AS inserted, company_name, recruitment_type, location, positions, open_date, application_url, source
 `
 
-func (r *repository) UpsertJobPostings(ctx context.Context, items []model.JobPosting) (*model.SyncResult, error) {
-	result := &model.SyncResult{}
+func (r *repository) UpsertJobPostings(ctx context.Context, items []model.JobPosting) (*model.UpsertJobPostingsResult, error) {
+	result := &model.UpsertJobPostingsResult{}
 	if len(items) == 0 {
 		return result, nil
 	}
@@ -95,14 +96,33 @@ func (r *repository) UpsertJobPostings(ctx context.Context, items []model.JobPos
 			return nil, fmt.Errorf("upsert row: %w", err)
 		}
 		if rows.Next() {
-			var isInsert bool
-			if err := rows.Scan(&isInsert); err != nil {
+			var (
+				id                                                              string
+				isInsert                                                        bool
+				companyName, recruitmentType, location, positions, appURL, src sql.NullString
+				openDate                                                        sql.NullTime
+			)
+			if err := rows.Scan(&id, &isInsert, &companyName, &recruitmentType, &location, &positions, &openDate, &appURL, &src); err != nil {
 				rows.Close()
 				_ = br.Close()
 				return nil, fmt.Errorf("upsert row scan: %w", err)
 			}
 			if isInsert {
 				result.Inserted++
+				newItem := model.NewJobItem{
+					ID:              id,
+					CompanyName:     companyName.String,
+					RecruitmentType: recruitmentType.String,
+					Location:        location.String,
+					Positions:       positions.String,
+					ApplicationURL:  appURL.String,
+					Source:          src.String,
+				}
+				if openDate.Valid {
+					ms := openDate.Time.UnixMilli()
+					newItem.OpenDate = &ms
+				}
+				result.InsertedItems = append(result.InsertedItems, newItem)
 			} else {
 				result.Updated++
 			}

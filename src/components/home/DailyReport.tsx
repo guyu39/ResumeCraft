@@ -290,8 +290,17 @@ const DailyReportBlock: React.FC = () => {
                           {repo.fullName}
                         </span>
                       </span>
-                      {repo.description && (
-                        <span className="mt-0.5 block truncate text-xs text-muted">{repo.description}</span>
+                      {/* 描述优先展示 AI 中文加工简介，未加工时回退英文原文 */}
+                      {(repo.summaryZh || repo.description) && (
+                        <span className="mt-0.5 block truncate text-xs text-muted">
+                          {repo.summaryZh || repo.description}
+                        </span>
+                      )}
+                      {/* AI 求职视角亮点点评：加工成功时才展示，静默降级不展示错误态 */}
+                      {repo.highlightZh && (
+                        <span className="mt-0.5 block truncate text-[11px] italic text-primary/80">
+                          AI 点评：{repo.highlightZh}
+                        </span>
                       )}
                     </span>
                     {label && (
