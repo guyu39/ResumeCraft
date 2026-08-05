@@ -27,7 +27,7 @@ const HomePage: React.FC = () => {
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-canvas text-slate-900">
       {/* 固定导航 */}
-      <HomeHeader onLogout={() => void handleLogout()} />
+      <HomeHeader onLogout={() => void handleLogout()} title="首页" />
 
       {/* 固定导航高度补偿（h-14 = 56px） */}
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-10 pt-20 sm:px-6">

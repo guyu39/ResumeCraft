@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowLeft,
   AlertTriangle,
   BriefcaseBusiness,
   CalendarClock,
@@ -44,6 +43,8 @@ import StyledSelect from '@/components/common/StyledSelect'
 import CityCascadeSelect from '@/components/common/CityCascadeSelect'
 import TimeRangePicker from '@/components/common/TimeRangePicker'
 import useDeleteConfirm from '@/hooks/useDeleteConfirm'
+import { useAuthStore } from '@/store/authStore'
+import HomeHeader from '@/components/home/HomeHeader'
 
 type DisplayStatus = 'submitted' | 'written_test' | 'interview' | 'offer' | 'terminated'
 
@@ -381,6 +382,7 @@ const STATUS_COLOR_CLASS: Record<string, string> = {
 }
 
 const ApplicationsPage: React.FC = () => {
+  const logout = useAuthStore((s) => s.logout)
   const [items, setItems] = useState<JobApplicationListItem[]>([])
   const [loading, setLoading] = useState(false)
   // 视图：投递列表 / 数据分析
@@ -912,18 +914,21 @@ const ApplicationsPage: React.FC = () => {
     }
   }
 
+  const handleLogout = async () => {
+    await logout()
+    localStorage.removeItem('resumecraft_current_resume_id')
+    window.location.href = '/'
+  }
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_48%,#f8fafc_100%)] text-slate-900">
+      <HomeHeader onLogout={() => void handleLogout()} title="投递管理" />
       <ToastContainer />
       {deleteConfirmDialog}
-      <div className="shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur">
+      <div className="shrink-0 border-b border-slate-200/80 bg-white/85 pt-14 backdrop-blur">
         <div className="mx-auto flex max-w-[1680px] items-center justify-between gap-4 px-6 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={() => { window.location.href = '/resumes' }} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="返回简历列表">
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <h1 className="shrink-0 text-xl font-semibold tracking-tight">投递管理</h1>
-            <div className="ml-1 inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-line bg-slate-100 p-0.5 text-xs">
+            <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-line bg-slate-100 p-0.5 text-xs">
               <button
                 type="button"
                 onClick={() => setView('list')}

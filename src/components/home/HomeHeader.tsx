@@ -13,6 +13,10 @@ import ChangePasswordDialog from '@/components/layout/ChangePasswordDialog'
 
 interface HomeHeaderProps {
   onLogout: () => void
+  /** 页面级上下文标题，展示在品牌标识右侧，如"我的简历""招聘聚合" */
+  title?: string
+  /** 页面级操作区，展示在用户菜单左侧，如"新建简历"按钮 */
+  actions?: React.ReactNode
 }
 
 const NAV_ITEMS = [
@@ -22,7 +26,7 @@ const NAV_ITEMS = [
   { label: '招聘聚合', path: '/jobs', icon: Sparkles },
 ]
 
-const HomeHeader: React.FC<HomeHeaderProps> = ({ onLogout }) => {
+const HomeHeader: React.FC<HomeHeaderProps> = ({ onLogout, title, actions }) => {
   const { user } = useAuthStore()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showAccount, setShowAccount] = useState(false)
@@ -44,8 +48,18 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({ onLogout }) => {
             </span>
           </a>
 
-          {/* 主导航：不滚动，空间不足时换行兜底 */}
-          <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5 sm:gap-1" aria-label="主导航">
+          {/* 左侧页面上下文标题：如"我的简历""招聘聚合" */}
+          {title && (
+            <>
+              <span className="hidden h-5 w-px shrink-0 bg-line sm:block" aria-hidden="true" />
+              <h1 className="shrink-0 truncate text-sm font-semibold text-ink sm:text-base">
+                {title}
+              </h1>
+            </>
+          )}
+
+          {/* 主导航：靠右排列，空间不足时换行兜底 */}
+          <nav className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-0.5 sm:gap-1" aria-label="主导航">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon
               const active = item.path === '/' ? current === '/' : current.startsWith(item.path)
@@ -66,6 +80,9 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({ onLogout }) => {
               )
             })}
           </nav>
+
+          {/* 页面级操作区：如"新建简历"按钮 */}
+          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
 
           {/* 用户菜单 */}
           {user && (

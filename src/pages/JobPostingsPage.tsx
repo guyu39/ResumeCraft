@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { Inbox, AlertTriangle, BriefcaseBusiness, FileText, ArrowLeft } from 'lucide-react'
+import { Inbox, AlertTriangle } from 'lucide-react'
 import { jobPostingApi, type JobFilters, type JobPostingListResponse } from '@/api/jobPosting'
 import type { JobPosting } from '@/api/jobPosting'
 import JobTableRow from '@/components/job/JobTableRow'
@@ -12,12 +12,14 @@ import JobFilterBar, { type JobFilterValue } from '@/components/job/JobFilterBar
 import JobPagination from '@/components/job/JobPagination'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/components/common/Toast'
+import HomeHeader from '@/components/home/HomeHeader'
 
 const PAGE_SIZE = 20
 const AUTO_REFRESH_INTERVAL_MS = 60 * 60 * 1000
 
 const JobPostingsPage: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const logout = useAuthStore((s) => s.logout)
   const [filterValue, setFilterValue] = useState<JobFilterValue>({
     industry: '',
     type: '',
@@ -108,30 +110,23 @@ const JobPostingsPage: React.FC = () => {
     }
   }
 
+  const handleLogout = async () => {
+    await logout()
+    localStorage.removeItem('resumecraft_current_resume_id')
+    window.location.href = '/'
+  }
+
   const items = data?.items ?? []
   const pagination = data?.pagination ?? { page: 1, pageSize, total: 0, totalPages: 0 }
 
   return (
-    <div className="flex h-screen h-[100dvh] min-h-0 flex-col overflow-hidden bg-slate-50 text-slate-900">
-      {/* 头部 */}
-      <header className="relative z-10 shrink-0 border-b border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <div className="flex shrink-0 items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => (window.location.href = '/')}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-              title="返回首页"
-              aria-label="返回首页"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <h1 className="shrink-0 text-lg font-semibold text-slate-900">
-              校招 招聘聚合
-            </h1>
-          </div>
+    <div className="flex h-screen h-[100dvh] min-h-0 flex-col overflow-hidden bg-canvas text-slate-900">
+      <HomeHeader onLogout={() => void handleLogout()} title="招聘聚合" />
 
-          <div className="order-3 w-full min-w-0 xl:order-none xl:flex-1">
+      {/* 筛选栏（导航高度补偿 pt-14=56px） */}
+      <div className="shrink-0 border-b border-line bg-surface pt-14">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+          <div className="w-full min-w-0">
             <JobFilterBar
               value={filterValue}
               onChange={handleFilterChange}
@@ -140,27 +135,8 @@ const JobPostingsPage: React.FC = () => {
               isAuthenticated={isAuthenticated}
             />
           </div>
-
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => (window.location.href = '/resumes')}
-              className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-3 text-[13px] font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100"
-            >
-              <FileText className="h-4 w-4" />
-              我的简历
-            </button>
-            <button
-              type="button"
-              onClick={() => (window.location.href = '/applications')}
-              className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-            >
-              <BriefcaseBusiness className="h-4 w-4" />
-              投递管理
-            </button>
-          </div>
         </div>
-      </header>
+      </div>
 
       {/* 内容区 */}
       <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
