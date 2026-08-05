@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"resumecraft-pdf-backend/internal/model"
 	homeStorage "resumecraft-pdf-backend/internal/storage/home"
@@ -305,6 +306,20 @@ var fieldMap = map[string]func(*model.JobPosting, string){
 	"备注":   func(jp *model.JobPosting, v string) { jp.Notes = strings.TrimSpace(v) },
 }
 
+// maxCompanyNameLen 与数据库 job_postings.company_name varchar(500) 上限一致（见迁移
+// 2026-08-05-widen-job-postings-company-name.sql）；超出后截断，防止极端超长文本仍导致入库失败。
+const maxCompanyNameLen = 500
+
+// truncateRunes 按字符（rune）截断，避免多字节字符（如中文）被从字节中间切断产生乱码；
+// varchar(n) 的长度限制按字符计数，故此处以 rune 数而非字节数对齐。
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
 func toPostings(records []map[string]string) ([]model.JobPosting, []error) {
 	out := make([]model.JobPosting, 0, len(records))
 	var errs []error
@@ -319,6 +334,17 @@ func toPostings(records []map[string]string) ([]model.JobPosting, []error) {
 		if jp.CompanyName == "" {
 			continue
 		}
+		// 脏数据过滤：源表格里偶发出现整段说明性备注文字被误抓成「企业名称」
+		// （例如"1.阿里系这么多家是单独招聘的..."），特征是企业名称超长且
+		// 所属行业/招聘类型/开启时间/工作地点全部为空——真实岗位记录不会
+		// 只有企业名称而核心字段全空。命中即跳过，不计入解析错误（属正常过滤，非异常）。
+		// 用 rune 数（字符数）判断，与数据库 varchar(n) 的长度限制口径一致（避免中文按字节数误判）。
+		if utf8.RuneCountInString(jp.CompanyName) > 60 && jp.Industry == "" && jp.RecruitmentType == "" &&
+			jp.OpenDate == nil && jp.Location == "" {
+			continue
+		}
+		// 兜底截断：防止极端超长文本（未命中上面的脏数据特征）仍撞库表长度限制
+		jp.CompanyName = truncateRunes(jp.CompanyName, maxCompanyNameLen)
 		// 归一化分类（用于筛选枚举，原始文本保留用于展示）
 		jp.RecruitmentCategory = normalizeRecruitmentType(jp.RecruitmentType)
 		jp.IndustryCategory = normalizeIndustry(jp.Industry)
