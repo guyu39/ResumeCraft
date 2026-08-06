@@ -36,7 +36,7 @@ const CityCascadeSelect: React.FC<CityCascadeSelectProps> = ({
   const selectedProvince = useMemo(() => {
     if (!value) return ''
     const idx = value.indexOf('/')
-    return idx > -1 ? value.slice(0, idx) : ''
+    return idx > -1 ? value.slice(0, idx) : value
   }, [value])
 
   const selectedCity = useMemo(() => {
@@ -62,6 +62,15 @@ const CityCascadeSelect: React.FC<CityCascadeSelectProps> = ({
     setSearch('')
   }
 
+  // selectProvinceOnly 仅选到省/直辖市级别（不精确到市/区），用于用户不清楚
+  // 具体投递城市的场景（例如只知道招聘方在"广东"，但不确定具体是广州还是深圳）。
+  const selectProvinceOnly = (p: string) => {
+    onChange(p)
+    setOpen(false)
+    setSearch('')
+  }
+
+  // value 可能是「省/市」或仅「省」（省级选择），展示时原样输出即可
   const displayText = value || ''
 
   return (
@@ -133,6 +142,15 @@ const CityCascadeSelect: React.FC<CityCascadeSelectProps> = ({
               >
                 <ChevronRight className="h-3 w-3 rotate-180" />
                 返回省份列表
+              </button>
+              {/* 仅选到省/直辖市级别：不确定具体城市/区时可直接确认 */}
+              <button
+                type="button"
+                onClick={() => selectProvinceOnly(province)}
+                className="flex w-full items-center gap-1.5 border-b border-slate-100 bg-blue-50/50 px-3 py-2 text-left text-xs font-medium text-blue-600 transition hover:bg-blue-50"
+              >
+                <MapPin className="h-3 w-3 shrink-0" />
+                不确定具体城市，仅选「{province}」
               </button>
               <div className="grid max-h-64 grid-cols-2 gap-0.5 overflow-y-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {(currentEntry?.children || []).map((city) => {

@@ -14,7 +14,10 @@ import (
 
 // Repository 招聘数据聚合存储层
 type Repository interface {
-	// UpsertJobPostings 批量 upsert，按 (company_name, recruitment_type) 去重；
+	// UpsertJobPostings 批量 upsert，按 (company_name, recruitment_type, COALESCE(open_date, '1970-01-01')) 去重；
+	// open_date 纳入去重键：同公司同招聘类型只要开启时间不同即视为新一批岗位（新增），
+	// 而非覆盖更新旧记录，从而能正确进入 Redis「最近新增」列表；open_date 为 NULL（抓取源
+	// 未写开启日期）时用哨兵值归一比较，避免每次同步都被误判为新增而重复插入。
 	// 返回插入/更新计数，以及本次真正新插入（非更新）的岗位明细，供上层推送到 Redis「最近新增」列表
 	UpsertJobPostings(ctx context.Context, items []model.JobPosting) (*model.UpsertJobPostingsResult, error)
 	// ListJobPostings 筛选 + 分页 + 关键词搜索，按开启时间排序
@@ -40,13 +43,12 @@ INSERT INTO job_postings (
     open_date, location, positions, application_url, referral_code, notes,
     is_active, scraped_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true, NOW())
-ON CONFLICT (company_name, recruitment_type) DO UPDATE SET
+ON CONFLICT (company_name, recruitment_type, (COALESCE(open_date, DATE '1970-01-01'))) DO UPDATE SET
     source = EXCLUDED.source,
     source_id = EXCLUDED.source_id,
     industry = EXCLUDED.industry,
     industry_category = EXCLUDED.industry_category,
     recruitment_category = EXCLUDED.recruitment_category,
-    open_date = EXCLUDED.open_date,
     location = EXCLUDED.location,
     positions = EXCLUDED.positions,
     application_url = EXCLUDED.application_url,

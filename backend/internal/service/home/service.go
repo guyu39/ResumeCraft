@@ -28,11 +28,10 @@ var newsSources = []struct {
 	URL  string
 }{
 	{Name: "OpenAI", URL: "https://openai.com/news/rss.xml"},
-	{Name: "Google AI", URL: "https://ai.googleblog.com/feeds/posts/default?alt=rss"},
 	{Name: "DeepMind", URL: "https://deepmind.google/blog/rss.xml"},
-	{Name: "Hugging Face", URL: "https://huggingface.co/blog/feed.xml"},
-	{Name: "arXiv AI", URL: "http://export.arxiv.org/rss/cs.AI"},
-	{Name: "机器之心", URL: "https://www.jiqizhixin.com/rss"},
+	{Name: "36氪", URL: "https://36kr.com/feed"},
+	{Name: "量子位", URL: "https://www.qbitai.com/feed"},
+	{Name: "虎嗅", URL: "https://rss.huxiu.com/"},
 }
 
 // Service 首页聚合服务：待办 + AI 新闻 + GitHub 项目 + 日报 + 项目推荐 + 新岗位

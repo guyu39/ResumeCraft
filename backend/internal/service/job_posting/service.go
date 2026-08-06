@@ -13,7 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"resumecraft-pdf-backend/internal/model"
 	homeStorage "resumecraft-pdf-backend/internal/storage/home"
@@ -334,13 +333,18 @@ func toPostings(records []map[string]string) ([]model.JobPosting, []error) {
 		if jp.CompanyName == "" {
 			continue
 		}
-		// 脏数据过滤：源表格里偶发出现整段说明性备注文字被误抓成「企业名称」
-		// （例如"1.阿里系这么多家是单独招聘的..."），特征是企业名称超长且
-		// 所属行业/招聘类型/开启时间/工作地点全部为空——真实岗位记录不会
-		// 只有企业名称而核心字段全空。命中即跳过，不计入解析错误（属正常过滤，非异常）。
-		// 用 rune 数（字符数）判断，与数据库 varchar(n) 的长度限制口径一致（避免中文按字节数误判）。
-		if utf8.RuneCountInString(jp.CompanyName) > 60 && jp.Industry == "" && jp.RecruitmentType == "" &&
-			jp.OpenDate == nil && jp.Location == "" {
+		// 脏数据过滤：真实岗位记录不会只有企业名称而核心字段全空，命中即跳过
+		// （属正常过滤，非异常，不计入解析错误）。覆盖两种已知脏数据模式：
+		// 1）源表格里整段说明性备注文字被误抓成「企业名称」
+		// （例如"1.阿里系这么多家是单独招聘的..."），特征是企业名称超长；
+		// 2）企业占位说明行（例如"菜鸟（过几天补充）"），特征是企业名称不长，
+		// 但招聘类型/开启时间/工作地点/岗位/投递链接全部为空，是招聘信息还未
+		// 就位时的占位记录，同样不应入库。
+		// 用 rune 数（字符数）判断超长阈值，与数据库 varchar(n) 的长度限制口径
+		// 一致（避免中文按字节数误判）。
+		coreFieldsEmpty := jp.Industry == "" && jp.RecruitmentType == "" &&
+			jp.OpenDate == nil && jp.Location == "" && jp.Positions == "" && jp.ApplicationURL == ""
+		if coreFieldsEmpty {
 			continue
 		}
 		// 兜底截断：防止极端超长文本（未命中上面的脏数据特征）仍撞库表长度限制

@@ -163,7 +163,7 @@ func (r *repository) List(ctx context.Context, userID string, filters model.JobA
 			GROUP BY application_id
 		) progress ON progress.application_id = ja.id
 		WHERE %s
-		ORDER BY ja.updated_at DESC
+		ORDER BY ja.submitted_at DESC NULLS LAST, ja.created_at DESC
 		LIMIT $%d OFFSET $%d
 	`, where, len(args)-1, len(args))
 
