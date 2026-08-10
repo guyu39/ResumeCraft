@@ -1,22 +1,27 @@
 // ============================================================
 // 首页工作台
 // 结构（自上而下）：问候区 → 求职概览 KPI → 待办/新增岗位（正文常驻）
-// → AI 日报/GitHub 项目（Tab 切换）→ 简历项目推荐
+// → AI 日报 / GitHub 项目 / 简历项目推荐（Tab 切换）
 // 状态与行动优先：KPI/待办/新增岗位置于首屏，资讯与素材下移一层。
 // 顶部导航固定
 // ============================================================
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import HomeHeader from '@/components/home/HomeHeader'
 import KpiOverview from '@/components/home/KpiOverview'
 import TodoBlock from '@/components/home/TodoBlock'
 import NewJobsBlock from '@/components/home/NewJobsBlock'
 import DailyReportBlock from '@/components/home/DailyReport'
-import Projects from '@/components/home/Projects'
 
 const HomePage: React.FC = () => {
   const { user, logout } = useAuthStore()
+
+  // 首页隐藏页面级原生滚动条（保留滚动能力），离开时恢复
+  useEffect(() => {
+    document.body.classList.add('no-scrollbar')
+    return () => document.body.classList.remove('no-scrollbar')
+  }, [])
 
   const handleLogout = async () => {
     await logout()
@@ -55,11 +60,8 @@ const HomePage: React.FC = () => {
           <NewJobsBlock />
         </div>
 
-        {/* AI 日报 / GitHub 最新项目（Tab 切换，固定容器内滚动） */}
+        {/* AI 日报 / GitHub 最新项目 / 简历项目推荐（Tab 切换，固定容器内滚动） */}
         <DailyReportBlock />
-
-        {/* 简历项目推荐（固定容器内滚动） */}
-        <Projects />
       </main>
     </div>
   )

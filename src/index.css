@@ -15,6 +15,38 @@ body {
   background-color: #F6F8FB;
 }
 
+/* 全局滚动条：浅灰色细条，与页面 UI（浅色卡片 / 边框）保持一致 */
+:root {
+  --scrollbar-thumb: rgba(148, 163, 184, 0.4);
+  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.65);
+  --scrollbar-track: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
 /* Flat 风格卡片基类：实色白底 + 1px 边框 + 16px 圆角，无阴影 */
 .card-flat {
   background-color: #FFFFFF;
@@ -195,10 +227,10 @@ body {
   height: 0;
 }
 
-/* 自定义细窄滚动条（替换原生）— 用于历史抽屉等内嵌列表 */
+/* 自定义细窄滚动条（替换原生）— 用于历史抽屉等内嵌列表，颜色与全局浅灰滚动条一致 */
 .thin-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .thin-scrollbar::-webkit-scrollbar {
@@ -207,18 +239,18 @@ body {
 }
 
 .thin-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track);
 }
 
 .thin-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15);
+  background-color: var(--scrollbar-thumb);
   border-radius: 9999px;
   border: 1px solid transparent;
   background-clip: content-box;
 }
 
 .thin-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 /* 统一 select 外观：去掉原生箭头，注入自定义 SVG 箭头，圆角与输入框一致 */

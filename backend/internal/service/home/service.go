@@ -3,17 +3,18 @@ package home
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"resumecraft-pdf-backend/internal/model"
 	aiservice "resumecraft-pdf-backend/internal/service/ai"
+	aihotStorage "resumecraft-pdf-backend/internal/storage/aihot"
 	githubStorage "resumecraft-pdf-backend/internal/storage/github"
 	homeStorage "resumecraft-pdf-backend/internal/storage/home"
 	newsStorage "resumecraft-pdf-backend/internal/storage/news"
@@ -22,22 +23,9 @@ import (
 // 新闻摘要最大截断长度（字符）
 const maxNewsSummaryLen = 500
 
-// 新闻源列表：官方博客 / 权威媒体 RSS（单源失败不影响其他源）
-var newsSources = []struct {
-	Name string
-	URL  string
-}{
-	{Name: "OpenAI", URL: "https://openai.com/news/rss.xml"},
-	{Name: "DeepMind", URL: "https://deepmind.google/blog/rss.xml"},
-	{Name: "36氪", URL: "https://36kr.com/feed"},
-	{Name: "量子位", URL: "https://www.qbitai.com/feed"},
-	{Name: "虎嗅", URL: "https://rss.huxiu.com/"},
-}
-
-// Service 首页聚合服务：待办 + AI 新闻 + GitHub 项目 + 日报 + 项目推荐 + 新岗位
+// Service 首页聚合服务：待办 + AI 新闻 + GitHub 项目 + 日报 + 项目推荐 + 新岗位 + AI HOT
 type Service interface {
 	ListTodos(ctx context.Context, userID string) ([]model.TodoItem, error)
-	ListNews(ctx context.Context, days, limit int) ([]model.AiNewsItem, error)
 	// ListGithubProjects 返回近 7 天 GitHub 项目（按同步日期分组倒序）
 	ListGithubProjects(ctx context.Context, days int) ([]model.GithubGroup, error)
 	// GetDailyReports 返回近 days 天日报（按日期倒序）
@@ -48,10 +36,24 @@ type Service interface {
 	ListNewJobs(ctx context.Context, days, limit int) ([]model.NewJobItem, error)
 	// GenerateDailyReport 聚合最近 24 小时新闻生成当日日报并入库；当日已存在则覆盖
 	GenerateDailyReport(ctx context.Context) (*model.AiDailyReport, error)
-	// SyncNews 抓取全部新闻源并入库，返回结果统计
-	SyncNews(ctx context.Context) (*model.SyncResult, error)
 	// SyncGithubProjects 抓取 GitHub 最新 AI 项目并入库
 	SyncGithubProjects(ctx context.Context) (*model.SyncResult, error)
+
+	// ---- AI HOT (https://aihot.virxact.com) ----
+	// SyncAihotItems 同步最近 24h 精选快讯到本地缓存（ETag 条件请求，304 跳过）
+	SyncAihotItems(ctx context.Context) (*model.SyncResult, error)
+	// SyncAihotHotTopics 同步当前热点榜到本地缓存
+	SyncAihotHotTopics(ctx context.Context) (*model.SyncResult, error)
+	// SyncAihotDaily 同步最新日报到本地缓存（每天 08:00 北京时间发布）
+	SyncAihotDaily(ctx context.Context) (*model.SyncResult, error)
+	// ListAihotItems 快讯流：window=24h|7d，可按 category / 关键词 q 过滤
+	ListAihotItems(ctx context.Context, window, category, q string, limit int) ([]model.AihotItem, error)
+	// GetAihotDaily 日报：date 为空返回最新；同时返回可切换的日期列表
+	GetAihotDaily(ctx context.Context, date string) (*model.AihotDaily, []string, error)
+	// ListAihotHotTopics 热点榜（≤10）
+	ListAihotHotTopics(ctx context.Context) ([]model.AihotHotTopic, error)
+	// GetAihotStory 事件详情（本地缓存 1 小时内直接返回，过期回源拉取）
+	GetAihotStory(ctx context.Context, publicID string) (*model.AihotStory, error)
 }
 
 type service struct {
@@ -62,12 +64,16 @@ type service struct {
 	projectRepo   homeStorage.ProjectRepository
 	snapshotRepo  homeStorage.SnapshotRepository
 	newJobRepo    homeStorage.NewJobRepository
+	aihotRepo     aihotStorage.Repository
 	client        *http.Client
 	githubAPIBase string // GitHub Search API 基地址（测试可覆盖）
 	// 系统级 AI 凭证（.env 配置，服务端内置）：用于首页日报/项目推荐一次生成
 	aiAPIKey  string
 	aiBaseURL string
 	aiModel   string
+	// AI HOT ETag 缓存（进程内，304 条件请求用；重启后失效仅导致一次全量拉取）
+	aihotETags map[string]string
+	aihotMu    sync.Mutex
 }
 
 func NewService(
@@ -78,6 +84,7 @@ func NewService(
 	projectRepo homeStorage.ProjectRepository,
 	snapshotRepo homeStorage.SnapshotRepository,
 	newJobRepo homeStorage.NewJobRepository,
+	aihotRepo aihotStorage.Repository,
 	aiAPIKey, aiBaseURL, aiModel string,
 ) Service {
 	return &service{
@@ -88,20 +95,18 @@ func NewService(
 		projectRepo:   projectRepo,
 		snapshotRepo:  snapshotRepo,
 		newJobRepo:    newJobRepo,
+		aihotRepo:     aihotRepo,
 		client:        &http.Client{Timeout: 20 * time.Second},
 		githubAPIBase: "https://api.github.com",
 		aiAPIKey:      aiAPIKey,
 		aiBaseURL:     aiBaseURL,
 		aiModel:       aiModel,
+		aihotETags:    map[string]string{},
 	}
 }
 
 func (s *service) ListTodos(ctx context.Context, userID string) ([]model.TodoItem, error) {
 	return s.todoRepo.ListTodos(ctx, userID)
-}
-
-func (s *service) ListNews(ctx context.Context, days, limit int) ([]model.AiNewsItem, error) {
-	return s.newsRepo.ListRecent(ctx, days, limit)
 }
 
 func (s *service) ListGithubProjects(ctx context.Context, days int) ([]model.GithubGroup, error) {
@@ -230,8 +235,20 @@ func (s *service) GenerateDailyReport(ctx context.Context) (*model.AiDailyReport
 }
 
 // generateWithAI 调用系统级 AI 一次生成日报与项目推荐并分别入库。
+// 素材取最近 24 小时入库的真实 AI 新闻，避免 AI 凭训练知识编造过时内容。
 func (s *service) generateWithAI(ctx context.Context) (*model.AiDailyReport, error) {
-	content, err := aiservice.GenerateHomeContent(ctx, s.aiAPIKey, s.aiBaseURL, s.aiModel)
+	// 抓取最近 24h 真实新闻作为素材（失败不阻塞，可空素材继续生成）
+	newsLines := []string{}
+	if items, err := s.newsRepo.ListSince(ctx, time.Now().Add(-24*time.Hour), 50); err == nil {
+		for _, n := range items {
+			newsLines = append(newsLines,
+				fmt.Sprintf("%s | %s | %s", n.Title, n.Source, time.UnixMilli(n.PublishedAt).Format("2006-01-02")))
+		}
+	} else {
+		log.Printf("[home] load news for AI report failed: %v", err)
+	}
+	today := time.Now().Format("2006-01-02")
+	content, err := aiservice.GenerateHomeContent(ctx, s.aiAPIKey, s.aiBaseURL, s.aiModel, today, newsLines)
 	if err != nil {
 		return nil, err
 	}
@@ -296,6 +313,10 @@ func (s *service) generateWithAI(ctx context.Context) (*model.AiDailyReport, err
 			Insight:     it.Insight,
 		})
 	}
+	// 按发布时间倒序排序（素材已按时间倒序传入，AI 可能自行重排，这里兜底保证入库即倒序）
+	sort.SliceStable(report.Items, func(i, j int) bool {
+		return report.Items[i].PublishedAt > report.Items[j].PublishedAt
+	})
 	if _, err := s.reportRepo.Upsert(ctx, *report); err != nil {
 		return nil, err
 	}
@@ -330,182 +351,15 @@ func (s *service) generateRuleBased(ctx context.Context) (*model.AiDailyReport, 
 			Insight:     "",
 		})
 	}
+	// 按发布时间倒序排序（ListSince 已倒序，防御性兜底）
+	sort.SliceStable(report.Items, func(i, j int) bool {
+		return report.Items[i].PublishedAt > report.Items[j].PublishedAt
+	})
 
 	if _, err := s.reportRepo.Upsert(ctx, *report); err != nil {
 		return nil, err
 	}
 	return report, nil
-}
-
-// ============================================================
-// AI 新闻同步
-// ============================================================
-
-func (s *service) SyncNews(ctx context.Context) (*model.SyncResult, error) {
-	started := time.Now()
-	result := &model.SyncResult{Source: "ai_news", StartedAt: started.Format(time.RFC3339)}
-
-	for _, source := range newsSources {
-		items, err := s.fetchFeed(ctx, source.Name, source.URL)
-		if err != nil {
-			result.Errors++
-			log.Printf("[news] fetch %s failed: %v", source.URL, err)
-			continue
-		}
-		if len(items) == 0 {
-			continue
-		}
-		inserted, err := s.newsRepo.Upsert(ctx, items)
-		if err != nil {
-			result.Errors++
-			log.Printf("[news] upsert %s failed: %v", source.Name, err)
-			continue
-		}
-		result.Total += len(items)
-		result.Inserted += inserted
-	}
-
-	result.FinishedAt = time.Now().Format(time.RFC3339)
-	result.DurationMs = time.Since(started).Milliseconds()
-	return result, nil
-}
-
-// RSS 2.0 与 Atom 1.0 兼容结构
-type rssFeed struct {
-	Channel struct {
-		Title string    `xml:"title"`
-		Items []rssItem `xml:"item"`
-	} `xml:"channel"`
-}
-type rssItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	PubDate     string `xml:"pubDate"`
-	Description string `xml:"description"`
-}
-
-type atomFeed struct {
-	Title   string      `xml:"title"`
-	Entries []atomEntry `xml:"entry"`
-}
-type atomEntry struct {
-	Title     string     `xml:"title"`
-	Links     []atomLink `xml:"link"`
-	Updated   string     `xml:"updated"`
-	Published string     `xml:"published"`
-	Summary   string     `xml:"summary"`
-}
-type atomLink struct {
-	Href string `xml:"href,attr"`
-}
-
-func (s *service) fetchFeed(ctx context.Context, sourceName, url string) ([]model.AiNewsItem, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "ResumeCraft-Home/1.0")
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20)) // 4MB 上限
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]model.AiNewsItem, 0, 30)
-	// 先按 RSS 2.0 解析，失败或空则按 Atom
-	var rss rssFeed
-	if err := xml.Unmarshal(body, &rss); err == nil && len(rss.Channel.Items) > 0 {
-		for _, it := range rss.Channel.Items {
-			publishedAt, ok := parseFeedTime(it.PubDate)
-			if !ok {
-				continue
-			}
-			items = append(items, model.AiNewsItem{
-				Title:       strings.TrimSpace(it.Title),
-				URL:         strings.TrimSpace(it.Link),
-				Source:      sourceName,
-				Summary:     truncate(stripHTML(it.Description), maxNewsSummaryLen),
-				PublishedAt: publishedAt.UnixMilli(),
-			})
-		}
-		return items, nil
-	}
-
-	var atom atomFeed
-	if err := xml.Unmarshal(body, &atom); err != nil || len(atom.Entries) == 0 {
-		return nil, fmt.Errorf("unrecognized feed format")
-	}
-	for _, e := range atom.Entries {
-		link := ""
-		for _, l := range e.Links {
-			if l.Href != "" {
-				link = l.Href
-				break
-			}
-		}
-		ts := e.Published
-		if ts == "" {
-			ts = e.Updated
-		}
-		publishedAt, ok := parseFeedTime(ts)
-		if !ok {
-			continue
-		}
-		items = append(items, model.AiNewsItem{
-			Title:       strings.TrimSpace(e.Title),
-			URL:         strings.TrimSpace(link),
-			Source:      sourceName,
-			Summary:     truncate(stripHTML(e.Summary), maxNewsSummaryLen),
-			PublishedAt: publishedAt.UnixMilli(),
-		})
-	}
-	return items, nil
-}
-
-// parseFeedTime 兼容 RSS（RFC1123Z）与 Atom（RFC3339）时间格式
-func parseFeedTime(raw string) (time.Time, bool) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return time.Time{}, false
-	}
-	for _, layout := range []string{time.RFC1123Z, time.RFC1123, time.RFC3339, "2006-01-02T15:04:05-07:00", "2006-01-02 15:04:05"} {
-		if t, err := time.Parse(layout, raw); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
-}
-
-// stripHTML 去除摘要中的 HTML 标签
-func stripHTML(raw string) string {
-	var sb strings.Builder
-	inTag := false
-	for _, r := range raw {
-		switch {
-		case r == '<':
-			inTag = true
-		case r == '>':
-			inTag = false
-		case !inTag:
-			sb.WriteRune(r)
-		}
-	}
-	return strings.TrimSpace(sb.String())
-}
-
-func truncate(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n]) + "…"
 }
 
 // ============================================================
@@ -637,4 +491,13 @@ func (s *service) translateGithubProjectsZh(ctx context.Context, items []model.G
 			log.Printf("[home] github project %s zh content update failed: %v", r.FullName, err)
 		}
 	}
+}
+
+// truncate 按 rune 截断字符串，超出部分以省略号结尾
+func truncate(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "…"
 }

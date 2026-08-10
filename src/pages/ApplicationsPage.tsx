@@ -551,7 +551,7 @@ const ApplicationsPage: React.FC = () => {
         department: app.department || '',
         targetTitle: app.targetTitle || '',
         jdText: app.jdText || '',
-        preferredCity: app.preferredCity || app.source || '',
+        preferredCity: app.preferredCity || '',
         applicationUrl: app.applicationUrl || '',
         submittedAt: app.submittedAt ? toDatePickerValue(app.submittedAt) : '',
         writtenTestAt: app.writtenTestAt ? toDatePickerValue(app.writtenTestAt) : '',
@@ -577,8 +577,8 @@ const ApplicationsPage: React.FC = () => {
       toast('请选择关联简历')
       return
     }
-    if (!createForm.targetTitle.trim() || !createForm.jdText.trim()) {
-      toast('请填写岗位和岗位JD')
+    if (!createForm.targetTitle.trim()) {
+      toast('请填写岗位')
       return
     }
     setCreating(true)
@@ -593,7 +593,8 @@ const ApplicationsPage: React.FC = () => {
           department: createForm.department.trim(),
           targetTitle: createForm.targetTitle.trim(),
           jdText: createForm.jdText.trim(),
-          preferredCity: createForm.preferredCity || undefined,
+          // 编辑时必须原样携带城市（含空串=清空），不能省略，否则后端无法区分「未传」与「清空」
+          preferredCity: createForm.preferredCity,
           applicationUrl: createForm.applicationUrl.trim(),
           submittedAt: submittedAt ?? 0,
           writtenTestAt: writtenTestAt ?? 0,

@@ -122,7 +122,6 @@ func TestCreateStillRejectsMissingRequiredFields(t *testing.T) {
 	}{
 		{name: "resume", req: model.CreateJobApplicationRequest{TargetTitle: "工程师", JDText: "JD"}},
 		{name: "title", req: model.CreateJobApplicationRequest{ResumeID: "resume-1", JDText: "JD"}},
-		{name: "jd", req: model.CreateJobApplicationRequest{ResumeID: "resume-1", TargetTitle: "工程师"}},
 	}
 
 	for _, tt := range tests {
@@ -132,6 +131,29 @@ func TestCreateStillRejectsMissingRequiredFields(t *testing.T) {
 				t.Fatalf("err = %v, want ErrInvalidPayload", err)
 			}
 		})
+	}
+}
+
+func TestCreateAllowsEmptyJD(t *testing.T) {
+	repo := &mockRepo{created: &model.JobApplication{ID: "app-1"}}
+	svc := NewService(repo)
+
+	app, err := svc.Create(context.Background(), "user-1", model.CreateJobApplicationRequest{
+		ResumeID:    "resume-1",
+		TargetTitle: "后端开发",
+		JDText:      "",
+	})
+	if err != nil {
+		t.Fatalf("Create with empty JD returned error: %v", err)
+	}
+	if app == nil || app.ID != "app-1" {
+		t.Fatalf("app = %#v, want id app-1", app)
+	}
+	if repo.createParams.JDText != "" {
+		t.Fatalf("jd text = %q, want empty", repo.createParams.JDText)
+	}
+	if repo.createParams.JDHash == "" {
+		t.Fatalf("jd hash should be a stable placeholder, got empty")
 	}
 }
 

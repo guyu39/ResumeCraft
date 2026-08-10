@@ -31,23 +31,6 @@ func (h *Handler) ListHomeTodos(c *gin.Context) {
 	response.JSONSuccess(c, gin.H{"items": items})
 }
 
-// ListHomeNews AI 新闻速递
-// GET /api/home/news?days=30&limit=50
-func (h *Handler) ListHomeNews(c *gin.Context) {
-	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	items, err := h.homeService.ListNews(c.Request.Context(), days, limit)
-	if err != nil {
-		log.Printf("[home] ListHomeNews error: %v", err)
-		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "新闻加载失败")
-		return
-	}
-	if items == nil {
-		items = []model.AiNewsItem{}
-	}
-	response.JSONSuccess(c, gin.H{"items": items})
-}
-
 // ListHomeGithubProjects GitHub 最新开源项目
 // GET /api/home/github-projects?days=7
 func (h *Handler) ListHomeGithubProjects(c *gin.Context) {
@@ -124,4 +107,72 @@ func (h *Handler) ListHomeNewJobs(c *gin.Context) {
 		items = []model.NewJobItem{}
 	}
 	response.JSONSuccess(c, gin.H{"items": items})
+}
+
+// ListHomeAihotItems AI HOT 快讯流
+// GET /api/home/aihot/items?window=24h|7d&category=&q=&limit=
+func (h *Handler) ListHomeAihotItems(c *gin.Context) {
+	window := c.DefaultQuery("window", "24h")
+	if window != "24h" && window != "7d" {
+		window = "24h"
+	}
+	category := c.Query("category")
+	q := c.Query("q")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+
+	items, err := h.homeService.ListAihotItems(c.Request.Context(), window, category, q, limit)
+	if err != nil {
+		log.Printf("[home] ListHomeAihotItems error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "快讯加载失败")
+		return
+	}
+	if items == nil {
+		items = []model.AihotItem{}
+	}
+	response.JSONSuccess(c, gin.H{"items": items})
+}
+
+// GetHomeAihotDaily AI HOT 日报（缺省返回最新）
+// GET /api/home/aihot/daily?date=2026-08-10
+func (h *Handler) GetHomeAihotDaily(c *gin.Context) {
+	date := c.Query("date")
+	daily, dates, err := h.homeService.GetAihotDaily(c.Request.Context(), date)
+	if err != nil {
+		log.Printf("[home] GetHomeAihotDaily error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "日报加载失败")
+		return
+	}
+	if daily == nil {
+		response.JSONSuccess(c, gin.H{"report": nil, "dates": dates})
+		return
+	}
+	response.JSONSuccess(c, gin.H{"report": daily, "dates": dates})
+}
+
+// ListHomeAihotHotTopics AI HOT 热点榜
+// GET /api/home/aihot/hot-topics
+func (h *Handler) ListHomeAihotHotTopics(c *gin.Context) {
+	topics, err := h.homeService.ListAihotHotTopics(c.Request.Context())
+	if err != nil {
+		log.Printf("[home] ListHomeAihotHotTopics error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "热点榜加载失败")
+		return
+	}
+	if topics == nil {
+		topics = []model.AihotHotTopic{}
+	}
+	response.JSONSuccess(c, gin.H{"items": topics})
+}
+
+// GetHomeAihotStory AI HOT 热点事件详情
+// GET /api/home/aihot/stories/:publicId
+func (h *Handler) GetHomeAihotStory(c *gin.Context) {
+	publicID := c.Param("publicId")
+	story, err := h.homeService.GetAihotStory(c.Request.Context(), publicID)
+	if err != nil {
+		log.Printf("[home] GetHomeAihotStory error: %v", err)
+		response.JSONError(c, http.StatusNotFound, "NOT_FOUND", "事件详情加载失败")
+		return
+	}
+	response.JSONSuccess(c, gin.H{"story": story})
 }

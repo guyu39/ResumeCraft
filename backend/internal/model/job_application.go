@@ -30,7 +30,6 @@ type JobApplication struct {
 	TargetTitle       string                        `json:"targetTitle"`
 	JDText            string                        `json:"jdText"`
 	JDHash            string                        `json:"jdHash"`
-	Source            string                        `json:"source"`
 	PreferredCity     string                        `json:"preferredCity,omitempty"`
 	ApplicationURL    string                        `json:"applicationUrl,omitempty"`
 	Status            JobApplicationStatus          `json:"status"`
@@ -59,7 +58,6 @@ type JobApplicationListItem struct {
 	CompanyName       string                         `json:"companyName"`
 	Department        string                         `json:"department,omitempty"`
 	TargetTitle       string                         `json:"targetTitle"`
-	Source            string                         `json:"source"`
 	PreferredCity     string                         `json:"preferredCity,omitempty"`
 	ApplicationURL    string                         `json:"applicationUrl,omitempty"`
 	Status            JobApplicationStatus           `json:"status"`
@@ -174,8 +172,7 @@ type CreateJobApplicationRequest struct {
 	CompanyName       string                             `json:"companyName"`
 	Department        string                             `json:"department"`
 	TargetTitle       string                             `json:"targetTitle" binding:"required,max=200"`
-	JDText            string                             `json:"jdText" binding:"required"`
-	Source            string                             `json:"source"`
+	JDText            string                             `json:"jdText"`
 	PreferredCity     string                             `json:"preferredCity"`
 	ApplicationURL    string                             `json:"applicationUrl"`
 	NextAction        string                             `json:"nextAction"`
@@ -185,19 +182,20 @@ type CreateJobApplicationRequest struct {
 }
 
 type UpdateJobApplicationRequest struct {
-	ResumeID          string               `json:"resumeId"`
-	SnapshotVersionID *string              `json:"snapshotVersionId"`
-	CompanyName       string               `json:"companyName"`
-	Department        string               `json:"department"`
-	TargetTitle       string               `json:"targetTitle"`
-	JDText            string               `json:"jdText"`
-	Source            string               `json:"source"`
-	PreferredCity     string               `json:"preferredCity"`
-	ApplicationURL    string               `json:"applicationUrl"`
-	NextAction        string               `json:"nextAction"`
-	SubmittedAt       *int64               `json:"submittedAt"`
-	WrittenTestAt     *int64               `json:"writtenTestAt"`
-	Status            JobApplicationStatus `json:"status"`
+	ResumeID          string  `json:"resumeId"`
+	SnapshotVersionID *string `json:"snapshotVersionId"`
+	CompanyName       string  `json:"companyName"`
+	Department        string  `json:"department"`
+	TargetTitle       string  `json:"targetTitle"`
+	// JDText 用指针区分「未传」（nil，不更新）与「传了空串」（清空 JD）
+	JDText *string `json:"jdText"`
+	// PreferredCity 用指针区分「未传」（nil，不更新）与「传了空串」（清空城市）
+	PreferredCity  *string              `json:"preferredCity"`
+	ApplicationURL string               `json:"applicationUrl"`
+	NextAction     string               `json:"nextAction"`
+	SubmittedAt    *int64               `json:"submittedAt"`
+	WrittenTestAt  *int64               `json:"writtenTestAt"`
+	Status         JobApplicationStatus `json:"status"`
 }
 
 type UpdateJobApplicationStatusRequest struct {

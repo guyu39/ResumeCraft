@@ -37,7 +37,6 @@ type CreateApplicationParams struct {
 	Department        string
 	JDText            string
 	JDHash            string
-	Source            string
 	PreferredCity     string
 	ApplicationURL    string
 	NextAction        string
@@ -54,8 +53,9 @@ type UpdateApplicationParams struct {
 	Department                string
 	JDText                    string
 	JDHash                    string
-	Source                    string
+	JDTextProvided            bool
 	PreferredCity             string
+	PreferredCityProvided     bool
 	ApplicationURL            string
 	NextAction                string
 	SubmittedAt               *time.Time
@@ -148,7 +148,7 @@ func (r *repository) List(ctx context.Context, userID string, filters model.JobA
 	query := fmt.Sprintf(`
 		SELECT ja.id, ja.resume_id, rs.title, ja.snapshot_version_id,
 		       COALESCE(rv.label, ''), ja.company_name, COALESCE(ja.department, ''), ja.target_title,
-		       ja.source, COALESCE(ja.preferred_city, ''), COALESCE(ja.application_url, ''), ja.status,
+		       COALESCE(ja.preferred_city, ''), COALESCE(ja.application_url, ''), ja.status,
 		       ja.match_score, ja.jd_score,
 		       COALESCE(progress.done_count, 0), COALESCE(progress.total_count, 0),
 		       COALESCE(ja.next_action, ''), ja.submitted_at, ja.written_test_at, ja.updated_at, ja.created_at
@@ -259,10 +259,10 @@ func (r *repository) Create(ctx context.Context, params CreateApplicationParams)
 	err = tx.QueryRow(ctx, `
 		INSERT INTO job_applications (
 			user_id, resume_id, snapshot_version_id, company_name, department, target_title,
-			jd_text, jd_hash, source, preferred_city, application_url, next_action, match_score, jd_score
+			jd_text, jd_hash, preferred_city, application_url, next_action, match_score, jd_score
 		)
-		SELECT $1, $2, NULLIF($3::text, '')::uuid, $4, $5, $6, $7, $8, $9,
-		       NULLIF($10, ''), NULLIF($11, ''), NULLIF($12, ''), $13, $14
+		SELECT $1, $2, NULLIF($3::text, '')::uuid, $4, $5, $6, $7, $8,
+		       NULLIF($9, ''), NULLIF($10, ''), NULLIF($11, ''), $12, $13
 		FROM resumes r
 		WHERE r.id = $2 AND r.user_id = $1 AND r.deleted_at IS NULL
 		  AND (
@@ -278,7 +278,7 @@ func (r *repository) Create(ctx context.Context, params CreateApplicationParams)
 		  )
 		RETURNING id
 	`, params.UserID, params.ResumeID, params.SnapshotVersionID, params.CompanyName, params.Department, params.TargetTitle,
-		params.JDText, params.JDHash, params.Source, params.PreferredCity, params.ApplicationURL, params.NextAction,
+		params.JDText, params.JDHash, params.PreferredCity, params.ApplicationURL, params.NextAction,
 		params.MatchScore, params.JDScore).Scan(&id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -391,20 +391,20 @@ func (r *repository) Update(ctx context.Context, userID, applicationID string, p
 		args = append(args, params.Department)
 		argIdx++
 	}
-	if params.JDText != "" {
+	// jd_text 允许空串（清空 JD），仅当请求显式携带该字段时更新，
+	// 避免「只更新投递时间等局部字段」的请求覆盖已有 JD
+	if params.JDTextProvided {
 		updates = append(updates, fmt.Sprintf("jd_text = $%d", argIdx), fmt.Sprintf("jd_hash = $%d", argIdx+1))
 		args = append(args, params.JDText, params.JDHash)
 		argIdx += 2
 	}
-	if params.Source != "" {
-		updates = append(updates, fmt.Sprintf("source = $%d", argIdx))
-		args = append(args, params.Source)
+	// preferred_city 允许空字符串（清空选择），仅当请求显式携带该字段时更新，
+	// 避免「只更新投递时间等局部字段」的请求把已有城市误清空
+	if params.PreferredCityProvided {
+		updates = append(updates, fmt.Sprintf("preferred_city = NULLIF($%d, '')", argIdx))
+		args = append(args, params.PreferredCity)
 		argIdx++
 	}
-	// preferred_city 允许空字符串（清空选择），始终更新
-	updates = append(updates, fmt.Sprintf("preferred_city = NULLIF($%d, '')", argIdx))
-	args = append(args, params.PreferredCity)
-	argIdx++
 	if params.ApplicationURL != "" {
 		updates = append(updates, fmt.Sprintf("application_url = $%d", argIdx))
 		args = append(args, params.ApplicationURL)
@@ -511,7 +511,7 @@ func (r *repository) FindDuplicates(ctx context.Context, userID, companyName, ta
 	rows, err := r.pool.Query(ctx, `
 		SELECT ja.id, ja.resume_id, rs.title, ja.snapshot_version_id,
 		       COALESCE(rv.label, ''), ja.company_name, COALESCE(ja.department, ''), ja.target_title,
-		       ja.source, COALESCE(ja.preferred_city, ''), COALESCE(ja.application_url, ''), ja.status,
+		       COALESCE(ja.preferred_city, ''), COALESCE(ja.application_url, ''), ja.status,
 		       ja.match_score, ja.jd_score,
 		       COALESCE(progress.done_count, 0), COALESCE(progress.total_count, 0),
 		       COALESCE(ja.next_action, ''), ja.submitted_at, ja.written_test_at, ja.updated_at, ja.created_at
@@ -1188,7 +1188,7 @@ func (r *repository) getBaseByID(ctx context.Context, userID, applicationID stri
 	err := r.pool.QueryRow(ctx, `
 		SELECT ja.id, ja.user_id, ja.resume_id, rs.title, ja.snapshot_version_id,
 		       rv.label, rv.snapshot_type, ja.company_name, ja.department, ja.target_title, ja.jd_text,
-		       ja.jd_hash, ja.source, COALESCE(ja.preferred_city, ''), ja.application_url, ja.status, ja.match_score,
+		       ja.jd_hash, COALESCE(ja.preferred_city, ''), ja.application_url, ja.status, ja.match_score,
 		       ja.jd_score, COALESCE(progress.done_count, 0), COALESCE(progress.total_count, 0),
 		       ja.next_action, ja.submitted_at, ja.written_test_at, ja.created_at, ja.updated_at
 		FROM job_applications ja
@@ -1205,7 +1205,7 @@ func (r *repository) getBaseByID(ctx context.Context, userID, applicationID stri
 	`, applicationID, userID).Scan(
 		&app.ID, &app.UserID, &app.ResumeID, &app.ResumeTitle, &snapshotVersionID,
 		&snapshotLabel, &snapshotType, &app.CompanyName, &app.Department, &app.TargetTitle, &app.JDText,
-		&app.JDHash, &app.Source, &app.PreferredCity, &applicationURL, &app.Status, &app.MatchScore,
+		&app.JDHash, &app.PreferredCity, &applicationURL, &app.Status, &app.MatchScore,
 		&app.JDScore, &app.ChecklistDone, &app.ChecklistTotal, &nextAction,
 		&submittedAt, &writtenTestAt, &createdAt, &updatedAt,
 	)
@@ -1280,7 +1280,7 @@ func scanApplicationListRows(rows pgx.Rows) ([]model.JobApplicationListItem, err
 		var updatedAt, createdAt time.Time
 		if err := rows.Scan(
 			&item.ID, &item.ResumeID, &item.ResumeTitle, &snapshotVersionID,
-			&item.SnapshotLabel, &item.CompanyName, &item.Department, &item.TargetTitle, &item.Source,
+			&item.SnapshotLabel, &item.CompanyName, &item.Department, &item.TargetTitle,
 			&item.PreferredCity, &item.ApplicationURL, &item.Status, &item.MatchScore, &item.JDScore,
 			&item.ChecklistDone, &item.ChecklistTotal, &item.NextAction, &submittedAt, &writtenTestAt,
 			&updatedAt, &createdAt,

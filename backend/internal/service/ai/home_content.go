@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // HomeContentReport 首页 AI 一次生成的完整结果（日报 + 项目推荐）
@@ -57,21 +58,32 @@ var (
 
 // GenerateHomeContent 使用系统级（.env）AI 凭证一次性生成首页内容。
 // 仅调用一次 API，返回日报 + 项目推荐。未配置凭证或调用失败时返回对应错误。
-func GenerateHomeContent(ctx context.Context, apiKey, baseURL, model string) (*HomeContentReport, error) {
+// today 用于标题日期；news 为最近抓取的 AI 新闻素材（可为空，为空时提示 AI 按今天日期编写）。
+func GenerateHomeContent(ctx context.Context, apiKey, baseURL, model, today string, news []string) (*HomeContentReport, error) {
 	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(baseURL) == "" || strings.TrimSpace(model) == "" {
 		return nil, ErrHomeAIConfigMissing
 	}
+	if today == "" {
+		today = time.Now().Format("2006-01-02")
+	}
+	newsBlock := "（无素材，请基于你对 AI 行业的最新了解编写，日期用今天）"
+	if len(news) > 0 {
+		newsBlock = "以下是最近 24 小时抓取到的真实 AI 新闻（标题 | 来源 | 日期）：\n" + strings.Join(news, "\n") + "\n请优先从这些真实素材中挑选，不得编造标题或链接。"
+	}
 
 	provider := newAIProvider(nil)
-	prompt := `你是求职产品的内容编辑。请基于 2026 年 8 月 AI 行业最新动态，一次生成首页「AI 日报」与「简历项目推荐」。
+	prompt := fmt.Sprintf(`你是求职产品的内容编辑。请基于今天 %s 的 AI 行业最新动态，一次生成首页「AI 日报」与「简历项目推荐」。
+
+%s
 
 要求：
-1. report.items：8 条今日 AI 精选资讯，每条含 rank(1-8)、title、url(真实原文链接)、source、publishedAt(YYYY-MM-DD)、rating(1-5)、summary(2-3 句话中文摘要)、insight(对开发者的启示)。
+1. report.items：8 条今日 AI 精选资讯，每条含 rank(1-8)、title、url(真实原文链接)、source、publishedAt(YYYY-MM-DD，必须是 %s 或素材中的真实日期)、rating(1-5)、summary(2-3 句话中文摘要)、insight(对开发者的启示)。
 2. report.theme：本期主题短语；report.trendKeywords：3-5 个本周趋势关键词。
 3. projects：5 个值得做的 toC 项目，每个含 name、tagline(一句话定位)、techStack(数组)、modules(3-5 个核心功能模块数组)、st(情境/任务)、a(行动)、r(结果)、duration(开发周期)、difficulty(1-5)、trendRelation(与 AI 趋势的关联点)。
 
 只输出一个 JSON 对象，不要任何多余文字，结构：
-{"report":{"title":"AI 日报 · 2026-08-04","theme":"...","trendKeywords":[...],"items":[...]},"projects":[...]}`
+{"report":{"title":"AI 日报 · %s","theme":"...","trendKeywords":[...],"items":[...]},"projects":[...]}`,
+		today, newsBlock, today, today)
 
 	resp, err := provider.Complete(ctx, CompleteRequest{
 		APIKey:    apiKey,

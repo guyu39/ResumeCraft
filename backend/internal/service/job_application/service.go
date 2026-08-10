@@ -114,9 +114,10 @@ func (s *service) GetByID(ctx context.Context, userID, applicationID string) (*m
 }
 
 func (s *service) Create(ctx context.Context, userID string, req model.CreateJobApplicationRequest) (*model.JobApplication, error) {
-	if strings.TrimSpace(req.ResumeID) == "" || strings.TrimSpace(req.TargetTitle) == "" || strings.TrimSpace(req.JDText) == "" {
+	if strings.TrimSpace(req.ResumeID) == "" || strings.TrimSpace(req.TargetTitle) == "" {
 		return nil, ErrInvalidPayload
 	}
+	// JD 允许为空：jd_hash 列 NOT NULL，空 JD 用固定 hash 占位（hashJD 对空串稳定）
 	jdText := strings.TrimSpace(req.JDText)
 	snapshotVersionID := trimmedOptionalString(req.SnapshotVersionID)
 	matchScore, jdScore := extractScores(req)
@@ -129,7 +130,6 @@ func (s *service) Create(ctx context.Context, userID string, req model.CreateJob
 		TargetTitle:       strings.TrimSpace(req.TargetTitle),
 		JDText:            jdText,
 		JDHash:            hashJD(jdText),
-		Source:            strings.TrimSpace(req.Source),
 		PreferredCity:     strings.TrimSpace(req.PreferredCity),
 		ApplicationURL:    strings.TrimSpace(req.ApplicationURL),
 		NextAction:        strings.TrimSpace(req.NextAction),
@@ -191,6 +191,20 @@ func (s *service) Update(ctx context.Context, userID, applicationID string, req 
 	} else if req.WrittenTestAt != nil {
 		clearWrittenTestAt = true
 	}
+	// PreferredCity 指针语义：nil=未传不更新；空串=清空城市；非空=设置城市
+	preferredCityProvided := false
+	var preferredCity string
+	if req.PreferredCity != nil {
+		preferredCityProvided = true
+		preferredCity = strings.TrimSpace(*req.PreferredCity)
+	}
+	// JDText 指针语义：nil=未传不更新；空串=清空 JD；非空=设置 JD
+	jdTextProvided := false
+	var jdText string
+	if req.JDText != nil {
+		jdTextProvided = true
+		jdText = strings.TrimSpace(*req.JDText)
+	}
 	params := appRepo.UpdateApplicationParams{
 		ResumeID:                  strings.TrimSpace(req.ResumeID),
 		SnapshotVersionID:         trimmedOptionalString(req.SnapshotVersionID),
@@ -198,9 +212,10 @@ func (s *service) Update(ctx context.Context, userID, applicationID string, req 
 		CompanyName:               strings.TrimSpace(req.CompanyName),
 		Department:                strings.TrimSpace(req.Department),
 		TargetTitle:               strings.TrimSpace(req.TargetTitle),
-		JDText:                    strings.TrimSpace(req.JDText),
-		Source:                    strings.TrimSpace(req.Source),
-		PreferredCity:             strings.TrimSpace(req.PreferredCity),
+		JDText:                    jdText,
+		JDTextProvided:            jdTextProvided,
+		PreferredCity:             preferredCity,
+		PreferredCityProvided:     preferredCityProvided,
 		ApplicationURL:            strings.TrimSpace(req.ApplicationURL),
 		NextAction:                strings.TrimSpace(req.NextAction),
 		SubmittedAt:               submittedAt,
@@ -209,8 +224,8 @@ func (s *service) Update(ctx context.Context, userID, applicationID string, req 
 		ClearWrittenTestAt:        clearWrittenTestAt,
 		Status:                    req.Status,
 	}
-	if params.JDText != "" {
-		params.JDHash = hashJD(params.JDText)
+	if jdTextProvided {
+		params.JDHash = hashJD(jdText)
 	}
 	app, err := s.repo.Update(ctx, userID, applicationID, params)
 	return app, mapRepoError(err)

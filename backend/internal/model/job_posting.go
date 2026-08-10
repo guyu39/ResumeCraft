@@ -60,6 +60,7 @@ type SyncResult struct {
 	Inserted    int    `json:"inserted"`
 	Updated     int    `json:"updated"`
 	Deactivated int    `json:"deactivated"`
+	Skipped     int    `json:"skipped,omitempty"` // ETag 304 跳过次数（条件请求未变化）
 	Errors      int    `json:"errors"`
 	Source      string `json:"source,omitempty"`
 	StartedAt   string `json:"startedAt"`

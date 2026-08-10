@@ -8,68 +8,8 @@ import (
 	homeservice "resumecraft-pdf-backend/internal/service/home"
 )
 
-// DefaultNewsSyncInterval AI 新闻默认同步周期（1 小时）
-const DefaultNewsSyncInterval = time.Hour
-
 // DefaultGithubSyncInterval GitHub 项目默认同步周期（6 小时，受 Search API 限速约束）
 const DefaultGithubSyncInterval = 6 * time.Hour
-
-// NewsSyncScheduler 定时同步 AI 新闻
-type NewsSyncScheduler struct {
-	service  homeservice.Service
-	interval time.Duration
-	stop     chan struct{}
-}
-
-// NewNewsSyncScheduler 构造新闻调度器。interval<=0 时使用默认一小时。
-func NewNewsSyncScheduler(service homeservice.Service, interval time.Duration) *NewsSyncScheduler {
-	if interval <= 0 {
-		interval = DefaultNewsSyncInterval
-	}
-	return &NewsSyncScheduler{
-		service:  service,
-		interval: interval,
-		stop:     make(chan struct{}),
-	}
-}
-
-// Start 阻塞式启动：先立即执行一次，随后按 interval 周期执行。
-func (s *NewsSyncScheduler) Start() {
-	log.Printf("[cron] ai-news sync scheduler started, interval=%s", s.interval)
-	s.runOnce()
-	ticker := time.NewTicker(s.interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			s.runOnce()
-		case <-s.stop:
-			log.Println("[cron] ai-news sync scheduler stopped")
-			return
-		}
-	}
-}
-
-// Stop 优雅停止调度器
-func (s *NewsSyncScheduler) Stop() {
-	select {
-	case <-s.stop:
-	default:
-		close(s.stop)
-	}
-}
-
-func (s *NewsSyncScheduler) runOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-	defer cancel()
-	result, err := s.service.SyncNews(ctx)
-	if err != nil {
-		log.Printf("[cron] ai-news sync failed: %v", err)
-		return
-	}
-	log.Printf("[cron] ai-news sync done: total=%d inserted=%d errors=%d duration=%dms",
-		result.Total, result.Inserted, result.Errors, result.DurationMs)
-}
 
 // GithubSyncScheduler 定时同步 GitHub 最新 AI 项目
 type GithubSyncScheduler struct {

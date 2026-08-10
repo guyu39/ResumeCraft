@@ -23,6 +23,7 @@ import (
 	"resumecraft-pdf-backend/internal/service/pdf"
 	"resumecraft-pdf-backend/internal/service/resume"
 	aiStorage "resumecraft-pdf-backend/internal/storage/ai"
+	aihotStorage "resumecraft-pdf-backend/internal/storage/aihot"
 	"resumecraft-pdf-backend/internal/storage/audit"
 	"resumecraft-pdf-backend/internal/storage/db"
 	exportStorage "resumecraft-pdf-backend/internal/storage/export"
@@ -139,7 +140,7 @@ func NewServer() *http.Server {
 					getEnv("SCRAPER_SCRIPT", "../python-parser/scrape_smartsheet.py"),
 					getEnv("PYTHON_BIN", "python3"),
 				)
-				// 初始化首页工作台服务（待办 + AI 新闻 + GitHub 项目 + 日报 + 项目推荐 + 新岗位）
+				// 初始化首页工作台服务（待办 + AI 新闻 + GitHub 项目 + 日报 + 项目推荐 + 新岗位 + AI HOT）
 				// 系统级 AI 凭证来自 .env（服务端内置，不由用户自定义）
 				homeService = homeservice.NewService(
 					homeStorage.NewTodoRepository(pool),
@@ -149,6 +150,7 @@ func NewServer() *http.Server {
 					homeStorage.NewProjectRepository(pool),
 					homeStorage.NewSnapshotRepository(pool),
 					newJobRepo,
+					aihotStorage.NewRepository(pool),
 					cfg.AI.ProviderAPIKey,
 					cfg.AI.ProviderBaseURL,
 					cfg.AI.ProviderModel,
@@ -199,20 +201,6 @@ func NewServer() *http.Server {
 		jobScheduler = cron.NewJobSyncScheduler(jobPostingService, interval)
 	}
 
-	// 首页 AI 新闻定时同步（默认每小时，NEWS_SYNC_INTERVAL 可覆盖）
-	var newsScheduler *cron.NewsSyncScheduler
-	if homeService != nil {
-		interval := cron.DefaultNewsSyncInterval
-		if v := getEnv("NEWS_SYNC_INTERVAL", ""); v != "" {
-			if d, err := time.ParseDuration(v); err == nil {
-				interval = d
-			} else {
-				log.Printf("[cron] invalid NEWS_SYNC_INTERVAL=%q, fallback to %s", v, cron.DefaultNewsSyncInterval)
-			}
-		}
-		newsScheduler = cron.NewNewsSyncScheduler(homeService, interval)
-	}
-
 	// 首页 GitHub 项目定时同步（默认 6 小时，GITHUB_SYNC_INTERVAL 可覆盖）
 	var githubScheduler *cron.GithubSyncScheduler
 	if homeService != nil {
@@ -233,6 +221,12 @@ func NewServer() *http.Server {
 		reportScheduler = cron.NewDailyReportScheduler(homeService)
 	}
 
+	// AI HOT 数据定时同步（快讯 5min / 热点 10min / 日报 08:05 北京时间）
+	var aihotScheduler *cron.AihotSyncScheduler
+	if homeService != nil {
+		aihotScheduler = cron.NewAihotSyncScheduler(homeService)
+	}
+
 	server := &http.Server{
 		Addr:              ":" + cfg.Server.Port,
 		Handler:           engine,
@@ -249,14 +243,6 @@ func NewServer() *http.Server {
 		})
 	}
 
-	if newsScheduler != nil {
-		go newsScheduler.Start()
-		server.RegisterOnShutdown(func() {
-			newsScheduler.Stop()
-			log.Println("[cron] ai-news scheduler shutdown signaled")
-		})
-	}
-
 	if githubScheduler != nil {
 		go githubScheduler.Start()
 		server.RegisterOnShutdown(func() {
@@ -270,6 +256,14 @@ func NewServer() *http.Server {
 		server.RegisterOnShutdown(func() {
 			reportScheduler.Stop()
 			log.Println("[cron] daily-report scheduler shutdown signaled")
+		})
+	}
+
+	if aihotScheduler != nil {
+		go aihotScheduler.Start()
+		server.RegisterOnShutdown(func() {
+			aihotScheduler.Stop()
+			log.Println("[cron] aihot scheduler shutdown signaled")
 		})
 	}
 

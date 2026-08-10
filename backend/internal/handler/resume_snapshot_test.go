@@ -44,7 +44,7 @@ func (s *snapshotServiceStub) DeleteSnapshot(_ context.Context, userID, resumeID
 func TestListSnapshotsPassesAuthenticatedOwner(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &snapshotServiceStub{}
-	h := New(nil, nil, service, nil, nil, nil, nil, nil, "")
+	h := New(nil, nil, service, nil, nil, nil, nil, nil, nil, "", "", "", "")
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/resumes/resume-1/snapshots", nil)
@@ -64,7 +64,7 @@ func TestListSnapshotsPassesAuthenticatedOwner(t *testing.T) {
 func TestDiffSnapshotsPassesAuthenticatedOwner(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &snapshotServiceStub{}
-	h := New(nil, nil, service, nil, nil, nil, nil, nil, "")
+	h := New(nil, nil, service, nil, nil, nil, nil, nil, nil, "", "", "", "")
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/resumes/resume-1/snapshots/diff", strings.NewReader(`{"snapshotAId":"a","snapshotBId":"b"}`))
@@ -107,7 +107,7 @@ func TestDeleteSnapshotReturnsConflictReason(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			service := &snapshotServiceStub{deleteErr: tt.serviceErr}
-			h := New(nil, nil, service, nil, nil, nil, nil, nil, "")
+			h := New(nil, nil, service, nil, nil, nil, nil, nil, nil, "", "", "", "")
 			recorder := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(recorder)
 			c.Request = httptest.NewRequest(http.MethodDelete, "/api/resumes/resume-1/snapshots/snapshot-1", nil)

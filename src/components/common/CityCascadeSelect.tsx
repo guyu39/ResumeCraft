@@ -76,29 +76,32 @@ const CityCascadeSelect: React.FC<CityCascadeSelectProps> = ({
   return (
     <div ref={ref} className={`relative ${className}`}>
       {/* 触发器按钮 */}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className={`flex h-10 w-full items-center gap-2 rounded-xl border px-3 text-sm outline-none transition ${
-          value
-            ? 'border-blue-400 bg-blue-50/40 text-slate-800'
-            : 'border-slate-200 bg-white text-slate-400'
-        } hover:border-blue-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10`}
-      >
-        <MapPin className="h-4 w-4 shrink-0" />
-        <span className={`flex-1 truncate text-left ${value ? 'font-medium' : ''}`}>
-          {displayText || placeholder}
-        </span>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className={`flex h-10 w-full items-center gap-2 rounded-xl border px-3 text-sm outline-none transition ${
+            value
+              ? 'border-blue-400 bg-blue-50/40 text-slate-800'
+              : 'border-slate-200 bg-white text-slate-400'
+          } hover:border-blue-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 ${value ? 'pr-8' : ''}`}
+        >
+          <MapPin className="h-4 w-4 shrink-0" />
+          <span className={`flex-1 truncate text-left ${value ? 'font-medium' : ''}`}>
+            {displayText || placeholder}
+          </span>
+        </button>
         {value && (
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onChange('') }}
-            className="shrink-0 rounded p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200"
+            onClick={() => onChange('')}
+            title="清除选择"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         )}
-      </button>
+      </div>
 
       {/* 下拉面板 */}
       {open && (

@@ -29,7 +29,6 @@ export interface JobApplicationListItem {
   companyName: string
   department?: string
   targetTitle: string
-  source: string
   preferredCity?: string
   applicationUrl?: string
   status: JobApplicationStatus
@@ -147,7 +146,6 @@ export interface CreateApplicationRequest {
   department?: string
   targetTitle: string
   jdText: string
-  source?: string
   preferredCity?: string
   applicationUrl?: string
   nextAction?: string
@@ -162,7 +160,6 @@ export interface UpdateApplicationRequest {
   department?: string
   targetTitle?: string
   jdText?: string
-  source?: string
   preferredCity?: string
   applicationUrl?: string
   nextAction?: string

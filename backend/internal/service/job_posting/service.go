@@ -319,6 +319,11 @@ func truncateRunes(s string, n int) string {
 	return string(r[:n])
 }
 
+// defaultOpenDate 源表格「开启时间」为空时的兜底日期。
+// 这些行是表格中新发现的岗位但未填写开放时间（常见于 3 月发布、表格后续新增的行），
+// 若保持 NULL 会导致首页显示"近期"误导、聚合页排序异常；统一补 2026-01-01 便于识别为早期数据。
+var defaultOpenDate = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
 func toPostings(records []map[string]string) ([]model.JobPosting, []error) {
 	out := make([]model.JobPosting, 0, len(records))
 	var errs []error
@@ -346,6 +351,11 @@ func toPostings(records []map[string]string) ([]model.JobPosting, []error) {
 			jp.OpenDate == nil && jp.Location == "" && jp.Positions == "" && jp.ApplicationURL == ""
 		if coreFieldsEmpty {
 			continue
+		}
+		// 脏数据过滤通过后，开启时间仍为空则补默认日期（放在过滤之后，避免脏行被误放行）
+		if jp.OpenDate == nil {
+			d := defaultOpenDate
+			jp.OpenDate = &d
 		}
 		// 兜底截断：防止极端超长文本（未命中上面的脏数据特征）仍撞库表长度限制
 		jp.CompanyName = truncateRunes(jp.CompanyName, maxCompanyNameLen)

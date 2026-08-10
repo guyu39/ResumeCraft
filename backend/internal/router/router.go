@@ -226,11 +226,14 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 			homeGroup.Use(middleware.AuthRequired(h.AuthService()))
 			{
 				homeGroup.GET("/todos", h.ListHomeTodos)
-				homeGroup.GET("/news", h.ListHomeNews)
 				homeGroup.GET("/github-projects", h.ListHomeGithubProjects)
 				homeGroup.GET("/daily-report", h.GetHomeDailyReports)
 				homeGroup.GET("/projects", h.ListHomeProjects)
 				homeGroup.GET("/new-jobs", h.ListHomeNewJobs)
+				homeGroup.GET("/aihot/items", h.ListHomeAihotItems)
+				homeGroup.GET("/aihot/daily", h.GetHomeAihotDaily)
+				homeGroup.GET("/aihot/hot-topics", h.ListHomeAihotHotTopics)
+				homeGroup.GET("/aihot/stories/:publicId", h.GetHomeAihotStory)
 			}
 			// 手动触发生成今日日报（系统级操作，无需登录；个人工具场景避免误用）
 			api.Group("/home").POST("/daily-report/generate", h.GenerateHomeDailyReport)
