@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"resumecraft-pdf-backend/internal/middleware"
 	"resumecraft-pdf-backend/internal/model"
@@ -49,6 +50,71 @@ func (h *Handler) GetApplicationStats(c *gin.Context) {
 	if err != nil {
 		log.Printf("[application] GetApplicationStats error: %v", err)
 		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "统计加载失败")
+		return
+	}
+	response.JSONSuccess(c, result)
+}
+
+// GetApplicationTrend 漏斗趋势（按周/月分桶）
+// GET /api/applications/stats/trend?bucket=week|month&from=<ms>&to=<ms>
+func (h *Handler) GetApplicationTrend(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	bucket := model.TrendBucket(c.Query("bucket"))
+	from := parseTimeMillis(c.Query("from"))
+	to := parseTimeMillis(c.Query("to"))
+	result, err := h.applicationService.GetTrendStats(c.Request.Context(), userID, bucket, from, to)
+	if err != nil {
+		log.Printf("[application] GetApplicationTrend error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "趋势加载失败")
+		return
+	}
+	response.JSONSuccess(c, result)
+}
+
+// GetApplicationInterviewRounds 面试轮次分布 + 阶段停留时长
+// GET /api/applications/stats/interview-rounds
+func (h *Handler) GetApplicationInterviewRounds(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	result, err := h.applicationService.GetInterviewRoundsStats(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("[application] GetApplicationInterviewRounds error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "面试轮次统计失败")
+		return
+	}
+	response.JSONSuccess(c, result)
+}
+
+// parseTimeMillis 解析毫秒时间戳字符串；缺省或非法返回零值，由 service 层兜底
+func parseTimeMillis(raw string) time.Time {
+	if raw == "" {
+		return time.Time{}
+	}
+	ms, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || ms <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms)
+}
+
+// GetApplicationCalendar 日程视图：区间内笔试/面试事件 + 冲突标记
+// GET /api/applications/calendar?from=<ms>&to=<ms>
+func (h *Handler) GetApplicationCalendar(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	from := parseTimeMillis(c.Query("from"))
+	to := parseTimeMillis(c.Query("to"))
+	result, err := h.applicationService.GetCalendar(c.Request.Context(), userID, from, to)
+	if err != nil {
+		log.Printf("[application] GetApplicationCalendar error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "日程加载失败")
 		return
 	}
 	response.JSONSuccess(c, result)

@@ -66,6 +66,12 @@ type Service interface {
 	ExportExcel(ctx context.Context, userID string, filters model.JobApplicationFilters) ([]byte, error)
 	// GetFunnelStats 漏斗分析 + 简历版本 A/B 对比
 	GetFunnelStats(ctx context.Context, userID string) (*model.FunnelStatsResponse, error)
+	// GetTrendStats 按周/月分桶的漏斗趋势
+	GetTrendStats(ctx context.Context, userID string, bucket model.TrendBucket, from, to time.Time) (*model.TrendStatsResponse, error)
+	// GetInterviewRoundsStats 面试轮次分布 + 阶段停留时长
+	GetInterviewRoundsStats(ctx context.Context, userID string) (*model.InterviewRoundsResponse, error)
+	// GetCalendar 日程视图：时间区间内的笔试/面试事件 + 冲突检测
+	GetCalendar(ctx context.Context, userID string, from, to time.Time) (*model.CalendarResponse, error)
 }
 
 type UploadInterviewRecordingParams struct {
@@ -501,6 +507,122 @@ func (s *service) GetFunnelStats(ctx context.Context, userID string) (*model.Fun
 		Funnel:     funnel,
 		BySnapshot: bySnapshot,
 	}, nil
+}
+
+// GetTrendStats 漏斗趋势。bucket 非法时兜底为 week；时间范围缺省为近 3 个月，
+// 避免全量扫描历史数据。
+func (s *service) GetTrendStats(ctx context.Context, userID string, bucket model.TrendBucket, from, to time.Time) (*model.TrendStatsResponse, error) {
+	if bucket != model.TrendBucketWeek && bucket != model.TrendBucketMonth {
+		bucket = model.TrendBucketWeek
+	}
+	if to.IsZero() {
+		to = time.Now()
+	}
+	if from.IsZero() || !from.Before(to) {
+		from = to.AddDate(0, -3, 0)
+	}
+
+	points, err := s.repo.GetTrendStats(ctx, userID, bucket, from, to)
+	if err != nil {
+		return nil, err
+	}
+	return &model.TrendStatsResponse{
+		Bucket: bucket,
+		From:   from.UnixMilli(),
+		To:     to.UnixMilli(),
+		Points: points,
+	}, nil
+}
+
+// GetInterviewRoundsStats 面试轮次分布 + 阶段停留时长（两项均为历史全量口径）
+func (s *service) GetInterviewRoundsStats(ctx context.Context, userID string) (*model.InterviewRoundsResponse, error) {
+	avg, median, max, dist, err := s.repo.GetInterviewRoundsStats(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	stages, err := s.repo.GetStageDurationStats(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return &model.InterviewRoundsResponse{
+		Avg:            avg,
+		Median:         median,
+		Max:            max,
+		Distribution:   dist,
+		StageDurations: stages,
+	}, nil
+}
+
+// defaultInterviewDurationMs 面试/笔试未填 scheduledEnd 时的兜底时长（1 小时）
+// 大部分校招面试在 45-60 分钟，比"点时间冲突"更符合实际直觉
+const defaultInterviewDurationMs int64 = 60 * 60 * 1000
+
+func effectiveEnd(ev model.CalendarEvent) int64 {
+	if ev.ScheduledEnd > ev.ScheduledAt {
+		return ev.ScheduledEnd
+	}
+	return ev.ScheduledAt + defaultInterviewDurationMs
+}
+
+// detectConflicts 用区间合并法（events 已按 scheduledAt 升序）扫描重叠聚簇：
+// 时间区间连成一片的事件归入同一组，仅当组内 ≥ 2 个事件才算冲突组。
+// 就地写入 ConflictGroupID（从 1 递增），返回冲突组总数。
+func detectConflicts(events []model.CalendarEvent) int {
+	if len(events) < 2 {
+		return 0
+	}
+	groupID := 0
+	clusterStart := 0
+	clusterMaxEnd := effectiveEnd(events[0])
+	for i := 1; i < len(events); i++ {
+		if events[i].ScheduledAt < clusterMaxEnd {
+			if e := effectiveEnd(events[i]); e > clusterMaxEnd {
+				clusterMaxEnd = e
+			}
+			continue
+		}
+		// 当前事件与聚簇无交集，若上一聚簇 ≥ 2 事件则登记为冲突组
+		if i-clusterStart >= 2 {
+			groupID++
+			for j := clusterStart; j < i; j++ {
+				events[j].ConflictGroupID = groupID
+			}
+		}
+		clusterStart = i
+		clusterMaxEnd = effectiveEnd(events[i])
+	}
+	if len(events)-clusterStart >= 2 {
+		groupID++
+		for j := clusterStart; j < len(events); j++ {
+			events[j].ConflictGroupID = groupID
+		}
+	}
+	return groupID
+}
+
+// GetCalendar 时间区间内的笔试/面试事件；缺省窗口为当前月 ±7 天。
+// 冲突检测在应用层实时计算，不落库。
+func (s *service) GetCalendar(ctx context.Context, userID string, from, to time.Time) (*model.CalendarResponse, error) {
+	if from.IsZero() || to.IsZero() {
+		now := time.Now()
+		monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		if from.IsZero() {
+			from = monthStart.AddDate(0, 0, -7)
+		}
+		if to.IsZero() {
+			to = monthStart.AddDate(0, 1, 7)
+		}
+	}
+	if !from.Before(to) {
+		return nil, fmt.Errorf("invalid time range: from must be before to")
+	}
+
+	events, err := s.repo.CalendarEvents(ctx, userID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	conflicts := detectConflicts(events)
+	return &model.CalendarResponse{Events: events, Conflicts: conflicts}, nil
 }
 
 // interviewResultCell 有结果则拼接为「通过」「终止」，否则留空表示进行中/待反馈

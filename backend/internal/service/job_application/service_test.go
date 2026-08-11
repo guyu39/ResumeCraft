@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"resumecraft-pdf-backend/internal/model"
 	appRepo "resumecraft-pdf-backend/internal/storage/job_application"
@@ -47,6 +48,122 @@ func TestDeriveChecklistFromMatchAndScore(t *testing.T) {
 	}
 }
 
+// detectConflicts 冲突检测：区间合并法，需覆盖无冲突 / 两两冲突 / 连环冲突 / 无 scheduledEnd 兜底
+func TestDetectConflicts(t *testing.T) {
+	const hour = int64(60 * 60 * 1000)
+	base := int64(1_760_000_000_000)
+
+	cases := []struct {
+		name       string
+		events     []model.CalendarEvent
+		wantGroups int
+		wantIDs    []int
+	}{
+		{
+			name: "无冲突：首尾相接不算重叠",
+			events: []model.CalendarEvent{
+				{ID: "a", ScheduledAt: base, ScheduledEnd: base + hour},
+				{ID: "b", ScheduledAt: base + hour, ScheduledEnd: base + 2*hour},
+			},
+			wantGroups: 0,
+			wantIDs:    []int{0, 0},
+		},
+		{
+			name: "两两冲突：半小时重叠",
+			events: []model.CalendarEvent{
+				{ID: "a", ScheduledAt: base, ScheduledEnd: base + hour},
+				{ID: "b", ScheduledAt: base + hour/2, ScheduledEnd: base + hour + hour/2},
+			},
+			wantGroups: 1,
+			wantIDs:    []int{1, 1},
+		},
+		{
+			name: "连环冲突：A-B 重叠、B-C 重叠，三者归为一组",
+			events: []model.CalendarEvent{
+				{ID: "a", ScheduledAt: base, ScheduledEnd: base + hour},
+				{ID: "b", ScheduledAt: base + hour/2, ScheduledEnd: base + hour + hour/2},
+				{ID: "c", ScheduledAt: base + hour, ScheduledEnd: base + 2*hour},
+			},
+			wantGroups: 1,
+			wantIDs:    []int{1, 1, 1},
+		},
+		{
+			name: "两个独立冲突组",
+			events: []model.CalendarEvent{
+				{ID: "a", ScheduledAt: base, ScheduledEnd: base + hour},
+				{ID: "b", ScheduledAt: base + hour/2, ScheduledEnd: base + hour},
+				{ID: "c", ScheduledAt: base + 5*hour, ScheduledEnd: base + 6*hour},
+				{ID: "d", ScheduledAt: base + 5*hour + hour/2, ScheduledEnd: base + 6*hour},
+			},
+			wantGroups: 2,
+			wantIDs:    []int{1, 1, 2, 2},
+		},
+		{
+			name: "无 scheduledEnd 兜底 1 小时后产生冲突",
+			events: []model.CalendarEvent{
+				{ID: "a", ScheduledAt: base},
+				{ID: "b", ScheduledAt: base + hour/2},
+			},
+			wantGroups: 1,
+			wantIDs:    []int{1, 1},
+		},
+		{
+			name: "单个事件不构成冲突",
+			events: []model.CalendarEvent{
+				{ID: "a", ScheduledAt: base},
+			},
+			wantGroups: 0,
+			wantIDs:    []int{0},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := detectConflicts(tc.events)
+			if got != tc.wantGroups {
+				t.Fatalf("groups = %d, want %d", got, tc.wantGroups)
+			}
+			for i, want := range tc.wantIDs {
+				if tc.events[i].ConflictGroupID != want {
+					t.Fatalf("event[%d].conflictGroupId = %d, want %d", i, tc.events[i].ConflictGroupID, want)
+				}
+			}
+		})
+	}
+}
+
+// GetCalendar 缺省时间窗口应展开为当前月 ±7 天，避免全量扫描
+func TestGetCalendarDefaultsRange(t *testing.T) {
+	const hour = int64(60 * 60 * 1000)
+	base := int64(1_760_000_000_000)
+	repo := &mockRepo{calendarEvents: []model.CalendarEvent{
+		{ID: "a", ScheduledAt: base, ScheduledEnd: base + hour},
+		{ID: "b", ScheduledAt: base + hour/2, ScheduledEnd: base + hour},
+	}}
+	svc := NewService(repo)
+
+	resp, err := svc.GetCalendar(context.Background(), "user-1", time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Conflicts != 1 {
+		t.Fatalf("conflicts = %d, want 1", resp.Conflicts)
+	}
+	if len(resp.Events) != 2 {
+		t.Fatalf("events = %d, want 2", len(resp.Events))
+	}
+}
+
+// 时间范围倒置应直接报错，不落到 SQL 层
+func TestGetCalendarRejectsInvertedRange(t *testing.T) {
+	svc := NewService(&mockRepo{})
+	now := time.Now()
+	_, err := svc.GetCalendar(context.Background(), "user-1", now, now.Add(-time.Hour))
+	if err == nil {
+		t.Fatal("expected error for inverted range")
+	}
+}
+
 func TestUpdateStatusRejectsInvalidStatus(t *testing.T) {
 	svc := NewService(&mockRepo{})
 	_, err := svc.UpdateStatus(context.Background(), "user-1", "app-1", model.UpdateJobApplicationStatusRequest{
@@ -54,6 +171,31 @@ func TestUpdateStatusRejectsInvalidStatus(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidStatus) {
 		t.Fatalf("err = %v, want ErrInvalidStatus", err)
+	}
+}
+
+// GetTrendStats 非法 bucket 应兜底为 week；缺省时间范围应展开为「近 3 个月」，
+// 避免 handler 传入零值时对 repository 发起全量扫描
+func TestGetTrendStatsDefaults(t *testing.T) {
+	repo := &mockRepo{}
+	svc := NewService(repo)
+	resp, err := svc.GetTrendStats(context.Background(), "user-1", model.TrendBucket("invalid"), time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Bucket != model.TrendBucketWeek {
+		t.Fatalf("bucket = %s, want week", resp.Bucket)
+	}
+	if repo.trendBucket != model.TrendBucketWeek {
+		t.Fatalf("repo bucket = %s, want week", repo.trendBucket)
+	}
+	if repo.trendTo.IsZero() || repo.trendFrom.IsZero() {
+		t.Fatal("from/to should be filled with defaults")
+	}
+	// 近 3 个月：to - from 应介于 ~89 天与 ~92 天之间（闰月/月份长度差异容忍）
+	delta := repo.trendTo.Sub(repo.trendFrom)
+	if delta < 24*time.Hour*89 || delta > 24*time.Hour*93 {
+		t.Fatalf("default range = %v, want ~3 months", delta)
 	}
 }
 
@@ -279,6 +421,10 @@ type mockRepo struct {
 	status                 model.JobApplicationStatus
 	aiRuns                 []model.CreateJobApplicationAIRunRequest
 	replacedChecklist      []model.CreateChecklistItemRequest
+	trendBucket            model.TrendBucket
+	trendFrom              time.Time
+	trendTo                time.Time
+	calendarEvents         []model.CalendarEvent
 }
 
 func (m *mockRepo) List(ctx context.Context, userID string, filters model.JobApplicationFilters) ([]model.JobApplicationListItem, int, error) {
@@ -385,4 +531,23 @@ func (m *mockRepo) GetFunnelStats(ctx context.Context, userID string) (model.Fun
 
 func (m *mockRepo) GetConversionBySnapshot(ctx context.Context, userID string) ([]model.SnapshotConversion, error) {
 	return nil, nil
+}
+
+func (m *mockRepo) GetTrendStats(ctx context.Context, userID string, bucket model.TrendBucket, from, to time.Time) ([]model.TrendPoint, error) {
+	m.trendBucket = bucket
+	m.trendFrom = from
+	m.trendTo = to
+	return nil, nil
+}
+
+func (m *mockRepo) GetInterviewRoundsStats(ctx context.Context, userID string) (float64, float64, int, []model.RoundBucket, error) {
+	return 0, 0, 0, nil, nil
+}
+
+func (m *mockRepo) GetStageDurationStats(ctx context.Context, userID string) ([]model.StageDurationStat, error) {
+	return nil, nil
+}
+
+func (m *mockRepo) CalendarEvents(ctx context.Context, userID string, from, to time.Time) ([]model.CalendarEvent, error) {
+	return m.calendarEvents, nil
 }

@@ -223,6 +223,66 @@ export interface FunnelStatsResponse {
   bySnapshot: SnapshotConversion[]
 }
 
+// 漏斗趋势分桶粒度
+export type TrendBucket = 'week' | 'month'
+
+// 单个时间桶的漏斗指标（replyRate/offerRate 均为 0-1 小数）
+export interface TrendPoint {
+  bucketStart: number
+  submitted: number
+  interview: number
+  offer: number
+  replyRate: number
+  offerRate: number
+}
+
+export interface TrendStatsResponse {
+  bucket: TrendBucket
+  from: number
+  to: number
+  points: TrendPoint[]
+}
+
+export interface RoundBucket {
+  round: number
+  count: number
+}
+
+export interface StageDurationStat {
+  transition: string
+  medianDays: number
+  maxDays: number
+  samples: number
+}
+
+export interface InterviewRoundsResponse {
+  avg: number
+  median: number
+  max: number
+  distribution: RoundBucket[]
+  stageDurations: StageDurationStat[]
+}
+
+// 日程视图
+export type CalendarEventType = 'writtenTest' | 'interview'
+
+export interface CalendarEvent {
+  id: string
+  applicationId: string
+  companyName: string
+  targetTitle: string
+  eventType: CalendarEventType
+  round?: string
+  scheduledAt: number
+  scheduledEnd: number
+  conflictGroupId: number
+}
+
+export interface CalendarResponse {
+  events: CalendarEvent[]
+  conflicts: number
+}
+
 export const applicationsApi = {
   list: (params?: ListApplicationsParams) =>
     apiClient.get<JobApplicationListResponse>(`/applications${buildQuery(params)}`),
@@ -232,6 +292,26 @@ export const applicationsApi = {
 
   getStats: () =>
     apiClient.get<FunnelStatsResponse>('/applications/stats'),
+
+  getTrend: (params?: { bucket?: TrendBucket; from?: number; to?: number }) => {
+    const search = new URLSearchParams()
+    if (params?.bucket) search.set('bucket', params.bucket)
+    if (params?.from) search.set('from', String(params.from))
+    if (params?.to) search.set('to', String(params.to))
+    const query = search.toString()
+    return apiClient.get<TrendStatsResponse>(`/applications/stats/trend${query ? `?${query}` : ''}`)
+  },
+
+  getInterviewRounds: () =>
+    apiClient.get<InterviewRoundsResponse>('/applications/stats/interview-rounds'),
+
+  getCalendar: (params?: { from?: number; to?: number }) => {
+    const search = new URLSearchParams()
+    if (params?.from) search.set('from', String(params.from))
+    if (params?.to) search.set('to', String(params.to))
+    const query = search.toString()
+    return apiClient.get<CalendarResponse>(`/applications/calendar${query ? `?${query}` : ''}`)
+  },
 
   create: (data: CreateApplicationRequest) =>
     apiClient.post<JobApplication>('/applications', data),

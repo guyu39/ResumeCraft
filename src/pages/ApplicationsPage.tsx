@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { applicationsApi, resumeApi } from '@/api'
 import FunnelAnalytics from '@/components/applications/FunnelAnalytics'
+import ApplicationCalendar from '@/components/applications/ApplicationCalendar'
 import type {
   CreateInterviewRequest,
   JobApplication,
@@ -385,8 +386,13 @@ const ApplicationsPage: React.FC = () => {
   const logout = useAuthStore((s) => s.logout)
   const [items, setItems] = useState<JobApplicationListItem[]>([])
   const [loading, setLoading] = useState(false)
-  // 视图：投递列表 / 数据分析
-  const [view, setView] = useState<'list' | 'analytics'>(() => (new URLSearchParams(window.location.search).get('view') === 'analytics' ? 'analytics' : 'list'))
+  // 视图：投递列表 / 日程 / 数据分析
+  const [view, setView] = useState<'list' | 'calendar' | 'analytics'>(() => {
+    const v = new URLSearchParams(window.location.search).get('view')
+    if (v === 'analytics') return 'analytics'
+    if (v === 'calendar') return 'calendar'
+    return 'list'
+  })
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
   const [totalPages, setTotalPages] = useState(1)
@@ -939,6 +945,13 @@ const ApplicationsPage: React.FC = () => {
               </button>
               <button
                 type="button"
+                onClick={() => setView('calendar')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-colors ${view === 'calendar' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-700/70 hover:text-blue-700'}`}
+              >
+                <CalendarClock className="h-3.5 w-3.5" /> 日程
+              </button>
+              <button
+                type="button"
                 onClick={() => setView('analytics')}
                 className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-colors ${view === 'analytics' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-700/70 hover:text-blue-700'}`}
               >
@@ -958,6 +971,12 @@ const ApplicationsPage: React.FC = () => {
         <main className="min-h-0 w-full flex-1 overflow-hidden">
           <section className="h-full overflow-hidden bg-transparent">
             <FunnelAnalytics />
+          </section>
+        </main>
+      ) : view === 'calendar' ? (
+        <main className="min-h-0 w-full flex-1 overflow-hidden">
+          <section className="h-full overflow-hidden bg-transparent">
+            <ApplicationCalendar onSelectApplication={(id) => { setSelectedId(id); setDetailOpen(true); void loadDetail(id) }} />
           </section>
         </main>
       ) : (

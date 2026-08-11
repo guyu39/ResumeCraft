@@ -109,6 +109,14 @@ type Repository interface {
 	GetFunnelStats(ctx context.Context, userID string) (model.FunnelStats, error)
 	// 按简历版本分组的转化数据（A/B 对比）
 	GetConversionBySnapshot(ctx context.Context, userID string) ([]model.SnapshotConversion, error)
+	// 漏斗趋势：按周/月分桶的投递/面试/Offer 计数（无数据桶补 0）
+	GetTrendStats(ctx context.Context, userID string, bucket model.TrendBucket, from, to time.Time) ([]model.TrendPoint, error)
+	// 面试轮次分布：均值/中位数/最大值 + 分布桶
+	GetInterviewRoundsStats(ctx context.Context, userID string) (float64, float64, int, []model.RoundBucket, error)
+	// 相邻状态转换的停留时长（中位数/最大值，单位天）
+	GetStageDurationStats(ctx context.Context, userID string) ([]model.StageDurationStat, error)
+	// 日程事件：时间区间内的笔试与面试（按 scheduledAt 升序，未做冲突标记）
+	CalendarEvents(ctx context.Context, userID string, from, to time.Time) ([]model.CalendarEvent, error)
 }
 
 type repository struct {
@@ -1178,6 +1186,233 @@ func (r *repository) GetConversionBySnapshot(ctx context.Context, userID string)
 		return nil, fmt.Errorf("iterate conversion rows: %w", err)
 	}
 	return items, nil
+}
+
+// trendBucketToSQL 将分桶粒度映射为 date_trunc 参数，白名单防注入
+func trendBucketToSQL(bucket model.TrendBucket) string {
+	if bucket == model.TrendBucketMonth {
+		return "month"
+	}
+	return "week"
+}
+
+// GetTrendStats 按周/月分桶统计投递/面试/Offer 数。
+// 用 generate_series 生成连续时间桶，LEFT JOIN 各来源，无数据桶补 0，
+// 保证前端曲线连续无断点。投递按 submitted_at、面试按 interview.scheduled_at、
+// Offer 按状态事件切换到 offer 的时间分桶。
+func (r *repository) GetTrendStats(ctx context.Context, userID string, bucket model.TrendBucket, from, to time.Time) ([]model.TrendPoint, error) {
+	unit := trendBucketToSQL(bucket)
+	// unit 已白名单化，可安全拼接进 date_trunc / interval
+	query := fmt.Sprintf(`
+		WITH buckets AS (
+			SELECT generate_series(
+				date_trunc('%[1]s', $2::timestamptz),
+				date_trunc('%[1]s', $3::timestamptz),
+				interval '1 %[1]s'
+			) AS bucket_start
+		),
+		submitted AS (
+			SELECT date_trunc('%[1]s', submitted_at) AS bucket, COUNT(*) AS n
+			FROM job_applications
+			WHERE user_id = $1 AND deleted_at IS NULL
+			  AND submitted_at BETWEEN $2 AND $3
+			GROUP BY 1
+		),
+		interview AS (
+			SELECT date_trunc('%[1]s', i.scheduled_at) AS bucket, COUNT(DISTINCT i.application_id) AS n
+			FROM job_application_interviews i
+			JOIN job_applications a ON a.id = i.application_id
+			WHERE a.user_id = $1 AND a.deleted_at IS NULL
+			  AND i.scheduled_at BETWEEN $2 AND $3
+			GROUP BY 1
+		),
+		offer AS (
+			SELECT date_trunc('%[1]s', se.created_at) AS bucket, COUNT(*) AS n
+			FROM job_application_status_events se
+			WHERE se.user_id = $1 AND se.to_status = $4
+			  AND se.created_at BETWEEN $2 AND $3
+			GROUP BY 1
+		)
+		SELECT b.bucket_start,
+		       COALESCE(s.n, 0), COALESCE(iv.n, 0), COALESCE(o.n, 0)
+		FROM buckets b
+		LEFT JOIN submitted s ON s.bucket = b.bucket_start
+		LEFT JOIN interview iv ON iv.bucket = b.bucket_start
+		LEFT JOIN offer o ON o.bucket = b.bucket_start
+		ORDER BY b.bucket_start
+	`, unit)
+
+	rows, err := r.pool.Query(ctx, query, userID, from, to, model.JobApplicationStatusOffer)
+	if err != nil {
+		return nil, fmt.Errorf("query trend stats: %w", err)
+	}
+	defer rows.Close()
+
+	points := make([]model.TrendPoint, 0)
+	for rows.Next() {
+		var bucketStart time.Time
+		var p model.TrendPoint
+		if err := rows.Scan(&bucketStart, &p.Submitted, &p.Interview, &p.Offer); err != nil {
+			return nil, fmt.Errorf("scan trend row: %w", err)
+		}
+		p.BucketStart = bucketStart.UnixMilli()
+		if p.Submitted > 0 {
+			p.ReplyRate = float64(p.Interview) / float64(p.Submitted)
+			p.OfferRate = float64(p.Offer) / float64(p.Submitted)
+		}
+		points = append(points, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate trend rows: %w", err)
+	}
+	return points, nil
+}
+
+// GetInterviewRoundsStats 统计已进入面试及以上阶段的投递的面试轮次分布。
+// 口径：status ∈ (interview/offer/rejected) 且至少有 1 条面试记录。
+// 聚合值与分布桶合并为单条查询（CROSS JOIN agg），避免两次扫描以及两处口径漂移；
+// per_app 为空时返回 0 行，avg/median/max 保持 Go 零值。
+func (r *repository) GetInterviewRoundsStats(ctx context.Context, userID string) (float64, float64, int, []model.RoundBucket, error) {
+	rows, err := r.pool.Query(ctx, `
+		WITH per_app AS (
+			SELECT ja.id, COUNT(i.id) AS rounds
+			FROM job_applications ja
+			JOIN job_application_interviews i ON i.application_id = ja.id
+			WHERE ja.user_id = $1 AND ja.deleted_at IS NULL
+			  AND ja.status IN ('interview', 'offer', 'rejected')
+			GROUP BY ja.id
+		),
+		agg AS (
+			SELECT COALESCE(AVG(rounds), 0)::float8 AS avg_rounds,
+			       COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY rounds), 0)::float8 AS median_rounds,
+			       COALESCE(MAX(rounds), 0)::int AS max_rounds
+			FROM per_app
+		)
+		SELECT (CASE WHEN p.rounds >= 4 THEN 4 ELSE p.rounds::int END) AS bucket,
+		       COUNT(*)::int AS cnt,
+		       a.avg_rounds, a.median_rounds, a.max_rounds
+		FROM per_app p
+		CROSS JOIN agg a
+		GROUP BY 1, a.avg_rounds, a.median_rounds, a.max_rounds
+		ORDER BY 1
+	`, userID)
+	if err != nil {
+		return 0, 0, 0, nil, fmt.Errorf("query interview rounds stats: %w", err)
+	}
+	defer rows.Close()
+
+	var avg, median float64
+	var max int
+	dist := make([]model.RoundBucket, 0)
+	for rows.Next() {
+		var b model.RoundBucket
+		if err := rows.Scan(&b.Round, &b.Count, &avg, &median, &max); err != nil {
+			return 0, 0, 0, nil, fmt.Errorf("scan interview rounds row: %w", err)
+		}
+		dist = append(dist, b)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, 0, nil, fmt.Errorf("iterate interview rounds rows: %w", err)
+	}
+	return avg, median, max, dist, nil
+}
+
+// GetStageDurationStats 统计相邻状态转换的停留时长（天）。
+// 用窗口函数取每条投递的前一状态与时间，只统计正向时间差，
+// percentile_cont 求中位数、MAX 求最长。
+func (r *repository) GetStageDurationStats(ctx context.Context, userID string) ([]model.StageDurationStat, error) {
+	rows, err := r.pool.Query(ctx, `
+		WITH ordered AS (
+			SELECT application_id, to_status, created_at,
+			       LAG(to_status) OVER (PARTITION BY application_id ORDER BY created_at) AS prev_status,
+			       LAG(created_at) OVER (PARTITION BY application_id ORDER BY created_at) AS prev_at
+			FROM job_application_status_events
+			WHERE user_id = $1
+		),
+		transitions AS (
+			SELECT prev_status || '->' || to_status AS transition,
+			       EXTRACT(EPOCH FROM (created_at - prev_at)) / 86400.0 AS days
+			FROM ordered
+			WHERE prev_status IS NOT NULL AND created_at > prev_at
+		)
+		SELECT transition,
+		       COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY days), 0),
+		       COALESCE(MAX(days), 0),
+		       COUNT(*)
+		FROM transitions
+		GROUP BY transition
+		ORDER BY COUNT(*) DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query stage duration: %w", err)
+	}
+	defer rows.Close()
+
+	stats := make([]model.StageDurationStat, 0)
+	for rows.Next() {
+		var st model.StageDurationStat
+		if err := rows.Scan(&st.Transition, &st.MedianDays, &st.MaxDays, &st.Samples); err != nil {
+			return nil, fmt.Errorf("scan stage duration: %w", err)
+		}
+		stats = append(stats, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate stage duration: %w", err)
+	}
+	return stats, nil
+}
+
+// CalendarEvents 时间区间内的笔试与面试（UNION 两段查询）。
+// 笔试段来源 job_applications.written_test_at；面试段来源 job_application_interviews.scheduled_at。
+// 冲突检测放在 service 层，此处只保证按开始时间升序，字段完整。
+func (r *repository) CalendarEvents(ctx context.Context, userID string, from, to time.Time) ([]model.CalendarEvent, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT ja.id AS event_id, ja.id AS application_id,
+		       COALESCE(ja.company_name, ''), ja.target_title,
+		       'writtenTest' AS event_type, ''::varchar AS round,
+		       ja.written_test_at AS scheduled_at, NULL::timestamptz AS scheduled_end
+		FROM job_applications ja
+		WHERE ja.user_id = $1 AND ja.deleted_at IS NULL
+		  AND ja.written_test_at BETWEEN $2 AND $3
+		UNION ALL
+		SELECT i.id AS event_id, i.application_id,
+		       COALESCE(ja.company_name, ''), ja.target_title,
+		       'interview' AS event_type, i.round,
+		       i.scheduled_at, i.scheduled_end
+		FROM job_application_interviews i
+		JOIN job_applications ja ON ja.id = i.application_id
+		WHERE ja.user_id = $1 AND ja.deleted_at IS NULL
+		  AND i.scheduled_at IS NOT NULL
+		  AND i.scheduled_at BETWEEN $2 AND $3
+		ORDER BY scheduled_at ASC
+	`, userID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query calendar events: %w", err)
+	}
+	defer rows.Close()
+
+	events := make([]model.CalendarEvent, 0)
+	for rows.Next() {
+		var ev model.CalendarEvent
+		var eventType, round string
+		var scheduledAt time.Time
+		var scheduledEnd sql.NullTime
+		if err := rows.Scan(&ev.ID, &ev.ApplicationID, &ev.CompanyName, &ev.TargetTitle,
+			&eventType, &round, &scheduledAt, &scheduledEnd); err != nil {
+			return nil, fmt.Errorf("scan calendar event: %w", err)
+		}
+		ev.EventType = model.CalendarEventType(eventType)
+		ev.Round = round
+		ev.ScheduledAt = scheduledAt.UnixMilli()
+		if scheduledEnd.Valid {
+			ev.ScheduledEnd = scheduledEnd.Time.UnixMilli()
+		}
+		events = append(events, ev)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate calendar events: %w", err)
+	}
+	return events, nil
 }
 
 func (r *repository) getBaseByID(ctx context.Context, userID, applicationID string) (*model.JobApplication, error) {

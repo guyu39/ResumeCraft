@@ -29,38 +29,11 @@ import {
 } from 'recharts'
 import { applicationsApi, type FunnelStatsResponse } from '@/api/applications'
 import { toast } from '@/components/common/Toast'
-
-// 统一配色（与项目 primary #1A56DB 呼应，且各段对比分明、可达 WCAG）
-const COLOR = {
-  submitted: '#1A56DB', // primary 蓝
-  writtenTest: '#6366F1', // indigo
-  interview: '#F59E0B', // amber（强调色）
-  offer: '#10B981', // emerald（正向）
-} as const
+import TrendPanels from '@/components/applications/TrendPanels'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import { CHART_COLOR as COLOR, chartTooltipStyle as tooltipStyle } from '@/components/applications/chartTheme'
 
 const pct = (n: number, d: number): string => (d > 0 ? Math.round((n / d) * 100) + '%' : '—')
-
-/** 尊重 prefers-reduced-motion：关闭 Recharts 进场动画 */
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const handler = () => setReduced(mq.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
-  return reduced
-}
-
-const tooltipStyle = {
-  borderRadius: 12,
-  border: '1px solid #E2E8F0',
-  boxShadow: '0 6px 20px rgba(15,23,42,0.10)',
-  fontSize: 12,
-  padding: '8px 10px',
-}
 
 type Kpi = {
   label: string
@@ -332,6 +305,9 @@ const FunnelAnalytics: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* 统计分析扩展：漏斗趋势 / 面试轮次 / 阶段停留（独立请求，失败不影响本卡片） */}
+            <TrendPanels />
 
             {/* 简历版本对比（分组条形图，替代原列表） */}
             <div className="rounded-2xl border border-line bg-surface p-5">

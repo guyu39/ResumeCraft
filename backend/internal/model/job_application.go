@@ -299,3 +299,81 @@ type FunnelStatsResponse struct {
 	Funnel     FunnelStats          `json:"funnel"`
 	BySnapshot []SnapshotConversion `json:"bySnapshot"`
 }
+
+// TrendBucket 趋势分桶粒度
+type TrendBucket string
+
+const (
+	TrendBucketWeek  TrendBucket = "week"
+	TrendBucketMonth TrendBucket = "month"
+)
+
+// TrendPoint 单个时间桶的漏斗指标
+// ReplyRate/OfferRate 以 0-1 小数返回，展示层负责转百分比
+type TrendPoint struct {
+	BucketStart int64   `json:"bucketStart"`
+	Submitted   int     `json:"submitted"`
+	Interview   int     `json:"interview"`
+	Offer       int     `json:"offer"`
+	ReplyRate   float64 `json:"replyRate"`
+	OfferRate   float64 `json:"offerRate"`
+}
+
+// TrendStatsResponse 漏斗趋势响应
+type TrendStatsResponse struct {
+	Bucket TrendBucket  `json:"bucket"`
+	From   int64        `json:"from"`
+	To     int64        `json:"to"`
+	Points []TrendPoint `json:"points"`
+}
+
+// RoundBucket 面试轮次分布桶（Round=4 表示「4 轮及以上」）
+type RoundBucket struct {
+	Round int `json:"round"`
+	Count int `json:"count"`
+}
+
+// StageDurationStat 相邻状态转换的停留时长（天）
+type StageDurationStat struct {
+	Transition string  `json:"transition"`
+	MedianDays float64 `json:"medianDays"`
+	MaxDays    float64 `json:"maxDays"`
+	Samples    int     `json:"samples"`
+}
+
+// InterviewRoundsResponse 面试轮次分布 + 阶段停留时长
+type InterviewRoundsResponse struct {
+	Avg            float64             `json:"avg"`
+	Median         float64             `json:"median"`
+	Max            int                 `json:"max"`
+	Distribution   []RoundBucket       `json:"distribution"`
+	StageDurations []StageDurationStat `json:"stageDurations"`
+}
+
+// CalendarEventType 日程事件类型
+type CalendarEventType string
+
+const (
+	CalendarEventWrittenTest CalendarEventType = "writtenTest"
+	CalendarEventInterview   CalendarEventType = "interview"
+)
+
+// CalendarEvent 日程事件（笔试或面试）
+// ConflictGroupID > 0 表示该事件与同组其他事件时间重叠；0 表示无冲突
+type CalendarEvent struct {
+	ID              string            `json:"id"`
+	ApplicationID   string            `json:"applicationId"`
+	CompanyName     string            `json:"companyName"`
+	TargetTitle     string            `json:"targetTitle"`
+	EventType       CalendarEventType `json:"eventType"`
+	Round           string            `json:"round,omitempty"`
+	ScheduledAt     int64             `json:"scheduledAt"`
+	ScheduledEnd    int64             `json:"scheduledEnd"`
+	ConflictGroupID int               `json:"conflictGroupId"`
+}
+
+// CalendarResponse 日程视图响应
+type CalendarResponse struct {
+	Events    []CalendarEvent `json:"events"`
+	Conflicts int             `json:"conflicts"`
+}
