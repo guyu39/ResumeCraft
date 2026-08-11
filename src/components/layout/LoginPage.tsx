@@ -290,7 +290,8 @@ const LoginPage: React.FC = () => {
                 </p>
               </div>
 
-              {sessionNotice && (
+              {/* 会话失效提示只对登录场景有意义：注册用户本无既有会话，展示"请重新登录"会造成误解 */}
+              {sessionNotice && mode === 'login' && (
                 <div role="alert" className="mt-4 flex items-start gap-2 rounded-md border border-amber-200/80 bg-amber-50/80 px-3 py-2.5 text-sm text-amber-800 backdrop-blur-sm">
                   <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>{sessionNotice}</span>

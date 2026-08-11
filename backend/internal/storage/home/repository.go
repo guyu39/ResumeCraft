@@ -29,13 +29,14 @@ func NewTodoRepository(pool *pgxpool.Pool) TodoRepository {
 func (r *todoRepository) ListTodos(ctx context.Context, userID string) ([]model.TodoItem, error) {
 	items := make([]model.TodoItem, 0, 16)
 
-	// 面试待办：已排期（scheduled_at 非空）且投递未被软删除
+	// 面试待办：已排期（scheduled_at 非空）、今天及以后、且投递未被软删除
 	rows, err := r.pool.Query(ctx, `
 		SELECT i.id, ja.id, ja.company_name, ja.target_title, COALESCE(ja.department, ''),
 		       i.round, i.scheduled_at, i.scheduled_end, ja.status, COALESCE(ja.application_url, '')
 		FROM job_application_interviews i
 		JOIN job_applications ja ON ja.id = i.application_id
 		WHERE i.user_id = $1 AND i.scheduled_at IS NOT NULL AND ja.deleted_at IS NULL
+		  AND i.scheduled_at >= date_trunc('day', NOW())
 		ORDER BY i.scheduled_at ASC
 	`, userID)
 	if err != nil {
@@ -69,12 +70,13 @@ func (r *todoRepository) ListTodos(ctx context.Context, userID string) ([]model.
 		return nil, fmt.Errorf("iterate interview todos: %w", err)
 	}
 
-	// 笔试待办：written_test_at 非空且投递未被软删除
+	// 笔试待办：written_test_at 非空、今天及以后、且投递未被软删除
 	rows, err = r.pool.Query(ctx, `
 		SELECT id, company_name, target_title, COALESCE(department, ''),
 		       written_test_at, status, COALESCE(application_url, '')
 		FROM job_applications
 		WHERE user_id = $1 AND written_test_at IS NOT NULL AND deleted_at IS NULL
+		  AND written_test_at >= date_trunc('day', NOW())
 		ORDER BY written_test_at ASC
 	`, userID)
 	if err != nil {

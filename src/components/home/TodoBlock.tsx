@@ -15,6 +15,21 @@ function formatTime(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
+// 待办场景下相对日期比绝对日期更好读；超出「后天」再退回 M/D
+function formatDateLabel(ts: number): string {
+  const target = new Date(ts)
+  const diffDays = Math.round((startOfDay(target) - startOfDay(new Date())) / 86_400_000)
+  if (diffDays === 0) return '今天'
+  if (diffDays === 1) return '明天'
+  if (diffDays === 2) return '后天'
+  if (diffDays === -1) return '昨天'
+  return `${target.getMonth() + 1}/${target.getDate()}`
+}
+
 const TodoBlock: React.FC = () => {
   const [todos, setTodos] = useState<HomeTodoItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -93,8 +108,9 @@ const TodoBlock: React.FC = () => {
                   onClick={() => goApplications(item.applicationId)}
                   className="group flex w-full items-center gap-2.5 px-5 py-2.5 text-left transition-colors hover:bg-brand-soft"
                 >
-                  <span className="w-11 shrink-0 text-sm font-semibold tabular-nums text-ink">
-                    {formatTime(item.scheduledAt)}
+                  <span className="w-12 shrink-0 leading-tight">
+                    <span className="block truncate text-[11px] text-muted">{formatDateLabel(item.scheduledAt)}</span>
+                    <span className="block text-sm font-semibold tabular-nums text-ink">{formatTime(item.scheduledAt)}</span>
                   </span>
                   <span
                     className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${
