@@ -5,7 +5,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { authApi, getAccessToken, isAuthenticated, ApiError } from '@/api'
-import { clearTokens, isTerminalAuthError } from '@/api/authSession'
+import { isTerminalAuthError, terminateSession } from '@/api/authSession'
 import type { AuthPayload } from '@/api/types'
 
 interface AuthUser {
@@ -117,7 +117,9 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             // 忽略登出 API 错误
           }
         }
-        clearTokens()
+        // 走 terminateSession 以便通过 BroadcastChannel 即时通知其他标签页；
+        // reason=logout 本身不触发跳转，跳转仍由调用方决定。
+        terminateSession('logout', { redirect: false })
         set({ user: null, isAuthenticated: false })
       },
 

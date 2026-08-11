@@ -304,10 +304,13 @@ export async function ensureFreshAccessToken(): Promise<string> {
     throw error
   }
 
+  // exp 解码失败（token 损坏/结构异常）时也走刷新，避免带着坏 token 先发一次注定 401 的请求。
   const expiresAt = decodeExpiry(accessToken)
-  if (expiresAt !== null && expiresAt - Date.now() <= EARLY_REFRESH_MS) {
+  const cannotDecode = expiresAt === null
+  if (cannotDecode || expiresAt - Date.now() <= EARLY_REFRESH_MS) {
     const refreshedAccessToken = await refreshAccessToken()
-    if (!isSameTokenUser(refreshedAccessToken, accessToken)) {
+    // 原 token 无法解码 uid 时做用户一致性校验只会误报 SESSION_CHANGED，此时直接采用刷新结果。
+    if (!cannotDecode && !isSameTokenUser(refreshedAccessToken, accessToken)) {
       throw new AuthSessionError(
         '登录账号已切换，请重试当前操作',
         'transient',
