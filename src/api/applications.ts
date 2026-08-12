@@ -283,6 +283,42 @@ export interface CalendarResponse {
   conflicts: number
 }
 
+// 面试题库
+export interface InterviewBankItem {
+  interviewId: string
+  applicationId: string
+  companyName: string
+  targetTitle: string
+  round: string
+  format: string
+  interviewer: string
+  scheduledAt: number | null
+  questions: string
+  notes: string
+  result: string
+  nextAction: string
+}
+
+export interface InterviewBankMeta {
+  totalRecords: number
+  totalCompanies: number
+}
+
+export interface InterviewBankResponse {
+  items: InterviewBankItem[]
+  pagination: Pagination
+  meta: InterviewBankMeta
+}
+
+export interface InterviewBankParams {
+  keyword?: string
+  company?: string
+  round?: string
+  range?: 30 | 90 | 365 | 0
+  page?: number
+  pageSize?: number
+}
+
 export const applicationsApi = {
   list: (params?: ListApplicationsParams) =>
     apiClient.get<JobApplicationListResponse>(`/applications${buildQuery(params)}`),
@@ -311,6 +347,18 @@ export const applicationsApi = {
     if (params?.to) search.set('to', String(params.to))
     const query = search.toString()
     return apiClient.get<CalendarResponse>(`/applications/calendar${query ? `?${query}` : ''}`)
+  },
+
+  getInterviewBank: (params?: InterviewBankParams) => {
+    const search = new URLSearchParams()
+    if (params?.keyword) search.set('keyword', params.keyword)
+    if (params?.company) search.set('company', params.company)
+    if (params?.round) search.set('round', params.round)
+    if (params?.range) search.set('range', String(params.range))
+    if (params?.page) search.set('page', String(params.page))
+    if (params?.pageSize) search.set('pageSize', String(params.pageSize))
+    const query = search.toString()
+    return apiClient.get<InterviewBankResponse>(`/applications/interviews/bank${query ? `?${query}` : ''}`)
   },
 
   create: (data: CreateApplicationRequest) =>

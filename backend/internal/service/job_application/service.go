@@ -72,6 +72,8 @@ type Service interface {
 	GetInterviewRoundsStats(ctx context.Context, userID string) (*model.InterviewRoundsResponse, error)
 	// GetCalendar 日程视图：时间区间内的笔试/面试事件 + 冲突检测
 	GetCalendar(ctx context.Context, userID string, from, to time.Time) (*model.CalendarResponse, error)
+	// GetInterviewBank 面试题库：跨投递检索自己记录过的面试问题
+	GetInterviewBank(ctx context.Context, userID string, filters model.InterviewBankFilters) (*model.InterviewBankResponse, error)
 }
 
 type UploadInterviewRecordingParams struct {
@@ -623,6 +625,52 @@ func (s *service) GetCalendar(ctx context.Context, userID string, from, to time.
 	}
 	conflicts := detectConflicts(events)
 	return &model.CalendarResponse{Events: events, Conflicts: conflicts}, nil
+}
+
+// 题库轮次筛选允许的取值，防止任意字符串打到数据库
+var interviewBankRounds = map[string]bool{
+	"一面": true, "二面": true, "三面": true, "主管面": true, "HR面": true, "其他": true,
+}
+
+func (s *service) GetInterviewBank(ctx context.Context, userID string, f model.InterviewBankFilters) (*model.InterviewBankResponse, error) {
+	f.Keyword = strings.TrimSpace(f.Keyword)
+	f.Company = strings.TrimSpace(f.Company)
+	f.Round = strings.TrimSpace(f.Round)
+	if !interviewBankRounds[f.Round] {
+		f.Round = ""
+	}
+	// 只接受受支持的时间窗，其余按「全部」处理
+	if f.RangeDays != 30 && f.RangeDays != 90 && f.RangeDays != 365 {
+		f.RangeDays = 0
+	}
+	if f.Page < 1 {
+		f.Page = 1
+	}
+	if f.PageSize < 1 || f.PageSize > 100 {
+		f.PageSize = 20
+	}
+
+	items, total, companies, err := s.repo.ListInterviewBank(ctx, userID, f)
+	if err != nil {
+		return nil, err
+	}
+	totalPages := total / f.PageSize
+	if total%f.PageSize > 0 {
+		totalPages++
+	}
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	return &model.InterviewBankResponse{
+		Items: items,
+		Pagination: model.Pagination{
+			Page:       f.Page,
+			PageSize:   f.PageSize,
+			Total:      total,
+			TotalPages: totalPages,
+		},
+		Meta: model.InterviewBankMeta{TotalRecords: total, TotalCompanies: companies},
+	}, nil
 }
 
 // interviewResultCell 有结果则拼接为「通过」「终止」，否则留空表示进行中/待反馈

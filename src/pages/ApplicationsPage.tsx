@@ -23,11 +23,13 @@ import {
   UploadCloud,
   X,
   BarChart3,
+  BookOpen,
   List as ListIcon,
 } from 'lucide-react'
 import { applicationsApi, resumeApi } from '@/api'
 import FunnelAnalytics from '@/components/applications/FunnelAnalytics'
 import ApplicationCalendar from '@/components/applications/ApplicationCalendar'
+import InterviewBankPanel from '@/components/applications/InterviewBankPanel'
 import type {
   CreateInterviewRequest,
   JobApplication,
@@ -386,11 +388,12 @@ const ApplicationsPage: React.FC = () => {
   const logout = useAuthStore((s) => s.logout)
   const [items, setItems] = useState<JobApplicationListItem[]>([])
   const [loading, setLoading] = useState(false)
-  // 视图：投递列表 / 日程 / 数据分析
-  const [view, setView] = useState<'list' | 'calendar' | 'analytics'>(() => {
+  // 视图：投递列表 / 日程 / 数据分析 / 面试题库
+  const [view, setView] = useState<'list' | 'calendar' | 'analytics' | 'questions'>(() => {
     const v = new URLSearchParams(window.location.search).get('view')
     if (v === 'analytics') return 'analytics'
     if (v === 'calendar') return 'calendar'
+    if (v === 'questions') return 'questions'
     return 'list'
   })
   const [page, setPage] = useState(1)
@@ -957,6 +960,13 @@ const ApplicationsPage: React.FC = () => {
               >
                 <BarChart3 className="h-3.5 w-3.5" /> 数据分析
               </button>
+              <button
+                type="button"
+                onClick={() => setView('questions')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-colors ${view === 'questions' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-700/70 hover:text-blue-700'}`}
+              >
+                <BookOpen className="h-3.5 w-3.5" /> 面试题库
+              </button>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -977,6 +987,12 @@ const ApplicationsPage: React.FC = () => {
         <main className="min-h-0 w-full flex-1 overflow-hidden">
           <section className="h-full overflow-hidden bg-transparent">
             <ApplicationCalendar onSelectApplication={(id) => { setSelectedId(id); setDetailOpen(true); void loadDetail(id) }} />
+          </section>
+        </main>
+      ) : view === 'questions' ? (
+        <main className="min-h-0 w-full flex-1 overflow-hidden">
+          <section className="h-full overflow-hidden bg-transparent">
+            <InterviewBankPanel onOpenApplication={(id) => { setView('list'); setSelectedId(id); setDetailOpen(true); void loadDetail(id) }} />
           </section>
         </main>
       ) : (

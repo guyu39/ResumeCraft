@@ -377,3 +377,42 @@ type CalendarResponse struct {
 	Events    []CalendarEvent `json:"events"`
 	Conflicts int             `json:"conflicts"`
 }
+
+// InterviewBankItem 面试题库单条记录
+type InterviewBankItem struct {
+	InterviewID   string `json:"interviewId"`
+	ApplicationID string `json:"applicationId"`
+	CompanyName   string `json:"companyName"`
+	TargetTitle   string `json:"targetTitle"`
+	Round         string `json:"round"`
+	Format        string `json:"format"`
+	Interviewer   string `json:"interviewer"`
+	ScheduledAt   *int64 `json:"scheduledAt"`
+	Questions     string `json:"questions"`
+	Notes         string `json:"notes"`
+	Result        string `json:"result"`
+	NextAction    string `json:"nextAction"`
+}
+
+// InterviewBankMeta 题库汇总元信息
+type InterviewBankMeta struct {
+	TotalRecords   int `json:"totalRecords"`
+	TotalCompanies int `json:"totalCompanies"`
+}
+
+// InterviewBankFilters 题库查询参数
+type InterviewBankFilters struct {
+	Keyword  string
+	Company  string
+	Round    string
+	RangeDays int // 0=全部, 30/90/365
+	Page     int
+	PageSize int
+}
+
+// InterviewBankResponse 题库分页响应
+type InterviewBankResponse struct {
+	Items      []InterviewBankItem `json:"items"`
+	Pagination Pagination          `json:"pagination"`
+	Meta       InterviewBankMeta   `json:"meta"`
+}

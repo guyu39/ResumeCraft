@@ -117,6 +117,8 @@ type Repository interface {
 	GetStageDurationStats(ctx context.Context, userID string) ([]model.StageDurationStat, error)
 	// 日程事件：时间区间内的笔试与面试（按 scheduledAt 升序，未做冲突标记）
 	CalendarEvents(ctx context.Context, userID string, from, to time.Time) ([]model.CalendarEvent, error)
+	// 面试题库：跨投递聚合有问题记录的面试，支持关键词/公司/轮次/时间筛选
+	ListInterviewBank(ctx context.Context, userID string, filters model.InterviewBankFilters) ([]model.InterviewBankItem, int, int, error)
 }
 
 type repository struct {
@@ -1413,6 +1415,91 @@ func (r *repository) CalendarEvents(ctx context.Context, userID string, from, to
 		return nil, fmt.Errorf("iterate calendar events: %w", err)
 	}
 	return events, nil
+}
+
+// ListInterviewBank 跨投递聚合有问题记录的面试。
+// 仅收录 questions 非空的记录；关键词命中问题/公司/岗位任一字段。
+// 返回：分页项、总记录数、覆盖公司数。
+func (r *repository) ListInterviewBank(ctx context.Context, userID string, f model.InterviewBankFilters) ([]model.InterviewBankItem, int, int, error) {
+	// 动态拼 WHERE：$1 固定为 userID，其余按需追加，避免 SQL 注入
+	conds := []string{
+		"ja.user_id = $1",
+		"ja.deleted_at IS NULL",
+		"it.user_id = $1",
+		"COALESCE(it.questions, '') <> ''",
+	}
+	args := []any{userID}
+	add := func(cond string, val any) {
+		args = append(args, val)
+		conds = append(conds, fmt.Sprintf(cond, len(args)))
+	}
+	if f.Keyword != "" {
+		kw := "%" + f.Keyword + "%"
+		args = append(args, kw)
+		n := len(args)
+		conds = append(conds, fmt.Sprintf(
+			"(it.questions ILIKE $%[1]d OR ja.company_name ILIKE $%[1]d OR ja.target_title ILIKE $%[1]d)", n))
+	}
+	if f.Company != "" {
+		add("ja.company_name = $%d", f.Company)
+	}
+	if f.Round == "其他" {
+		// 空轮次或非标准枚举归入「其他」
+		conds = append(conds, "(it.round IS NULL OR it.round NOT IN ('一面','二面','三面','主管面','HR面'))")
+	} else if f.Round != "" {
+		add("it.round = $%d", f.Round)
+	}
+	if f.RangeDays > 0 {
+		add("it.scheduled_at >= NOW() - ($%d || ' days')::interval", fmt.Sprintf("%d", f.RangeDays))
+	}
+	where := strings.Join(conds, " AND ")
+
+	// 总记录数 + 覆盖公司数一次算出
+	var total, companies int
+	if err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*), COUNT(DISTINCT ja.company_name)
+		FROM job_application_interviews it
+		JOIN job_applications ja ON ja.id = it.application_id
+		WHERE `+where, args...).Scan(&total, &companies); err != nil {
+		return nil, 0, 0, fmt.Errorf("count interview bank: %w", err)
+	}
+
+	offset := (f.Page - 1) * f.PageSize
+	pageArgs := append(append([]any{}, args...), f.PageSize, offset)
+	rows, err := r.pool.Query(ctx, `
+		SELECT it.id, it.application_id, COALESCE(ja.company_name, ''), ja.target_title,
+		       COALESCE(it.round, ''), COALESCE(it.format, ''), COALESCE(it.interviewer, ''),
+		       it.scheduled_at, COALESCE(it.questions, ''), COALESCE(it.notes, ''),
+		       COALESCE(it.result, ''), COALESCE(it.next_action, '')
+		FROM job_application_interviews it
+		JOIN job_applications ja ON ja.id = it.application_id
+		WHERE `+where+`
+		ORDER BY it.scheduled_at DESC NULLS LAST, it.created_at DESC
+		LIMIT $`+fmt.Sprint(len(args)+1)+` OFFSET $`+fmt.Sprint(len(args)+2), pageArgs...)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("query interview bank: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]model.InterviewBankItem, 0)
+	for rows.Next() {
+		var it model.InterviewBankItem
+		var scheduled sql.NullTime
+		if err := rows.Scan(&it.InterviewID, &it.ApplicationID, &it.CompanyName, &it.TargetTitle,
+			&it.Round, &it.Format, &it.Interviewer, &scheduled, &it.Questions, &it.Notes,
+			&it.Result, &it.NextAction); err != nil {
+			return nil, 0, 0, fmt.Errorf("scan interview bank: %w", err)
+		}
+		if scheduled.Valid {
+			ms := scheduled.Time.UnixMilli()
+			it.ScheduledAt = &ms
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, 0, fmt.Errorf("iterate interview bank: %w", err)
+	}
+	return items, total, companies, nil
 }
 
 func (r *repository) getBaseByID(ctx context.Context, userID, applicationID string) (*model.JobApplication, error) {

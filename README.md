@@ -1,9 +1,10 @@
 # ResumeCraft（简历大师）
 
-一个 React + TypeScript 在线简历编辑器，提供三栏编辑体验、实时 A4 预览、模块化内容管理、版本快照对比与 AI 辅助优化能力。
+一个 React + TypeScript 求职一体化平台：在线简历编辑（三栏工作台、实时 A4 预览、模块化管理、版本快照对比）+ AI 辅助优化 + 投递全流程管理（漏斗分析、日程日历、面试题库）+ 招聘信息聚合。
 
 ## 功能亮点
 
+### 简历编辑
 1. **三栏工作台**：左栏模块管理，中栏实时预览，右栏表单编辑。
 2. **模块化编辑**：固定模块（个人信息、教育经历、工作/实习经历、项目经历）+ 可选模块（技能清单、自我评价、荣誉奖项、证书资质、作品集、语言能力）+ 自定义模块。
 3. **拖拽排序与显隐**：模块顺序可调整，支持一键隐藏/显示。
@@ -11,34 +12,52 @@
 5. **样式调节**：主题色、字体、字号、边距、行距、段落间距、模块标题样式（标记线/底线/无线）。
 6. **富文本能力**：Tiptap 富文本编辑器，支持加粗/斜体/下划线/链接/列表，链接使用应用内弹窗。
 7. **字体编码检测**：粘贴时提示异常字符，支持自动修复。
-8. **本地自动保存**：Zustand + localStorage 防抖持久化，刷新后可恢复。
-9. **云端同步**：登录后事件驱动落库（切后台/刷新/关页面），`lastSyncedDataRef` 数据去重避免重复写。
-10. **版本快照**：手动创建命名快照记录简历状态，快照时间轴可视化，每个快照支持独立本地草稿（切快照自动保存/恢复）。
-11. **快照对比**：选择两个快照逐模块逐字段比较，Git 风格统一 diff（+ 新增 / − 删除），支持递归比较 items 数组内的字段差异。
-12. **A4 分页预览**：按页切片展示，自适应缩放，减少内容截断。
-13. **AI 辅助**：简历评估（含报告 PDF 导出）、内容润色建议、JD 匹配分析与 JD 定向优化、整模块/要点改写、模拟面试（出题 + 答题 + 多轮追问 + 逐题评估）、简历翻译。
-14. **PDF 导出**：简历导出走后端 chromedp 异步任务（创建 → 轮询 → 下载）；AI 评估报告走前端 html2canvas + jsPDF 直接生成。
-15. **中英文国际化**：一键切换中英文简历，AI 翻译模块自动生成英文副本。
-16. **简历解析导入**：上传 PDF/Word 文件，AI 自动识别填充。
-17. **认证与安全**：JWT + Redis token 即时撤销 + 令牌桶限流 + bcrypt 密码哈希。
-18. **简历分享与评论**：生成分享链接，访客可逐模块评论；评论跨快照保留、访客仅能删除自己的评论。
+8. **A4 分页预览**：按页切片展示，自适应缩放，减少内容截断。
+9. **中英文国际化**：一键切换中英文简历，AI 翻译模块自动生成英文副本。
+10. **简历解析导入**：上传 PDF/Word 文件，AI 自动识别填充。
+
+### 数据同步与版本
+11. **本地自动保存**：Zustand + localStorage 防抖持久化（150ms），刷新后可恢复。
+12. **云端同步**：revision 驱动的串行保存队列 + 后端乐观锁（version CAS）+ 指数退避重试，详见[核心机制](#云端同步)。
+13. **版本快照**：手动创建命名快照记录简历状态，快照时间轴可视化；`resume_versions.content_snapshot` 为快照正文唯一权威源。
+14. **快照对比**：选择两个快照逐模块逐字段比较，Git 风格统一 diff（+ 新增 / − 删除），支持递归比较 items 数组内的字段差异。
+
+### AI 能力
+15. **AI 辅助**：简历评估（含报告 PDF 导出）、内容润色建议、JD 匹配分析与 JD 定向优化、整模块/要点改写、模拟面试（出题 + 答题 + 多轮追问 + 逐题评估）、简历翻译。
+16. **PDF 导出**：简历导出走后端 chromedp 异步任务（创建 → 轮询 → 下载）；AI 评估报告走前端 html2canvas + jsPDF 动态加载生成。
+
+### 投递管理
+17. **投递记录**：按公司/岗位管理投递全流程，状态机涵盖待适配 → 已适配 → 已投递 → 笔试 → 面试 → Offer/被拒/撤回，支持意向城市、JD 存档、去重检测与 Excel 导出。
+18. **面试记录**：按轮次（一面/二面/三面/主管面/HR面）记录时间、形式、面试官、问题、笔记与结果，支持录音上传 + AI 转写分析。
+19. **漏斗分析**：投递 → 笔试 → 面试 → Offer 各阶段转化率，简历版本 A/B 对比，按周/月分桶的趋势图，面试轮次分布与阶段停留时长（中位数/最大值）。
+20. **日程日历**：月/周视图展示笔试与面试安排，冲突日标红、正常安排标蓝，显示开始时间与轮次标签。
+21. **面试题库**：跨投递聚合自己记录过的面试问题，支持关键词/公司/轮次/时间筛选，命中高亮，仅本人可见。
+
+### 其他
+22. **首页工作台**：AI 日报、GitHub 热门项目、AI HOT 榜、最近新增岗位（Redis 列表）、待办笔面试（过滤历史、显示相对日期）。
+23. **招聘聚合**：定时同步外部招聘信息，支持标记已投递、按投递状态筛选。
+24. **认证与安全**：JWT + Redis token 即时撤销 + 单设备登录（两阶段确认顶号）+ 令牌桶限流 + bcrypt 密码哈希 + SQL 操作审计日志。
+25. **简历分享与评论**：生成分享链接，访客可逐模块评论；评论跨快照保留、访客仅能删除自己的评论。
 ## 访问地址：https://honoz.top/
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
 | 前端框架 | React 18 + TypeScript 5 + Vite 5 |
-| 状态管理 | Zustand（localStorage 持久化 + 脏标记 + 快照草稿管理） |
-| 样式 | Tailwind CSS |
+| 状态管理 | Zustand（localStorage 持久化 + revision 版本追踪 + 同步状态机） |
+| 样式 | Tailwind CSS（语义化色板 token） |
 | 拖拽 | @dnd-kit |
 | 富文本 | Tiptap |
+| 图表 | Recharts |
 | 后端框架 | Go (Gin) |
-| 数据库 | PostgreSQL + Redis（认证/限流） |
+| 数据库 | PostgreSQL（无外键，引用完整性由应用层校验）+ Redis（认证/限流/热点列表） |
+| 并发控制 | 乐观锁（version CAS，409 冲突自动仲裁） |
 | PDF 渲染 | chromedp (Chromium) |
 | 对象存储 | MinIO (S3 兼容) |
 | 数据安全 | DOMPurify（HTML 净化）、AES-256-GCM（AI 密钥加密） |
 | AI | OpenAI Compatible API（流式 SSE） |
 | 限流 | Redis Lua 令牌桶（auth/ai 分别限流，Fail-Open 策略） |
+| 定时任务 | Go cron（招聘同步/AI 日报/GitHub 项目/AI HOT） |
 
 ## 项目结构
 
@@ -65,16 +84,25 @@ introduce/
 │   │   │   └── ai/               # AI 面板组件（评估/匹配/改写/面试/评分）
 │   │   ├── resume/               # 简历模块编辑表单（11个模块）
 │   │   ├── resume/blocks/        # 模块表单子组件
-│   │   └── common/               # 通用组件（SnapshotTimeline、主题色、模板切换等）
+│   │   ├── applications/         # 投递管理组件
+│   │   │   ├── FunnelAnalytics.tsx      # 漏斗/趋势/轮次分析
+│   │   │   ├── ApplicationCalendar.tsx  # 日程日历（月/周视图 + 冲突标色）
+│   │   │   └── InterviewBankPanel.tsx   # 面试题库（检索/筛选/高亮）
+│   │   ├── home/                 # 首页工作台组件（资讯面板/待办/新增岗位）
+│   │   └── common/               # 通用组件（SnapshotTimeline、StyledSelect、主题色等）
+│   ├── pages/
+│   │   ├── ApplicationsPage.tsx  # 投递管理页（列表/日程/分析/题库 四视图）
+│   │   ├── JobPostingsPage.tsx   # 招聘聚合页
+│   │   └── HomePage.tsx          # 首页工作台
 │   ├── hooks/                    # 自定义 Hook
-│   │   ├── useCloudSync.ts       # 云端同步（事件驱动 + 数据去重）
+│   │   ├── useCloudSync.ts       # 云端同步（revision 驱动 + 串行队列 + 乐观锁）
 │   │   ├── useExportPDF.ts       # PDF 导出（异步任务轮询）
 │   │   ├── useI18n.ts            # 国际化翻译
 │   │   ├── useTranslate.ts       # AI 翻译流程
 │   │   └── ...                   # AI 功能 Hooks（评估/匹配/改写/面试等）
 │   ├── store/
 │   │   ├── authStore.ts          # 认证状态
-│   │   └── resumeStore.ts        # 简历状态（含快照草稿管理 + 脏标记）
+│   │   └── resumeStore.ts        # 简历状态（revision 追踪 + 同步状态机）
 │   ├── i18n/
 │   │   └── resume.ts             # 中英文翻译字典（150+ 键值对）
 │   └── App.tsx                   # 根组件（认证检查 + 路由分发）
@@ -214,6 +242,29 @@ FRONTEND_DIST_DIR=../dist
 | PUT | /api/resumes/:id | 更新简历（自动保存/落库） |
 | DELETE | /api/resumes/:id | 删除简历 |
 
+### 投递管理
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /api/applications | 投递列表（分页/筛选/排序） |
+| POST | /api/applications | 创建投递 |
+| GET | /api/applications/export | 导出 Excel |
+| POST | /api/applications/duplicates | 去重检测 |
+| GET | /api/applications/stats | 漏斗统计 + 简历版本 A/B 对比 |
+| GET | /api/applications/stats/trend | 分桶趋势（周/月） |
+| GET | /api/applications/stats/interview-rounds | 面试轮次分布 + 阶段停留时长 |
+| GET | /api/applications/calendar | 日程日历事件 + 冲突检测 |
+| GET | /api/applications/interviews/bank | 面试题库（关键词/公司/轮次/时间筛选） |
+| GET | /api/applications/:id | 投递详情 |
+| PUT | /api/applications/:id | 更新投递 |
+| DELETE | /api/applications/:id | 删除投递 |
+| PUT | /api/applications/:id/status | 变更投递状态 |
+| POST | /api/applications/:id/interviews | 新增面试记录 |
+| PUT | /api/applications/:id/interviews/:iid | 更新面试记录 |
+| DELETE | /api/applications/:id/interviews/:iid | 删除面试记录 |
+| POST | /api/applications/:id/interviews/:iid/recording | 上传面试录音 |
+| POST | /api/applications/:id/interviews/analyze-file | AI 面试记录文件分析 |
+
 ### 版本快照
 
 | 方法 | 路径 | 说明 |
@@ -276,21 +327,30 @@ FRONTEND_DIST_DIR=../dist
 ### 快照版本管理
 
 - **快照创建**：手动点击「新建版本」将当前编辑器状态固化为一个命名快照（存入 `resume_versions` 表）。
-- **快照草稿**：切走快照时当前编辑保存到 `localStorage`（key: `resumecraft_snapshot_draft_:id`），切回时自动恢复。
+- **正文权威**：`resume_versions.content_snapshot` 为快照正文唯一数据源；`resumes.content` 为镜像双写。
 - **对比算法**：后端按 `module.id` 匹配模块 → 递归 `items` 数组 → 逐字段 `fieldToString` 比较 → 返回 `FieldDiff[]`。
-- **持久化**：切后台/关闭页面时通过 `saveToCloud` 落库，`lastSyncedDataRef` 数据去重避免重复写。
 
 ### 云端同步
 
-- **事件驱动**：`beforeunload`（sendBeacon 兜底）+ `visibilitychange`（切后台）。
-- **数据去重**：比较 `serializeResume(resume)` 与 `lastSyncedDataRef`，相同则跳过。
-- **快照草稿收集**：落库时收集所有 `resumecraft_snapshot_draft_*` 一并发送（待 migration 004 执行后持久化到 DB）。
+同步链路历经 9 次迭代，最终收敛为：
+
+| 维度 | 方案 |
+|------|------|
+| 落库触发 | `localRevision > ackedRevision` 时 150ms debounce 自动保存；`focusout` / `visibilitychange` / `beforeunload` 立即保存 |
+| 串行保证 | 单请求飞行 + pending 队列 + waiter Promise，杜绝并发 PUT |
+| 并发保护 | 后端 CAS 乐观锁（`WHERE version = $N`），不匹配返回 409 |
+| 冲突策略 | 单设备策略：内容一致 → 静默对齐版本号；内容分歧 → 自动 keepLocal 重试 |
+| 内容指纹 | `normalizeForHash()` 深度稳定键序 + JSON 指纹，消除字段顺序/默认值差异导致的假冲突 |
+| 断网恢复 | 指数退避重试 [1s, 3s, 10s] + `online` 事件重置 + offline 状态展示 |
+| 退出兜底 | `fetch + keepalive` 能带鉴权头 |
 
 ### 认证与安全
 
-- **Token 管理**：access token 存 Redis（可即时撤销），refresh token 存 Redis session。
+- **Token 管理**：JWT access/refresh 双 token + Redis 存储（即时撤销）；Web Locks + BroadcastChannel 跨标签原子刷新。
+- **单设备登录**：新设备登录触发两阶段确认，确认后才踢旧设备。
 - **限流**：Redis Lua 令牌桶，auth 接口 8 capacity / 0.2 refill，AI 接口 20 capacity / 0.05 refill。
 - **Fail-Open**：Redis 不可用时默认放行（`RATE_LIMIT_FAIL_OPEN=true`）。
+- **审计**：SQL 操作审计日志（`operation_audit_logs` 表）。
 
 ## 部署
 

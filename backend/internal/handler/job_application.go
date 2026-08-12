@@ -120,6 +120,33 @@ func (h *Handler) GetApplicationCalendar(c *gin.Context) {
 	response.JSONSuccess(c, result)
 }
 
+// GetInterviewBank 面试题库：跨投递检索自己记录过的面试问题
+// GET /api/applications/interviews/bank?keyword=&company=&round=&range=30&page=1&pageSize=20
+func (h *Handler) GetInterviewBank(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
+	rangeDays, _ := strconv.Atoi(c.Query("range"))
+	filters := model.InterviewBankFilters{
+		Keyword:   c.Query("keyword"),
+		Company:   c.Query("company"),
+		Round:     c.Query("round"),
+		RangeDays: rangeDays,
+		Page:      page,
+		PageSize:  pageSize,
+	}
+	result, err := h.applicationService.GetInterviewBank(c.Request.Context(), userID, filters)
+	if err != nil {
+		log.Printf("[application] GetInterviewBank error: %v", err)
+		response.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "题库加载失败")
+		return
+	}
+	response.JSONSuccess(c, result)
+}
+
 // GetApplication 获取投递记录详情
 // GET /api/applications/:id
 func (h *Handler) GetApplication(c *gin.Context) {

@@ -551,3 +551,7 @@ func (m *mockRepo) GetStageDurationStats(ctx context.Context, userID string) ([]
 func (m *mockRepo) CalendarEvents(ctx context.Context, userID string, from, to time.Time) ([]model.CalendarEvent, error) {
 	return m.calendarEvents, nil
 }
+
+func (m *mockRepo) ListInterviewBank(ctx context.Context, userID string, f model.InterviewBankFilters) ([]model.InterviewBankItem, int, int, error) {
+	return nil, 0, 0, nil
+}
