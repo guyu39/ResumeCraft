@@ -3,8 +3,6 @@ import {
   AlertTriangle,
   BriefcaseBusiness,
   CalendarClock,
-  ChevronLeft,
-  ChevronRight,
   Download,
   ExternalLink,
   FileCheck2,
@@ -64,8 +62,8 @@ interface CreateFormState {
   writtenTestAt: string
 }
 
-const PAGE_SIZE = 10
-const PAGE_SIZE_OPTIONS = [10, 30]
+// 卡片视图不分页，一次拉全量（投递量级远小于此上限）
+const PAGE_SIZE = 200
 
 const STATUS_LABELS: Record<JobApplicationStatus, string> = {
   pending_adaptation: '已投递',
@@ -396,9 +394,6 @@ const ApplicationsPage: React.FC = () => {
     if (v === 'questions') return 'questions'
     return 'list'
   })
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(PAGE_SIZE)
-  const [totalPages, setTotalPages] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('id'))
   const [detailOpen, setDetailOpen] = useState(Boolean(new URLSearchParams(window.location.search).get('id')))
   const [detail, setDetail] = useState<JobApplication | null>(null)
@@ -431,19 +426,18 @@ const ApplicationsPage: React.FC = () => {
   }, [detail?.id])
 
   const filters = useMemo<ListApplicationsParams>(() => ({
-    page,
-    pageSize,
+    page: 1,
+    pageSize: PAGE_SIZE,
     keyword: keyword.trim() || undefined,
     resumeId: resumeId || undefined,
     statuses: toBackendStatuses(status),
-  }), [keyword, page, pageSize, resumeId, status])
+  }), [keyword, resumeId, status])
 
   const loadList = useCallback(async () => {
     setLoading(true)
     try {
       const res = await applicationsApi.list(filters)
       setItems(res.items || [])
-      setTotalPages(res.pagination?.totalPages || 1)
     } catch (err) {
       toast(cleanError(err, '加载投递记录失败'))
     } finally {
@@ -474,10 +468,6 @@ const ApplicationsPage: React.FC = () => {
   useEffect(() => {
     if (selectedId) loadDetail(selectedId)
   }, [loadDetail, selectedId])
-
-  useEffect(() => {
-    setPage(1)
-  }, [keyword, resumeId, status, pageSize])
 
   useEffect(() => {
     if (!createOpen || !createForm.resumeId) {
@@ -626,7 +616,9 @@ const ApplicationsPage: React.FC = () => {
           preferredCity: createForm.preferredCity || undefined,
           applicationUrl: createForm.applicationUrl.trim(),
         })
-        if (submittedAt) await applicationsApi.update(created.id, { submittedAt })
+        // 投递时间：用户填了则用用户的，否则默认今天
+        const effectiveSubmittedAt = submittedAt ?? new Date(new Date().toDateString()).getTime()
+        await applicationsApi.update(created.id, { submittedAt: effectiveSubmittedAt })
         if (writtenTestAt) {
           await applicationsApi.update(created.id, { writtenTestAt })
           await applicationsApi.updateStatus(created.id, 'written_test')
@@ -751,7 +743,9 @@ const ApplicationsPage: React.FC = () => {
     }
   }
 
-  // 根据面试状态（通过 / 终止）进行整体表现分析；仅当所有面试均已终结（通过或终止）时允许触发。
+  // 分析放行条件（满足其一即可）：
+  //   1) 投递本身已进入终态（offer / rejected / withdrawn） —— 用户可能直接把投递置为终止，不必逐条改面试结果；
+  //   2) 至少有一条面试记录，且所有面试结果均为 通过 / 终止。
   // 当前为占位实现：依据终结状态生成结论文本，后续可替换为真实 AI 分析接口。
   const runAnalysis = () => {
     if (!detail) return
@@ -760,7 +754,8 @@ const ApplicationsPage: React.FC = () => {
       toast('暂无面试记录，无法分析')
       return
     }
-    if (!interviews.every((i) => i.result === '通过' || i.result === '终止')) {
+    const appTerminal = finalStatuses.includes(detail.status)
+    if (!appTerminal && !interviews.every((i) => i.result === '通过' || i.result === '终止')) {
       toast('面试尚未结束，待全部面试通过或终止后方可分析')
       return
     }
@@ -1101,15 +1096,8 @@ const ApplicationsPage: React.FC = () => {
             )}
           </div>
 
-          <div className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-500">第 {page} / {totalPages} 页</span>
-              <div className="w-24"><StyledSelect size="compact" direction="top" value={String(pageSize)} onChange={(v) => setPageSize(Number(v))} options={PAGE_SIZE_OPTIONS.map((size) => ({ label: `${size} 条/页`, value: String(size) }))} /></div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" />上一页</button>
-              <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 disabled:opacity-40">下一页<ChevronRight className="h-3.5 w-3.5" /></button>
-            </div>
+          <div className="flex shrink-0 items-center border-t border-slate-200 bg-slate-50/70 px-4 py-3">
+            <span className="text-xs text-slate-500">共 {items.length} 条投递</span>
           </div>
         </section>
 
@@ -1209,14 +1197,17 @@ const ApplicationsPage: React.FC = () => {
                       {(() => {
                         const interviews = detail?.interviews || []
                         const hasInterviews = interviews.length > 0
-                        const allConcluded = hasInterviews && interviews.every((i) => i.result === '通过' || i.result === '终止')
-                        const disabled = !allConcluded || analyzing
+                        const appTerminal = detail ? finalStatuses.includes(detail.status) : false
+                        const allInterviewsConcluded = hasInterviews && interviews.every((i) => i.result === '通过' || i.result === '终止')
+                        // 放行条件：有面试记录，且（投递已终态 或 所有面试均已终结）
+                        const canAnalyze = hasInterviews && (appTerminal || allInterviewsConcluded)
+                        const disabled = !canAnalyze || analyzing
                         return (
                           <button
                             type="button"
                             disabled={disabled}
                             onClick={runAnalysis}
-                            title={!hasInterviews ? '暂无面试记录' : !allConcluded ? '面试尚未结束（仍有面试进行中），待通过或终止后方可分析' : '开始智能分析'}
+                            title={!hasInterviews ? '暂无面试记录无法分析' : !canAnalyze ? '面试尚未结束（仍有面试进行中），待通过或终止后方可分析' : '开始智能分析'}
                             className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-white shadow-lg transition ${disabled ? 'cursor-not-allowed bg-slate-300 shadow-none' : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'}`}
                           >
                             {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -1230,8 +1221,17 @@ const ApplicationsPage: React.FC = () => {
                     {(() => {
                       const interviews = detail?.interviews || []
                       const hasInterviews = interviews.length > 0
-                      const allConcluded = hasInterviews && interviews.every((i) => i.result === '通过' || i.result === '终止')
-                      if (!allConcluded && hasInterviews) {
+                      const appTerminal = detail ? finalStatuses.includes(detail.status) : false
+                      const allInterviewsConcluded = hasInterviews && interviews.every((i) => i.result === '通过' || i.result === '终止')
+                      if (!hasInterviews) {
+                        return (
+                          <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            暂无面试记录无法分析
+                          </p>
+                        )
+                      }
+                      if (!appTerminal && !allInterviewsConcluded) {
                         return (
                           <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-600">
                             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />

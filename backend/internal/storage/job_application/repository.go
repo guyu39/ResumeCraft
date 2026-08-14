@@ -1229,9 +1229,15 @@ func (r *repository) GetTrendStats(ctx context.Context, userID string, bucket mo
 			GROUP BY 1
 		),
 		offer AS (
-			SELECT date_trunc('%[1]s', se.created_at) AS bucket, COUNT(*) AS n
+			-- JOIN 主表并过滤软删：状态事件表无外键（见 AGENTS.md），
+			-- 投递被软删后历史 offer 事件仍会残留，若不过滤会与汇总口径（status='offer'）打架。
+			-- COUNT(DISTINCT application_id) 避免同一投递反复翻转状态被重复计数，
+			-- 否则分子可能超过当周 submitted 分母，Offer 率算出 >100%。
+			SELECT date_trunc('%[1]s', se.created_at) AS bucket, COUNT(DISTINCT se.application_id) AS n
 			FROM job_application_status_events se
+			JOIN job_applications a ON a.id = se.application_id
 			WHERE se.user_id = $1 AND se.to_status = $4
+			  AND a.deleted_at IS NULL
 			  AND se.created_at BETWEEN $2 AND $3
 			GROUP BY 1
 		)

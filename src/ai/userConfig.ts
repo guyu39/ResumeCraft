@@ -29,7 +29,7 @@ export const AI_PROVIDER_PRESETS: AIProviderPresetConfig[] = [
     {
         id: 'doubao',
         label: '豆包（字节）',
-        baseUrl: '/api/ark',
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
         modelPlaceholder: 'doubao-seed-2-0-pro-260215',
     },
     {
@@ -71,8 +71,8 @@ export const AI_PROVIDER_PRESETS: AIProviderPresetConfig[] = [
     {
         id: 'spark',
         label: '讯飞星火（Spark）',
-        baseUrl: 'https://spark-api.xf-yun.com/v4.0/chat',
-        modelPlaceholder: 'Spark-4.0 Ultra',
+        baseUrl: 'https://spark-api-open.xf-yun.com/v1',
+        modelPlaceholder: '4.0Ultra',
     },
     {
         id: 'siliconflow',
@@ -96,7 +96,7 @@ export const AI_PROVIDER_PRESETS: AIProviderPresetConfig[] = [
     {
         id: 'gemini',
         label: 'Google Gemini',
-        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
         modelPlaceholder: 'gemini-2.0-flash',
     },
     // 自定义

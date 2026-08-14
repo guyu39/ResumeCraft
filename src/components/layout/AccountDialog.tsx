@@ -189,17 +189,17 @@ const AccountDialog: React.FC<AccountDialogProps> = ({ open, onClose, user }) =>
                                 />
                             </div>
 
-                            {aiForm.providerPreset === 'custom' && (
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-medium text-gray-700">Base URL（自定义必填）</label>
-                                    <input
-                                        value={aiForm.baseUrl}
-                                        onChange={(e) => updateAIForm('baseUrl', e.target.value)}
-                                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                        placeholder="https://api.example.com/v1"
-                                    />
-                                </div>
-                            )}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-gray-700">
+                                    Base URL{aiForm.providerPreset === 'custom' ? '（自定义必填）' : '（可覆盖预置值）'}
+                                </label>
+                                <input
+                                    value={aiForm.baseUrl}
+                                    onChange={(e) => updateAIForm('baseUrl', e.target.value)}
+                                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                    placeholder="https://api.example.com/v1"
+                                />
+                            </div>
 
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-gray-700">模型</label>

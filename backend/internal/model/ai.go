@@ -19,20 +19,22 @@ const (
 	AIProviderCustom      AIProvider = "custom"
 )
 
-// DefaultBaseURLs 默认 BaseURL 映射
+// DefaultBaseURLs 默认 BaseURL 映射。
+// 必须是可直接发起服务端请求的绝对地址：豆包早先填的 /api/ark 是前端 Vite dev proxy
+// 的相对路径，后端拿到后无 scheme/host，请求会直接创建失败。
 var DefaultBaseURLs = map[AIProvider]string{
-	AIProviderDoubao:      "/api/ark",
+	AIProviderDoubao:      "https://ark.cn-beijing.volces.com/api/v3",
 	AIProviderKimi:        "https://api.moonshot.cn/v1",
 	AIProviderMiniMax:     "https://api.minimax.chat/v1",
 	AIProviderDeepSeek:    "https://api.deepseek.com/v1",
 	AIProviderZhipu:       "https://open.bigmodel.cn/api/paas/v4",
 	AIProviderQwen:        "https://dashscope.aliyuncs.com/compatible-mode/v1",
 	AIProviderWenxin:      "https://qianfan.baidubce.com/v2",
-	AIProviderSpark:       "https://spark-api.xf-yun.com/v4.0/chat",
+	AIProviderSpark:       "https://spark-api-open.xf-yun.com/v1",
 	AIProviderSiliconFlow: "https://api.siliconflow.cn/v1",
 	AIProviderOpenAI:      "https://api.openai.com/v1",
 	AIProviderClaude:      "https://api.anthropic.com/v1",
-	AIProviderGemini:      "https://generativelanguage.googleapis.com/v1beta/openai/",
+	AIProviderGemini:      "https://generativelanguage.googleapis.com/v1beta/openai",
 }
 
 // AIConfig AI 配置

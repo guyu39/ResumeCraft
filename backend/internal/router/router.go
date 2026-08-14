@@ -15,6 +15,13 @@ import (
 func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, authLimiter, aiLimiter gin.HandlerFunc) {
 	api := engine.Group("/api")
 	{
+		// 轻量健康探针：供容器 healthcheck / 负载均衡使用，无鉴权、无副作用。
+		// 此前 healthcheck 用 wget --spider 打业务端点 /api/pdf/export（仅 POST），
+		// HEAD 命中 NoRoute 恒返回 404，导致容器一直 unhealthy 且刷日志噪音。
+		api.GET("/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		})
+
 		authGroup := api.Group("/auth")
 		{
 			// 认证路由挂载限流（注册/登录/刷新/发码为高风险接口）
@@ -164,15 +171,15 @@ func Register(engine *gin.Engine, h *handler.Handler, frontendDistDir string, au
 			applicationGroup := api.Group("/applications")
 			applicationGroup.Use(middleware.AuthRequired(h.AuthService()))
 			{
-			applicationGroup.GET("", h.ListApplications)
-			applicationGroup.POST("", h.CreateApplication)
-			applicationGroup.GET("/export", h.ExportApplications)
-			applicationGroup.POST("/duplicates", h.CheckApplicationDuplicates)
-			applicationGroup.GET("/stats", h.GetApplicationStats)
-			applicationGroup.GET("/stats/trend", h.GetApplicationTrend)
-			applicationGroup.GET("/stats/interview-rounds", h.GetApplicationInterviewRounds)
-			applicationGroup.GET("/calendar", h.GetApplicationCalendar)
-			applicationGroup.GET("/interviews/bank", h.GetInterviewBank)
+				applicationGroup.GET("", h.ListApplications)
+				applicationGroup.POST("", h.CreateApplication)
+				applicationGroup.GET("/export", h.ExportApplications)
+				applicationGroup.POST("/duplicates", h.CheckApplicationDuplicates)
+				applicationGroup.GET("/stats", h.GetApplicationStats)
+				applicationGroup.GET("/stats/trend", h.GetApplicationTrend)
+				applicationGroup.GET("/stats/interview-rounds", h.GetApplicationInterviewRounds)
+				applicationGroup.GET("/calendar", h.GetApplicationCalendar)
+				applicationGroup.GET("/interviews/bank", h.GetInterviewBank)
 				applicationGroup.GET("/:id", h.GetApplication)
 				applicationGroup.PUT("/:id", h.UpdateApplication)
 				applicationGroup.DELETE("/:id", h.DeleteApplication)

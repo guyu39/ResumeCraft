@@ -2,8 +2,12 @@ package handler
 
 import (
 	"errors"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
-	"time"
+	"path"
+	"strconv"
 
 	"resumecraft-pdf-backend/internal/middleware"
 	"resumecraft-pdf-backend/internal/model"
@@ -120,25 +124,60 @@ func (h *Handler) DownloadExport(c *gin.Context) {
 
 	// 如果有 FileData（noop 降级），直接返回
 	if len(fullTask.FileData) > 0 {
+		c.Header("Content-Disposition", exportContentDisposition(fullTask.FileKey, fullTask.Format))
 		c.Data(http.StatusOK, formatContentType(fullTask.Format), fullTask.FileData)
 		return
 	}
 
-	// 如果有 FileURL（对象存储），生成预签名 URL 并重定向
-	if fullTask.FileURL != "" {
-		if h.objectStorage != nil {
-			presignedURL, err := h.objectStorage.PresignedGetURL(c.Request.Context(), fullTask.FileKey, 15*time.Minute)
-			if err == nil {
-				c.Redirect(http.StatusFound, presignedURL)
-				return
-			}
+	// 流式代理对象存储内容，不再 302 重定向到预签名 URL。
+	// 预签名 URL 的 host 取自 S3_ENDPOINT（Docker 内网服务名 minio:9000），
+	// 浏览器无法解析该主机名，重定向后的页面必然打不开；
+	// 与 ServeAvatar 保持一致：由后端读取并回传，保证同源可达。
+	if fullTask.FileKey != "" && h.objectStorage != nil {
+		reader, size, contentType, err := h.objectStorage.Download(c.Request.Context(), fullTask.FileKey)
+		if err != nil {
+			response.JSONError(c, http.StatusNotFound, "FILE_NOT_FOUND", "导出文件不存在")
+			return
 		}
-		// 降级：直接重定向到对象存储 URL
-		c.Redirect(http.StatusFound, fullTask.FileURL)
+		defer reader.Close()
+
+		if contentType == "" || contentType == "application/octet-stream" {
+			contentType = formatContentType(fullTask.Format)
+		}
+		c.Header("Content-Type", contentType)
+		c.Header("Content-Length", strconv.FormatInt(size, 10))
+		c.Header("Content-Disposition", exportContentDisposition(fullTask.FileKey, fullTask.Format))
+		c.Status(http.StatusOK)
+		if _, err := io.Copy(c.Writer, reader); err != nil {
+			log.Printf("[export] stream %s failed: %v", fullTask.FileKey, err)
+		}
 		return
 	}
 
 	response.JSONError(c, http.StatusNotFound, "FILE_NOT_FOUND", "导出文件不存在")
+}
+
+// exportContentDisposition 生成 attachment 头，让浏览器直接落盘并保留正确扩展名。
+// 优先复用对象存储 key 的文件名（exports/exp_xxx.md），缺失时按格式兜底。
+func exportContentDisposition(fileKey, format string) string {
+	name := path.Base(fileKey)
+	if name == "" || name == "." || name == "/" {
+		name = "resume." + formatExtension(format)
+	}
+	return fmt.Sprintf("attachment; filename=%q", name)
+}
+
+func formatExtension(format string) string {
+	switch format {
+	case "pdf":
+		return "pdf"
+	case "markdown":
+		return "md"
+	case "json", "resume":
+		return "json"
+	default:
+		return "bin"
+	}
 }
 
 func formatContentType(format string) string {

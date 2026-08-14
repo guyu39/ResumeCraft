@@ -144,6 +144,9 @@ const TrendPanels: React.FC = () => {
   // 趋势图数据：格式化桶起始时间为轴标签
   const trendData = useMemo(() => {
     if (!trend) return []
+    // 比率的分子（面试/Offer 事件）与分母（当周新增投递）分桶依据不同，
+    // 跨桶时可能算出 >100%，这里 clamp 到 0-100 防止右轴被自动拉伸失真
+    const clampRate = (v: number) => Math.min(100, Math.max(0, Math.round((Number.isFinite(v) ? v : 0) * 100)))
     return trend.points.map((p) => {
       const d = new Date(p.bucketStart)
       const label =
@@ -155,8 +158,8 @@ const TrendPanels: React.FC = () => {
         submitted: p.submitted,
         interview: p.interview,
         offer: p.offer,
-        replyRate: Math.round(p.replyRate * 100),
-        offerRate: Math.round(p.offerRate * 100),
+        replyRate: clampRate(p.replyRate),
+        offerRate: clampRate(p.offerRate),
       }
     })
   }, [trend])
@@ -258,7 +261,9 @@ const TrendPanels: React.FC = () => {
                   tickLine={false}
                   unit="%"
                   domain={[0, 100]}
+                  allowDataOverflow
                 />
+
                 <Tooltip
                   contentStyle={tooltipStyle}
                   formatter={(value: any, name: any) => {

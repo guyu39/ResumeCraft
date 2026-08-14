@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -45,6 +46,33 @@ func newAIProvider(cfg interface{}) AIProvider {
 	return &openAIProvider{}
 }
 
+// buildChatCompletionsURL 拼接 OpenAI 兼容的 chat/completions 端点。
+// 各厂商预置 baseURL 的版本段形态差异很大（/v1、/v2、/api/v3、/api/paas/v4、
+// /compatible-mode/v1、/v1beta/openai），此前按厂商名硬编码补 "/v1" 会拼出
+// /v1/v1/chat/completions 这类 404 路径，故统一按「路径里是否已含版本段」决定是否补 /v1。
+func buildChatCompletionsURL(baseURL string) string {
+	trimmed := strings.TrimRight(baseURL, "/")
+	if hasVersionSegment(trimmed) {
+		return trimmed + "/chat/completions"
+	}
+	return trimmed + "/v1/chat/completions"
+}
+
+// hasVersionSegment 判断 URL 路径中是否已存在 v1 / v2 / v4.0 / v1beta 之类的版本段。
+// 只扫描 path，避免把形如 v2.example.com 的主机名误判为版本段。
+func hasVersionSegment(rawURL string) bool {
+	path := rawURL
+	if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
+		path = u.Path
+	}
+	for _, seg := range strings.Split(path, "/") {
+		if len(seg) >= 2 && seg[0] == 'v' && seg[1] >= '0' && seg[1] <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
 // Complete 调用 OpenAI 兼容 API
 func (p *openAIProvider) Complete(ctx context.Context, req CompleteRequest) (*CompleteResponse, error) {
 	timeout := time.Duration(req.TimeoutMs) * time.Millisecond
@@ -57,49 +85,15 @@ func (p *openAIProvider) Complete(ctx context.Context, req CompleteRequest) (*Co
 		baseURL = "https://api.openai.com"
 	}
 
-	var url string
-	var body map[string]interface{}
-
-	// 判断使用哪个端点
-	if contains(baseURL, "deepseek") {
-		// DeepSeek 使用 chat/completions
-		url = baseURL + "/v1/chat/completions"
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-		}
-	} else if contains(baseURL, "zhipu") || contains(baseURL, "智谱") {
-		// 智谱使用 chat/completions
-		url = baseURL + "/v1/chat/completions"
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-		}
-	} else if contains(baseURL, "qwen") || contains(baseURL, "dashscope") {
-		// 通义千问使用 chat/completions
-		url = baseURL + "/v1/chat/completions"
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-		}
-	} else if contains(baseURL, "siliconflow") {
-		// 硅基流动使用 chat/completions
-		url = baseURL + "/chat/completions"
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-		}
-	} else {
-		// 默认使用 responses API (OpenAI)
-		if contains(baseURL, "/v1") || contains(baseURL, "/v3") {
-			url = baseURL + "/responses"
-		} else {
-			url = baseURL + "/v1/responses"
-		}
-		body = map[string]interface{}{
-			"model": req.Model,
-			"input": map[string]string{"role": "user", "content": req.Prompt},
-		}
+	// 统一走 OpenAI 兼容的 chat/completions：Responses API 仅 OpenAI 官方支持，
+	// 且原先传的 input 是单个对象而非字符串/数组，本身不符合规范
+	endpoint := buildChatCompletionsURL(baseURL)
+	body := map[string]interface{}{
+		"model":    req.Model,
+		"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
+	}
+	if req.MaxTokens > 0 {
+		body["max_tokens"] = req.MaxTokens
 	}
 
 	bodyBytes, err := json.Marshal(body)
@@ -107,7 +101,7 @@ func (p *openAIProvider) Complete(ctx context.Context, req CompleteRequest) (*Co
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -187,50 +181,11 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 		baseURL = "https://api.openai.com"
 	}
 
-	var url string
-	var body map[string]interface{}
-
-	// 判断使用哪个端点
-	if contains(baseURL, "deepseek") {
-		url = baseURL + "/v1/chat/completions"
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-			"stream":   true,
-		}
-	} else if contains(baseURL, "zhipu") || contains(baseURL, "智谱") {
-		url = baseURL + "/v1/chat/completions"
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-			"stream":   true,
-		}
-	} else if contains(baseURL, "qwen") || contains(baseURL, "dashscope") {
-		url = baseURL + "/v1/chat/completions"
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-			"stream":   true,
-		}
-	} else if contains(baseURL, "siliconflow") {
-		url = baseURL + "/chat/completions"
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-			"stream":   true,
-		}
-	} else {
-		// 默认使用 chat/completions
-		if contains(baseURL, "/v1") || contains(baseURL, "/v3") {
-			url = baseURL + "/chat/completions"
-		} else {
-			url = baseURL + "/v1/chat/completions"
-		}
-		body = map[string]interface{}{
-			"model":    req.Model,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
-			"stream":   true,
-		}
+	endpoint := buildChatCompletionsURL(baseURL)
+	body := map[string]interface{}{
+		"model":    req.Model,
+		"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
+		"stream":   true,
 	}
 
 	// 注入 max_tokens（如果调用方指定）
@@ -245,7 +200,7 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -344,31 +299,4 @@ func (p *openAIProvider) StreamComplete(ctx context.Context, req CompleteRequest
 		InputTokens:   inputTokens,
 		OutputTokens:  outputTokens,
 	}, nil
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsIgnoreCase(s, substr))
-}
-
-func containsIgnoreCase(s, substr string) bool {
-	s = toLower(s)
-	substr = toLower(substr)
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-func toLower(s string) string {
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		b[i] = c
-	}
-	return string(b)
 }
